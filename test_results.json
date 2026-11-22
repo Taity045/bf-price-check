@@ -1,0 +1,433 @@
+[
+ {
+  "url": "https://www.takealot.com/apple-airpods-pro-3/PLID99471433",
+  "live_status": "ok",
+  "price": 4499,
+  "was": 5499,
+  "currency": "ZAR",
+  "source": "takealot-api",
+  "message": null,
+  "title": "Apple AirPods Pro 3",
+  "archive_status": "ok",
+  "archive_msg": null,
+  "captures_6mo": 0,
+  "sampled": 0,
+  "snap_results": {},
+  "archive_points": []
+ },
+ {
+  "url": "https://www.woolworths.co.za/prod/Men/Underwear-Sleepwear/AU-StayNew-COOLTECH-Cotton-Briefs-3-Pack/_/A-508972132",
+  "live_status": "ok",
+  "price": 269,
+  "was": null,
+  "currency": "ZAR",
+  "source": "json-ld",
+  "message": null,
+  "title": "StayNew COOLTECH Cotton Briefs 3 Pack",
+  "archive_status": "ok",
+  "archive_msg": null,
+  "captures_6mo": 3,
+  "sampled": 3,
+  "snap_results": {},
+  "archive_points": [
+   [
+    "20260828175146",
+    269,
+    null,
+    "ZAR"
+   ],
+   [
+    "20260930203549",
+    269,
+    null,
+    "ZAR"
+   ],
+   [
+    "20261011084917",
+    269,
+    null,
+    "ZAR"
+   ]
+  ]
+ },
+ {
+  "url": "https://www.woolworths.co.za/prod/_/A-509748616",
+  "live_status": "ok",
+  "price": 2629,
+  "was": null,
+  "currency": "ZAR",
+  "source": "json-ld",
+  "message": null,
+  "title": "Airpods 4",
+  "archive_status": "ok",
+  "archive_msg": null,
+  "captures_6mo": 0,
+  "sampled": 0,
+  "snap_results": {},
+  "archive_points": []
+ },
+ {
+  "url": "https://clicks.co.za/cerave_invisible-hydrating-sunscreen-spf50-177ml/p/410827",
+  "live_status": "ok",
+  "price": 399,
+  "was": null,
+  "currency": "ZAR",
+  "source": "schema-in-script",
+  "message": null,
+  "title": "CeraVe Invisible Hydrating Sunscreen SPF50 177ml - Clicks",
+  "archive_status": "ok",
+  "archive_msg": null,
+  "captures_6mo": 0,
+  "sampled": 0,
+  "snap_results": {},
+  "archive_points": []
+ },
+ {
+  "url": "https://www.loot.co.za/product/deon-meyer-scorpio-rising/tmsv-8605-g650",
+  "live_status": "ok",
+  "price": 295,
+  "was": null,
+  "currency": "ZAR",
+  "source": "microdata",
+  "message": null,
+  "title": "Scorpio Rising (Paperback)",
+  "archive_status": "ok",
+  "archive_msg": null,
+  "captures_6mo": 0,
+  "sampled": 0,
+  "snap_results": {},
+  "archive_points": []
+ },
+ {
+  "url": "https://www.amazon.co.za/Apple-Bluetooth-Headphones-Personalised-Effortless/dp/B0DGHYPFGK",
+  "live_status": "ok",
+  "price": 1599,
+  "was": 2799,
+  "currency": "ZAR",
+  "source": "amazon-page",
+  "message": null,
+  "title": "Apple AirPods 4 Wireless Earbuds, Bluetooth Headphones, Pers",
+  "archive_status": "ok",
+  "archive_msg": null,
+  "captures_6mo": 0,
+  "sampled": 0,
+  "snap_results": {},
+  "archive_points": []
+ },
+ {
+  "url": "https://www.istore.co.za/apple-airpods-4",
+  "live_status": "blocked",
+  "price": null,
+  "was": null,
+  "currency": null,
+  "source": null,
+  "message": "The store refused our request (HTTP 403).",
+  "title": "",
+  "archive_status": "ok",
+  "archive_msg": null,
+  "captures_6mo": 1,
+  "sampled": 1,
+  "snap_results": {},
+  "archive_points": [
+   [
+    "20260918074515",
+    1999,
+    null,
+    "ZAR"
+   ]
+  ]
+ },
+ {
+  "url": "https://www.checkers.co.za/product/coca-cola-original-taste-less-sugar-soft-drink-2l-10136669EA",
+  "live_status": "ok",
+  "price": 28.99,
+  "was": null,
+  "currency": "ZAR",
+  "source": "json-ld",
+  "message": null,
+  "title": "Coca-Cola Original Taste Less Sugar Soft Drink 2L",
+  "archive_status": "ok",
+  "archive_msg": null,
+  "captures_6mo": 0,
+  "sampled": 0,
+  "snap_results": {},
+  "archive_points": []
+ },
+ {
+  "url": "https://www.makro.co.za/apple-mxp63ze-a-bluetooth-without-mic-headset/p/itmee67e509977ac?pid=HDPH7SFYMVDMDR2Y",
+  "live_status": "blocked",
+  "price": null,
+  "was": null,
+  "currency": null,
+  "source": null,
+  "message": "The store showed a bot check instead of the product page.",
+  "title": "",
+  "archive_status": "ok",
+  "archive_msg": null,
+  "captures_6mo": 0,
+  "sampled": 0,
+  "snap_results": {},
+  "archive_points": []
+ },
+ {
+  "url": "https://www.incredible.co.za/apple-airpods-4-active-noise-cancelling",
+  "live_status": "blocked",
+  "price": null,
+  "was": null,
+  "currency": null,
+  "source": null,
+  "message": "The store refused our request (HTTP 403).",
+  "title": "",
+  "archive_status": "ok",
+  "archive_msg": null,
+  "captures_6mo": 0,
+  "sampled": 0,
+  "snap_results": {},
+  "archive_points": []
+ },
+ {
+  "url": "https://www.dischem.co.za/catalog/product/view/id/155981/s/huggies-extra-care-disposable-diapers-size-3-60s-422/",
+  "live_status": "blocked",
+  "price": null,
+  "was": null,
+  "currency": null,
+  "source": null,
+  "message": "The store refused our request (HTTP 403).",
+  "title": "",
+  "archive_status": "ok",
+  "archive_msg": null,
+  "captures_6mo": 0,
+  "sampled": 0,
+  "snap_results": {},
+  "archive_points": []
+ },
+ {
+  "url": "https://www.amazon.co.uk/Atomic-Habits-Proven-Build-Break/dp/1847941834",
+  "live_status": "ok",
+  "price": 8,
+  "was": 18.99,
+  "currency": "GBP",
+  "source": "amazon-page",
+  "message": null,
+  "title": "Atomic Habits: The life-changing million-copy #1 bestseller",
+  "archive_status": "ok",
+  "archive_msg": null,
+  "captures_6mo": 2,
+  "sampled": 2,
+  "snap_results": {
+   "ok": 2
+  },
+  "archive_points": [
+   [
+    "20260602050028",
+    8,
+    18.99,
+    "GBP"
+   ],
+   [
+    "20260618005433",
+    7.95,
+    18.99,
+    "GBP"
+   ]
+  ]
+ },
+ {
+  "url": "https://www.argos.co.uk/product/8923048",
+  "live_status": "blocked",
+  "price": null,
+  "was": null,
+  "currency": null,
+  "source": null,
+  "message": "The store refused our request (HTTP 403).",
+  "title": "",
+  "archive_status": "ok",
+  "archive_msg": null,
+  "captures_6mo": 1,
+  "sampled": 1,
+  "snap_results": {},
+  "archive_points": [
+   [
+    "20260807112329",
+    99,
+    null,
+    "GBP"
+   ]
+  ]
+ },
+ {
+  "url": "https://www.currys.co.uk/products/apple-airpods-4-with-active-noise-cancellation-white-10270519.html",
+  "live_status": "blocked",
+  "price": null,
+  "was": null,
+  "currency": null,
+  "source": null,
+  "message": "The store refused our request (HTTP 403).",
+  "title": "",
+  "archive_status": "ok",
+  "archive_msg": null,
+  "captures_6mo": 7,
+  "sampled": 7,
+  "snap_results": {},
+  "archive_points": [
+   [
+    "20260609175757",
+    169,
+    null,
+    "GBP"
+   ],
+   [
+    "20260627120352",
+    169,
+    null,
+    "GBP"
+   ],
+   [
+    "20260729000338",
+    149,
+    null,
+    "GBP"
+   ],
+   [
+    "20260806214321",
+    149,
+    null,
+    "GBP"
+   ],
+   [
+    "20260815130014",
+    149,
+    null,
+    "GBP"
+   ],
+   [
+    "20260830231144",
+    169,
+    null,
+    "GBP"
+   ],
+   [
+    "20260924120614",
+    169,
+    null,
+    "GBP"
+   ]
+  ]
+ },
+ {
+  "url": "https://www.johnlewis.com/dyson-airwrap-i-d-straight-wavy-hair-styler-ceramic-pink/p113886164",
+  "live_status": "error",
+  "price": null,
+  "was": null,
+  "currency": null,
+  "source": null,
+  "message": "The store answered HTTP 520.",
+  "title": "",
+  "archive_status": "ok",
+  "archive_msg": null,
+  "captures_6mo": 2,
+  "sampled": 2,
+  "snap_results": {},
+  "archive_points": [
+   [
+    "20260831121214",
+    479,
+    null,
+    "GBP"
+   ],
+   [
+    "20261004202508",
+    479,
+    null,
+    "GBP"
+   ]
+  ]
+ },
+ {
+  "url": "https://www.mediamarkt.de/de/product/_apple-airpods-pro-2-generation-in-ear-kopfhorer-bluetooth-weiss-2832770.html",
+  "live_status": "ok",
+  "price": 269,
+  "was": 299,
+  "currency": "EUR",
+  "source": "schema-in-script",
+  "message": null,
+  "title": "APPLE AirPods Pro (2. Generation), In-ear Kopfhörer Bluetoot",
+  "archive_status": "ok",
+  "archive_msg": null,
+  "captures_6mo": 0,
+  "sampled": 0,
+  "snap_results": {},
+  "archive_points": []
+ },
+ {
+  "url": "https://www.amazon.de/dp/1847941834",
+  "live_status": "ok",
+  "price": 17.64,
+  "was": 26.16,
+  "currency": "EUR",
+  "source": "amazon-page",
+  "message": null,
+  "title": "Atomic Habits: The life-changing million-copy #1 bestseller",
+  "archive_status": "ok",
+  "archive_msg": null,
+  "captures_6mo": 0,
+  "sampled": 0,
+  "snap_results": {},
+  "archive_points": []
+ },
+ {
+  "url": "https://www.bol.com/be/nl/p/apple-airpods-4-active-noise-cancellation/9300000189466515/",
+  "live_status": "blocked",
+  "price": null,
+  "was": null,
+  "currency": null,
+  "source": null,
+  "message": "The store refused our request (HTTP 403).",
+  "title": "",
+  "archive_status": "ok",
+  "archive_msg": null,
+  "captures_6mo": 0,
+  "sampled": 0,
+  "snap_results": {},
+  "archive_points": []
+ },
+ {
+  "url": "https://www.zalando.de/nike-sportswear-air-force-1-sneaker-low-whiteblack-ni111a0xd-a15.html",
+  "live_status": "blocked",
+  "price": null,
+  "was": null,
+  "currency": null,
+  "source": null,
+  "message": "The store refused our request (HTTP 403).",
+  "title": "",
+  "archive_status": "ok",
+  "archive_msg": null,
+  "captures_6mo": 1,
+  "sampled": 1,
+  "snap_results": {},
+  "archive_points": [
+   [
+    "20260907132158",
+    107.95,
+    null,
+    "EUR"
+   ]
+  ]
+ },
+ {
+  "url": "https://www.otto.de/p/apple-eingabestift-pencil-usb-c-1795629494/",
+  "live_status": "error",
+  "price": null,
+  "was": null,
+  "currency": null,
+  "source": null,
+  "message": "The store answered HTTP 400.",
+  "title": "",
+  "archive_status": "ok",
+  "archive_msg": null,
+  "captures_6mo": 0,
+  "sampled": 0,
+  "snap_results": {},
+  "archive_points": []
+ }
+]

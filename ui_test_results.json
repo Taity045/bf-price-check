@@ -1,0 +1,107 @@
+[
+ {
+  "n": "Target #u 245x52 touch-action:auto not covered",
+  "p": true,
+  "i": ""
+ },
+ {
+  "n": "Target #paste 71x52 touch-action:manipulation not covered",
+  "p": true,
+  "i": ""
+ },
+ {
+  "n": "Target #go 324x54 touch-action:manipulation not covered",
+  "p": true,
+  "i": ""
+ },
+ {
+  "n": "Target .chip 196x44 touch-action:manipulation not covered",
+  "p": true,
+  "i": ""
+ },
+ {
+  "n": "Decorative layer has pointer-events:none",
+  "p": true,
+  "i": ""
+ },
+ {
+  "n": "Private IP is rejected",
+  "p": true,
+  "i": "Use the store's normal web address, not an IP address."
+ },
+ {
+  "n": "Currys: blocked live price explained + manual entry shown",
+  "p": true,
+  "i": "Live price unavailable. This is the latest archived price, from 24 Sept 2026. It may be out of date."
+ },
+ {
+  "n": "Currys: archive dots drawn",
+  "p": true,
+  "i": "7 dots; The Internet Archive has 7 days with copies of this page in 6 months; we sampled 7."
+ },
+ {
+  "n": "Manual price gives a verdict",
+  "p": true,
+  "i": "✅ Real deal | This is the lowest price in the last 6 months, 24% below the usual £169."
+ },
+ {
+  "n": "Tap on chart dot shows tooltip",
+  "p": true,
+  "i": "£169 · 9 Jun 2026 · archived copy"
+ },
+ {
+  "n": "MediaMarkt: live EUR price shown",
+  "p": true,
+  "i": "€285.72"
+ },
+ {
+  "n": "Takealot: ZAR price + was price",
+  "p": true,
+  "i": "R 4 499 R 5 499 −18% claimed"
+ },
+ {
+  "n": "Takealot: honest \"not enough history\"",
+  "p": true,
+  "i": "🕳️ Not enough history"
+ },
+ {
+  "n": "Target #share 175x44 touch-action:manipulation not covered",
+  "p": true,
+  "i": ""
+ },
+ {
+  "n": "Target #again 175x44 touch-action:manipulation not covered",
+  "p": true,
+  "i": ""
+ },
+ {
+  "n": "Target #pts summary 324x44 touch-action:manipulation not covered",
+  "p": true,
+  "i": ""
+ },
+ {
+  "n": "Share button responds (copy toast)",
+  "p": true,
+  "i": "Link copied ✓"
+ },
+ {
+  "n": "Data point table opens",
+  "p": true,
+  "i": ""
+ },
+ {
+  "n": "Bottom buttons are not covered",
+  "p": true,
+  "i": ""
+ },
+ {
+  "n": "Shared link (?u=) auto-runs: Amazon UK",
+  "p": true,
+  "i": "£8 £18.99 −58% claimed | 🚩 Fake discount"
+ },
+ {
+  "n": "No JavaScript errors",
+  "p": true,
+  "i": ""
+ }
+]
