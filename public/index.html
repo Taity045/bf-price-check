@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Deal or Dud? · Price history check</title>
-<meta name="description" content="Paste a product link. See the shop's own prices over the last 6 months and find out if the 'was' price is real.">
+<meta name="description" content="Paste a product link. See the shop's own prices over the last 12 months and find out if the 'was' price is real.">
 <meta property="og:title" content="Deal or Dud? · Price history check">
-<meta property="og:description" content="Is that deal real? Paste a product link and see 6 months of price history.">
+<meta property="og:description" content="Is that deal real? Paste a product link and see 12 months of price history.">
 <meta name="theme-color" content="#f3efe6" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15140f" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%2317150f'/><text x='16' y='24' font-family='Georgia,serif' font-weight='700' font-size='22' fill='%23f3efe6' text-anchor='middle'>D?</text></svg>">
@@ -158,7 +158,7 @@ footer{color:var(--mut);font-size:13px;margin-top:24px;padding-top:12px;border-t
   <header class="mast">
     <div class="mast-top"><span class="lab">Price history check</span><span class="lab">South Africa · UK</span></div>
     <h1>Deal or Dud?</h1>
-    <p class="dek">Paste a link to a product. We put today's price next to six months of that shop's own prices, so a made-up "was" price has nowhere to hide.</p>
+    <p class="dek">Paste a link to a product. We put today's price next to twelve months of that shop's own prices, so a made-up "was" price has nowhere to hide.</p>
   </header>
 
   <section class="check">
@@ -200,7 +200,7 @@ footer{color:var(--mut);font-size:13px;margin-top:24px;padding-top:12px;border-t
     <section class="block verdict unk" id="verdict" aria-live="polite"></section>
 
     <div class="block">
-      <div class="charthead"><h3>Six months of prices</h3><span class="small num" id="cnt"></span></div>
+      <div class="charthead"><h3>Twelve months of prices</h3><span class="small num" id="cnt"></span></div>
       <div class="prog" id="prog"><i></i></div>
       <div class="small" id="progtxt" style="margin-top:8px"></div>
       <div id="chart" style="margin-top:12px"></div>
@@ -227,7 +227,7 @@ footer{color:var(--mut);font-size:13px;margin-top:24px;padding-top:12px;border-t
     <h3>How we check</h3>
     <ol>
       <li>We read today's price from the product data on the shop's page.</li>
-      <li>We rebuild the last six months from copies of the page saved by the <a href="https://web.archive.org" target="_blank" rel="noopener">Internet Archive</a>, about one a week.</li>
+      <li>We rebuild the last twelve months from copies of the page saved by the <a href="https://web.archive.org" target="_blank" rel="noopener">Internet Archive</a>, about one a week.</li>
       <li>We re-check each tracked product about once a day, so its history keeps growing.</li>
       <li>If the shop's "was" price is higher than anything we've seen recently, we say so.</li>
       <li>Some shops block automated checks, and some pages have no archived copies. When that happens we tell you. We never guess a price.</li>
@@ -417,7 +417,7 @@ function points() {
   const all = [
     ...state.archive.map((a) => ({ ...a, kind: "archive" })),
     ...state.history.checks.map((c) => ({ ...c, kind: "check" })),
-  ].filter((x) => x.price && x.t >= Date.now() - 183 * DAY);
+  ].filter((x) => x.price && x.t >= Date.now() - 365 * DAY);
   // keep one currency only
   const pick = ccy || all.find((x) => x.currency)?.currency;
   const same = all.filter((x) => pick && x.currency === pick);
@@ -435,8 +435,15 @@ function setVerdict(cls, big, html) {
 }
 
 function renderVerdict() {
-  const cur = curPrice(); const { pts, other, ccy } = points();
-  const hist = pts.filter((x) => x.t < Date.now() - DAY);
+  let cur = curPrice(); const { pts, other, ccy } = points();
+  let hist = pts.filter((x) => x.t < Date.now() - DAY);
+  let archivedAt = null;
+  // Shop blocks live checks: judge the latest archived copy against the older ones, and say so.
+  if (!cur?.currency && !state.manual && ccy && hist.length >= 4) {
+    const last = hist[hist.length - 1];
+    cur = { price: last.price, was: last.was, currency: ccy };
+    archivedAt = last.t; hist = hist.slice(0, -1);
+  }
   const pr = hist.map((x) => x.price);
   const p90 = hist.filter((x) => x.t >= Date.now() - 90 * DAY).map((x) => x.price);
   let cls, big, body, flags = "";
@@ -457,23 +464,26 @@ function renderVerdict() {
   const vsMed = (med - P) / med, vsLow = (low - P) / low;
   const inflated = W && W > high90 * 1.03;
   const neverSeen = W && W > high * 1.03;
-  if (P <= low * 1.005 && vsMed >= 0.05) { cls = "good"; big = "Real deal"; body = `This is the lowest price in six months, ${pct(vsMed)} below the usual ${money(med, C)}.`; }
+  if (P <= low * 1.005 && vsMed >= 0.05) { cls = "good"; big = "Real deal"; body = `This is the lowest price in twelve months, ${pct(vsMed)} below the usual ${money(med, C)}.`; }
   else if (inflated && vsMed < 0.05) { cls = "bad"; big = "Fake discount"; body = `The "was" price looks inflated. Today's price is about what it usually costs (${money(med, C)}).`; }
   else if (P > med * 1.03) { cls = "bad"; big = "Pricier than usual"; body = `It usually costs ${money(med, C)}. Today's price is ${pct(vsMed)} higher. Wait if you can.`; }
   else if (vsMed >= 0.05) { cls = "good"; big = "Decent deal"; body = `${pct(vsMed)} below the usual ${money(med, C)}, but it has been cheaper: ${money(low, C)}.`; }
   else { cls = "meh"; big = "Same old price"; body = `Close to the usual ${money(med, C)}. Not a special deal.`; }
   if (W) {
-    if (neverSeen) flags += `<div class="flag">The "was" price of ${esc(money(W, C))} is higher than any price we saw in six months (highest: ${esc(money(high, C))}).</div>`;
+    if (neverSeen) flags += `<div class="flag">The "was" price of ${esc(money(W, C))} is higher than any price we saw in twelve months (highest: ${esc(money(high, C))}).</div>`;
     else if (inflated) flags += `<div class="flag">The "was" price of ${esc(money(W, C))} is higher than anything in the last 90 days (highest: ${esc(money(high90, C))}).</div>`;
     else if (pr.includes(W)) flags += `<div class="flag ok">We previously saw the "was" price of ${esc(money(W, C))}.</div>`;
     else flags += `<p class="note">We haven't observed the exact "was" price of ${esc(money(W, C))}.</p>`;
   }
+  const bfLo = Date.UTC(2025, 10, 24), bfHi = Date.UTC(2025, 11, 2);
+  const bfPts = hist.filter((x) => x.t >= bfLo && x.t < bfHi);
+  const bfLine = bfPts.length ? (() => { const b = bfPts.reduce((m, x) => (x.price < m.price ? x : m)); return `<p class="note">Last Black Friday (late Nov 2025): ${esc(money(b.price, C))} on ${esc(fmtDate(b.t))}${P < b.price ? ", so today is cheaper." : P > b.price ? `, so today is ${esc(pct((P - b.price) / b.price))} higher.` : ", the same as today."}</p>`; })() : "";
   const claimed = W ? `<p class="note">The shop claims ${Math.round((W - P) / W * 100)}% off ${esc(money(W, C))}. Real saving against the usual price: ${esc(money(Math.max(0, med - P), C))}.</p>` : "";
   setVerdict(cls, big, `<p class="vbody">${esc(body)}</p>${flags}
-    <div class="stats num"><div class="stat"><b>${esc(money(low, C))}</b><span class="lab">6-month low</span></div><div class="stat"><b>${esc(money(med, C))}</b><span class="lab">Usual</span></div><div class="stat"><b>${esc(money(high, C))}</b><span class="lab">6-month high</span></div></div>
-    <div class="stats two num"><div class="stat"><b class="${vsMed >= 0 ? "pos" : "neg"}">${signed(vsMed)}</b><span class="lab">vs usual</span></div><div class="stat"><b class="${vsLow >= 0 ? "pos" : "neg"}">${signed(vsLow)}</b><span class="lab">vs 6-month low</span></div></div>
-    ${claimed}
-    <p class="note">Based on ${pr.length} older price${pr.length === 1 ? "" : "s"}${cur.manual ? " and the price you entered" : ""}.${other ? ` ${other} point(s) with a different or unknown currency were left out.` : ""}</p>`);
+    <div class="stats num"><div class="stat"><b>${esc(money(low, C))}</b><span class="lab">12-month low</span></div><div class="stat"><b>${esc(money(med, C))}</b><span class="lab">Usual</span></div><div class="stat"><b>${esc(money(high, C))}</b><span class="lab">12-month high</span></div></div>
+    <div class="stats two num"><div class="stat"><b class="${vsMed >= 0 ? "pos" : "neg"}">${signed(vsMed)}</b><span class="lab">vs usual</span></div><div class="stat"><b class="${vsLow >= 0 ? "pos" : "neg"}">${signed(vsLow)}</b><span class="lab">vs 12-month low</span></div></div>
+    ${bfLine}${claimed}
+    ${archivedAt ? `<p class="note">We could not read today's price from this shop. This verdict compares the latest archived price (${esc(fmtDate(archivedAt))}) with the older ones. It may be out of date.</p>` : ""}<p class="note">Based on ${pr.length} older price${pr.length === 1 ? "" : "s"}${cur.manual ? " and the price you entered" : ""}.${other ? ` ${other} point(s) with a different or unknown currency were left out.` : ""}</p>`);
   state.verdictText = big;
 }
 
@@ -481,7 +491,7 @@ function renderChart() {
   const { pts, ccy } = points(); const current = curPrice();
   const cur = current?.currency && current.currency === ccy ? current : null;
   const W = 600, H = 300, L = 62, R = 14, T = 18, B = 34;
-  const t1 = Date.now(), t0 = t1 - 183 * DAY;
+  const t1 = Date.now(), t0 = t1 - 365 * DAY;
   const all = pts.map((p) => ({ ...p }));
   if (cur) all.push({ t: t1, price: cur.price, kind: "now", was: cur.was });
   $("cnt").textContent = `${pts.length} price${pts.length === 1 ? "" : "s"}`;
@@ -492,12 +502,12 @@ function renderChart() {
   const X = (t) => L + ((t - t0) / (t1 - t0)) * (W - L - R), Y = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
   let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Price chart">`;
   for (let i = 0; i <= 4; i++) { const v = lo + ((hi - lo) * i) / 4, y = Y(v); s += `<line x1="${L}" x2="${W - R}" y1="${y}" y2="${y}" class="${i === 0 ? "c-base" : "c-grid"}"/><text x="${L - 8}" y="${y + 4}" class="c-ax" text-anchor="end">${esc(money(v, ccy).replace(/\.\d+$/, ""))}</text>`; }
-  for (let m = 0; m <= 6; m++) { const d = new Date(t1 - (6 - m) * 30.5 * DAY); const x = X(d.getTime()); s += `<text x="${x}" y="${H - 10}" class="c-ax" text-anchor="middle">${d.toLocaleDateString("en-GB", { month: "short" })}</text>`; }
+  for (let m = 0; m <= 12; m += 2) { const d = new Date(t1 - (12 - m) * 30.4 * DAY); const x = X(d.getTime()); s += `<text x="${x}" y="${H - 10}" class="c-ax" text-anchor="middle">${d.toLocaleDateString("en-GB", { month: "short" })}</text>`; }
   if (cur && cur.was) { const y = Y(cur.was); s += `<line x1="${L}" x2="${W - R}" y1="${y}" y2="${y}" class="c-was"/><text x="${W - R}" y="${y - 7}" class="c-wast" text-anchor="end">"was" ${esc(money(cur.was, ccy))}</text>`; }
   const line = all.slice().sort((a, b) => a.t - b.t);
-  // solid line only between points < 21 days apart; dotted where we have no data in between
+  // solid line only between points < 45 days apart; dotted where we have no data in between
   for (let i = 1; i < line.length; i++) {
-    const a = line[i - 1], c = line[i], gap = c.t - a.t > 21 * DAY;
+    const a = line[i - 1], c = line[i], gap = c.t - a.t > 45 * DAY;
     s += `<path d="M${X(a.t)} ${Y(a.price)}H${X(c.t)}V${Y(c.price)}" class="c-ln${gap ? " gap" : ""}"/>`;
   }
   all.forEach((p, i) => {
@@ -520,8 +530,8 @@ function renderArchiveNote() {
   const ai = state.archive_meta;
   if (ai) {
     if (ai.status !== "ok") note = `Price history from the Internet Archive isn't available right now: ${ai.message || "unknown error"}.`;
-    else if (!ai.captures_6mo) note = "The Internet Archive has no copies of this page from the last six months, so older prices are missing.";
-    else note = `The Internet Archive has ${ai.captures_6mo} day${ai.captures_6mo === 1 ? "" : "s"} with copies of this page in six months; we sampled ${ai.sampled}.`;
+    else if (!(ai.captures_12mo ?? ai.captures_6mo)) note = "The Internet Archive has no copies of this page from the last twelve months, so older prices are missing.";
+    else note = `The Internet Archive has ${(ai.captures_12mo ?? ai.captures_6mo)} day${(ai.captures_12mo ?? ai.captures_6mo) === 1 ? "" : "s"} with copies of this page in twelve months; we sampled ${ai.sampled}.`;
     if (state.failed) note += ` ${state.failed} archived cop${state.failed === 1 ? "y" : "ies"} had no readable price (bot-check page, or the price was loaded by JavaScript).`;
   }
   $("archnote").textContent = note;

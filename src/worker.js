@@ -8,9 +8,9 @@
 
 const CHECK_TTL_MS = 6 * 3600 * 1000;      // cache a live check for 6 h
 const CDX_TTL_MS = 12 * 3600 * 1000;       // cache the snapshot list for 12 h
-const HISTORY_DAYS = 183;
-const SNAP_SPACING_DAYS = 5;
-const MAX_SNAPS = 38;
+const HISTORY_DAYS = 365;
+const SNAP_SPACING_DAYS = 6;
+const MAX_SNAPS = 64;
 const MAX_TRACKED = 1000;
 const RECHECK_AFTER_MS = 20 * 3600 * 1000;
 const LIVE_CACHE_PREFIX = "check-v2:";
@@ -507,7 +507,7 @@ function cdxQueries(canonInfo, origUrl) {
 
 async function getSnapshots(env, canonInfo, origUrl) {
   const oKey = new URL(origUrl).pathname;
-  const key = "cdx-v3:" + JSON.stringify([canonInfo.canon, oKey]);
+  const key = "cdx-v4:" + JSON.stringify([canonInfo.canon, oKey]);
   const cached = await cacheGet(env, key);
   if (cached) return cached;
   const from = ymd(new Date(now() - HISTORY_DAYS * 864e5));
@@ -549,6 +549,11 @@ async function getSnapshots(env, canonInfo, origUrl) {
     if (last - t >= SNAP_SPACING_DAYS * 864e5 - 36e5) { picked.push({ ts: rows[i][0], orig: rows[i][1] }); last = t; }
   }
   picked.reverse();
+  // Always keep the capture closest to last Black Friday (28 Nov 2025), if there is one within 3 days.
+  const bf = Date.UTC(2025, 10, 28);
+  let bfRow = null;
+  for (const r of rows) { const d = Math.abs(tsToMs(r[0]) - bf); if (d <= 3 * 864e5 && (!bfRow || d < Math.abs(tsToMs(bfRow[0]) - bf))) bfRow = r; }
+  if (bfRow && !picked.some((x) => x.ts === bfRow[0])) { picked.push({ ts: bfRow[0], orig: bfRow[1] }); picked.sort((a, b) => a.ts.localeCompare(b.ts)); }
   const val = { status, message, total: rows.length, snaps: picked, queries: queries.map((q, i) => ({ url: q.url, prefix: q.prefix, rows: results[i].rows ? results[i].rows.length : null, error: results[i].err || null, detail: results[i].detail || null })) };
   if (status === "ok") await cachePut(env, key, val, okCount === results.length ? CDX_TTL_MS : 3600e3);
   return val;
@@ -677,7 +682,7 @@ async function apiArchive(req, env) {
     const selected = new Set(snapsInfo.snaps.map((s) => s.ts));
     pending = rows.results.filter((s) => selected.has(s.ts));
   }
-  return json({ status: snapsInfo.status, message: snapsInfo.message, captures_6mo: snapsInfo.total, sampled: snapsInfo.snaps.length, pending, queries: snapsInfo.queries });
+  return json({ status: snapsInfo.status, message: snapsInfo.message, captures_12mo: snapsInfo.total, captures_6mo: snapsInfo.total, sampled: snapsInfo.snaps.length, pending, queries: snapsInfo.queries });
 }
 
 async function apiSnap(req, env) {

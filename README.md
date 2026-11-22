@@ -5,8 +5,8 @@ Live: https://bf-price-check.tm-deal-lab.workers.dev
 Paste a product link from an online store. The tool shows:
 
 1. **Today's price and the "was" price**, read server-side from the product page.
-2. **A 6-month price chart**, rebuilt from Internet Archive (Wayback Machine) copies of the page, plus our own daily re-checks.
-3. **A verdict** that flags inflated "was" prices and shows the real discount against the 6-month low and the median ("usual") price.
+2. **A 12-month price chart**, rebuilt from Internet Archive (Wayback Machine) copies of the page, plus our own daily re-checks.
+3. **A verdict** that flags inflated "was" prices and shows the real discount against the 12-month low and the median ("usual") price.
 
 The tool never invents prices. If a store blocks the check, or there is no history, the page says so. The user can type the price they see to get a verdict anyway (shown as "entered by you").
 
@@ -26,7 +26,7 @@ The tool never invents prices. If a store blocks the check, or there is no histo
 ### API
 
 - `GET /api/check?url=<product url>[&fresh=1]` → live price (`current`), stored history (archive points + daily checks). Live results are cached 6 h (30 min when the check failed).
-- `GET /api/archive?url=<canonical>&orig=<pasted url>` → Wayback CDX lookup (last 183 days, one capture per ~7 days, max 26). Cached 12 h.
+- `GET /api/archive?url=<canonical>&orig=<pasted url>` → Wayback CDX lookup (last 365 days, one capture per ~6 days, max 64 plus the one nearest Black Friday 2025). Cached 12 h.
 - `GET /api/snap?url=<canonical>&ts=<14-digit>&orig=<archived url>` → price from one archived copy. Stored forever in D1 (failed fetches retried after 6 h).
 - The cron runs every minute and checks the oldest product due for a refresh after 20 hours. That provides 1,440 check slots per day for up to 1,000 tracked products.
 
@@ -42,13 +42,13 @@ Currency comes from the page or a supported country domain (.co.za → ZAR, .co.
 
 ### Verdict rules (client side)
 
-Older prices = archive points + daily checks older than 24 h, last 183 days.
+Older prices = archive points + daily checks older than 24 h, last 365 days.
 - fewer than 2 older prices → "Not enough history" (the store's claim is shown but not confirmed)
-- price ≤ 6-month low and ≥ 5 % under the median → **Real deal**
-- "was" price > 103 % of the 90-day high (or 6-month high if < 2 points in 90 days) and price not ≥ 5 % under median → **Fake discount**
+- price ≤ 12-month low and ≥ 5 % under the median → **Real deal**
+- "was" price > 103 % of the 90-day high (or 12-month high if < 2 points in 90 days) and price not ≥ 5 % under median → **Fake discount**
 - price > 103 % of median → **Pricier than usual**
 - ≥ 5 % under median → **Decent deal**; otherwise **Same old price**
-- A red flag is always shown when the "was" price is higher than anything seen in 90 days / 6 months.
+- A red flag is always shown when the "was" price is higher than anything seen in 90 days / 12 months.
 
 ### Abuse protection
 
@@ -87,7 +87,7 @@ Note: the URL contains the account's workers.dev subdomain. If the subdomain is 
 
 - Many big stores block requests from cloud servers (HTTP 403/bot checks): in tests Argos, Currys, bol.com, Zalando, Incredible, iStore, Makro, Dis-Chem; John Lewis returned 520, Otto 400. For these the tool shows the latest archived price (if any) and lets the user type the price.
 - Amazon hides the buy box from foreign visitors for some products (e.g. Kindle devices). Items that ship internationally (books etc.) work.
-- Wayback coverage of product pages is thin, especially for South African stores (often 0–3 copies in 6 months). Takealot product pages are rendered by JavaScript, so archived copies have no price. History therefore mostly grows from the daily re-checks.
+- Wayback coverage of product pages is thin, especially for South African stores (often 0–3 copies in 12 months). Takealot product pages are rendered by JavaScript, so archived copies have no price. History therefore mostly grows from the daily re-checks.
 - The Internet Archive sometimes answers 503 or is slow; the tool retries and shows a "Try the archive again" button.
 - Marketplace listings (Amazon, MediaMarkt, Takealot) can change seller, so archived prices may be from a different seller.
 - Free-plan Worker limits (CPU time, 50 sub-requests per call) apply; each archive copy is fetched in its own request to stay inside them.

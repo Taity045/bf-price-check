@@ -27,7 +27,7 @@ if canon:
     c2 = get("/api/check?url=" + q(u, safe=""))
     h = c2.get("history") or {}
     ccy = (c2.get("current") or {}).get("currency")
-    sn = [(x["ts"][:8], x["price"], x.get("was")) for x in h.get("archive", []) if x.get("price") and x.get("currency") == ccy]
-    ck = [(x.get("t") or x.get("ts"), x["price"], x.get("was")) for x in h.get("checks", []) if x.get("currency") == ccy]
+    sn = [(x["ts"][:8], x["price"], x.get("was")) for x in h.get("archive", []) if x.get("price") and (ccy is None or x.get("currency") == ccy)]
+    ck = [(x.get("t") or x.get("ts"), x["price"], x.get("was")) for x in h.get("checks", []) if (ccy is None or x.get("currency") == ccy)]
     out["archive_failed"] = h.get("archive_failed"); out["snap_pts"] = len(sn); out["check_pts"] = len(ck); out["series"] = sn
 print(json.dumps(out))

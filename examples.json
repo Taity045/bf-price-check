@@ -1,27 +1,27 @@
 [
  {
-  "label": "MediaMarkt · AirPods Pro 3",
-  "cc": "DE",
-  "url": "https://www.mediamarkt.de/de/product/_apple-airpods-pro-3-in-ear-kopfhorer-bluetooth-white-3013574.html"
+  "label": "Evetech · Ryzen 5 + Arc B580 PC",
+  "cc": "ZA",
+  "url": "https://www.evetech.co.za/amd-ryzen-5-5500-intel-arc-b580-budget-gaming-pc-16gb-512gb-nvme/best-pc-deal/22997"
  },
  {
-  "label": "MediaMarkt · Galaxy S26",
-  "cc": "DE",
-  "url": "https://www.mediamarkt.de/de/product/_samsung-galaxy-s26-256-gb-black-dual-sim-3033289.html"
+  "label": "Evetech · ADATA SU650 512GB SSD",
+  "cc": "ZA",
+  "url": "https://www.evetech.co.za/adata-su650-512gb-3d-nand-sata-2-5-ssd/best-deal/18361"
+ },
+ {
+  "label": "Currys · AirPods 4 (ANC)",
+  "cc": "UK",
+  "url": "https://www.currys.co.uk/products/apple-airpods-4-with-active-noise-cancellation-white-10270519.html"
+ },
+ {
+  "label": "Currys · Echo Show 5",
+  "cc": "UK",
+  "url": "https://www.currys.co.uk/products/amazon-echo-show-5-3rd-gen-smart-display-with-alexa-cloud-blue-10251235.html"
  },
  {
   "label": "MediaMarkt · Galaxy A57",
   "cc": "DE",
   "url": "https://www.mediamarkt.de/de/product/_samsung-galaxy-a57-256-gb-awesome-gray-dual-sim-3039261.html"
- },
- {
-  "label": "MediaMarkt · Galaxy Tab A11",
-  "cc": "DE",
-  "url": "https://www.mediamarkt.de/de/product/_samsung-galaxy-tab-a11-wi-fi-tablet-128-gb-11-zoll-grau-3020224.html"
- },
- {
-  "label": "MediaMarkt · Galaxy S25",
-  "cc": "DE",
-  "url": "https://www.mediamarkt.de/de/product/_samsung-galaxy-s25-5g-256-gb-icyblue-dual-sim-2972629.html"
  }
 ]
