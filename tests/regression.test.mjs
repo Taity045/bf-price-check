@@ -115,19 +115,91 @@ test('only indexed captures of the requested product variant enter archive histo
   assert.equal((await api('check')).body.history.archive[0].orig, archived);
 });
 
-test('oversized streaming store and replay bodies are cancelled at the limit', async (t) => {
+test('oversized streaming store and replay bodies are cut at the limit and still parsed', async (t) => {
   let cancellations = 0;
+  const head = new TextEncoder().encode('<script type="application/ld+json">{"@type":"Product","offers":{"@type":"Offer","price":"19.99","priceCurrency":"GBP"}}</script>');
   const { api } = fixture(t, url => {
     if (url.pathname.startsWith('/cdx/')) return Response.json([['timestamp', 'original'], [ts, product]]);
+    let first = true;
     return new Response(new ReadableStream({
-      pull(controller) { controller.enqueue(new Uint8Array(1024 * 1024)); },
+      pull(controller) { controller.enqueue(first ? head : new TextEncoder().encode(' '.repeat(1024 * 1024))); first = false; },
       cancel() { cancellations++; },
     }));
   });
-  assert.match((await api('check')).body.current.message, /too large/);
+  assert.equal((await api('check')).body.current.price, 19.99);
   await api('archive');
-  assert.match((await api('snap', { url: product, ts, orig: product })).body.message, /too large/);
+  assert.equal((await api('snap', { url: product, ts, orig: product })).body.price, 19.99);
   assert.equal(cancellations, 2);
+});
+
+test('tracking parameters do not split a product', async (t) => {
+  const cdx = [];
+  const { api } = fixture(t, url => {
+    if (url.pathname.startsWith('/cdx/')) { cdx.push([url.searchParams.get('url'), url.searchParams.get('matchType')]); return Response.json([['timestamp', 'original']]); }
+    return page();
+  });
+  const az = (await api('check', { url: 'https://www.amazon.co.uk/dp/B0ABCDEFGH?_encoding=UTF8&smid=A3P5ROKL5A1OLE&language=en_GB' })).body;
+  assert.equal(az.canonical, 'https://www.amazon.co.uk/dp/B0ABCDEFGH');
+  await api('archive', { url: az.canonical, orig: az.url });
+  assert.deepEqual(cdx[0], ['amazon.co.uk/dp/B0ABCDEFGH', 'prefix']);
+  const shop = (await api('check', { url: 'https://shop.example/p/123?ref=homepage&cmp=email&utm_source=x' })).body;
+  assert.equal(shop.canonical, 'https://shop.example/p/123');
+});
+
+test('a failed AAAA lookup does not block a store with a public A record', async (t) => {
+  const { api } = fixture(t, () => page(), url => url.searchParams.get('type') === 'A' ? publicDns(url) : Response.json({ Status: 2 }));
+  const r = await api('check');
+  assert.equal(r.status, 200);
+  assert.equal(r.body.current.price, 19.99);
+});
+
+test('archive replay redirects are followed only to the same product and a nearby capture', async (t) => {
+  const near = new Date(Date.now() - 8 * 86400000 + 3600000).toISOString().replace(/\D/g, '').slice(0, 14);
+  let target = `https://web.archive.org/web/${near}id_/${product}`;
+  const { api } = fixture(t, url => {
+    if (url.hostname === 'shop.example') return page();
+    if (url.pathname.startsWith('/cdx/')) return Response.json([['timestamp', 'original'], [ts, product]]);
+    if (url.pathname.startsWith(`/web/${ts}`)) return new Response(null, { status: 302, headers: { location: target } });
+    return page(2499);
+  });
+  await api('check'); await api('archive');
+  assert.equal((await api('snap', { url: product, ts, orig: product })).body.price, 24.99);
+});
+
+test('a redirect to another product is stored as an error', async (t) => {
+  const { api } = fixture(t, url => {
+    if (url.hostname === 'shop.example') return page();
+    if (url.pathname.startsWith('/cdx/')) return Response.json([['timestamp', 'original'], [ts, product]]);
+    return new Response(null, { status: 302, headers: { location: `https://web.archive.org/web/${ts}id_/https://shop.example/other` } });
+  });
+  await api('check'); await api('archive');
+  assert.equal((await api('snap', { url: product, ts, orig: product })).body.status, 'error');
+});
+
+test('a takealot link with extra parameters still uses the takealot API', async (t) => {
+  const hosts = [];
+  const { api } = fixture(t, url => {
+    hosts.push(url.hostname);
+    return Response.json({ buybox: { items: [{ is_selected: true, price: 4499, listing_price: 5499 }] }, core: { title: 'AirPods' } });
+  });
+  const r = (await api('check', { url: 'https://www.takealot.com/foo/PLID12345?offer=1' })).body;
+  assert.equal(r.current.source, 'takealot-api');
+  assert.equal(r.canonical, 'https://www.takealot.com/foo/PLID12345');
+  assert.deepEqual(hosts, ['api.takealot.com']);
+});
+
+test('a product that throws during a scheduled check does not block the queue', async (t) => {
+  const { db, env } = localDatabase();
+  t.after(() => db.close());
+  t.mock.method(globalThis, 'fetch', (raw) => new URL(raw).hostname === 'cloudflare-dns.com' ? publicDns(new URL(raw)) : page());
+  db.prepare('INSERT INTO tracked (url, last_checked, last_viewed) VALUES (?, 0, ?)').run(product, Date.now());
+  const failing = { DB: { prepare(sql) { if (sql.startsWith('INSERT INTO checks')) throw new Error('D1 down'); return env.DB.prepare(sql); } } };
+  let job;
+  await worker.scheduled({ scheduledTime: Date.now() }, failing, { waitUntil(p) { job = p; } });
+  await job;
+  const row = db.prepare('SELECT last_checked, last_status FROM tracked').get();
+  assert.ok(row.last_checked > 0);
+  assert.equal(row.last_status, 'error');
 });
 
 test('at capacity existing products remain tracked and the oldest one is refreshed first', async (t) => {

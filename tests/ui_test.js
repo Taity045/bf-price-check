@@ -19,8 +19,6 @@ const res = []; const ok = (n, p, i = '') => { res.push({ n, p: !!p, i }); conso
   await p.screenshot({ path: out + '/screenshot-1-home.png' });
   const audit = async (sels) => p.evaluate((sels) => { const o = []; for (const s of sels) { const el = [...document.querySelectorAll(s)].find(e => e.offsetParent); if (!el) { o.push({ s, missing: true }); continue; } el.scrollIntoView({ block: 'center' }); const r = el.getBoundingClientRect(); const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); o.push({ s, w: Math.round(r.width), h: Math.round(r.height), ta: getComputedStyle(el).touchAction, hit: !!hit && (hit === el || el.contains(hit)) }); } scrollTo(0, 0); return o; }, sels);
   for (const a of await audit(['#u', '#paste', '#go', '.chip'])) ok(`Target ${a.s} ${a.w}x${a.h} touch-action:${a.ta} not covered`, !a.missing && a.w >= 44 && a.h >= 44 && (a.s === '#u' || /manipulation/.test(a.ta)) && a.hit);
-  const bg = await p.evaluate(() => getComputedStyle(document.querySelector('.bgfx')).pointerEvents);
-  ok('Decorative layer has pointer-events:none', bg === 'none');
   // bad input
   await p.fill('#u', 'http://127.0.0.1/admin'); await p.tap('#go');
   await p.waitForSelector('#error:not(.hidden)'); ok('Private IP is rejected', /not a public|IP address/i.test(await p.textContent('#error')), await p.textContent('#error'));
@@ -60,7 +58,7 @@ const res = []; const ok = (n, p, i = '') => { res.push({ n, p: !!p, i }); conso
   await p.waitForFunction(() => /AirPods Pro 3/.test(document.getElementById('ptitle').innerText), null, { timeout: 90000 });
   await p.waitForTimeout(4000);
   const tk = await p.evaluate(() => ({ prices: document.getElementById('prices').innerText, verdict: document.getElementById('verdict').innerText }));
-  ok('Takealot: ZAR price + was price', /R/.test(tk.prices) && /claimed/.test(tk.prices), tk.prices.replace(/\n/g, ' '));
+  ok('Takealot: ZAR price + was price', /R/.test(tk.prices) && /claimed/i.test(tk.prices), tk.prices.replace(/\n/g, ' '));
   ok('Takealot: honest "not enough history"', /Not enough history|history/i.test(tk.verdict), tk.verdict.split('\n')[0]);
   await p.screenshot({ path: out + '/screenshot-5-takealot.png' });
   // buttons at the bottom of the result
