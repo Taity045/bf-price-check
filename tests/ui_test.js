@@ -1,13 +1,20 @@
 // Headless Chrome UI test at iPhone size (390x844, touch). Usage: node ui_test.js BASE_URL OUT_DIR
-const { chromium } = require('/tmp/pw/node_modules/playwright-core');
-const base = process.argv[2] || 'https://bf-price-check.lala-board.workers.dev';
-const out = process.argv[3] || '..';
+import { chromium } from 'playwright-core';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+const local = !process.argv[2];
+const base = process.argv[2] || 'https://checker.example';
+const out = process.argv[3] || fs.mkdtempSync(path.join(os.tmpdir(), 'bf-price-check-ui-'));
+fs.mkdirSync(out, { recursive: true });
 const res = []; const ok = (n, p, i = '') => { res.push({ n, p: !!p, i }); console.log((p ? 'PASS ' : 'FAIL ') + n + (i ? ' — ' + i : '')); };
 (async () => {
-  const b = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox'] });
+  const b = await chromium.launch(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : { channel: 'chrome' });
   const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1' });
   ctx.setDefaultTimeout(90000);
-  const p = await ctx.newPage(); const errs = []; p.on('pageerror', e => errs.push(e.message));
+  if (local) await (await import('./browser-fixture.mjs')).installFixture(ctx, base);
+  const errs = []; ctx.on('page', page => page.on('pageerror', e => errs.push(e.message)));
+  const p = await ctx.newPage();
   await p.goto(base + '/?v=' + Date.now(), { waitUntil: 'networkidle' });
   await p.screenshot({ path: out + '/screenshot-1-home.png' });
   const audit = async (sels) => p.evaluate((sels) => { const o = []; for (const s of sels) { const el = [...document.querySelectorAll(s)].find(e => e.offsetParent); if (!el) { o.push({ s, missing: true }); continue; } el.scrollIntoView({ block: 'center' }); const r = el.getBoundingClientRect(); const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); o.push({ s, w: Math.round(r.width), h: Math.round(r.height), ta: getComputedStyle(el).touchAction, hit: !!hit && (hit === el || el.contains(hit)) }); } scrollTo(0, 0); return o; }, sels);
@@ -29,6 +36,12 @@ const res = []; const ok = (n, p, i = '') => { res.push({ n, p: !!p, i }); conso
   await p.fill('#mnow', '129'); await p.fill('#mwas', '179'); await p.tap('#mapply'); await p.waitForTimeout(400);
   const v2 = await p.evaluate(() => document.getElementById('verdict').innerText);
   ok('Manual price gives a verdict', /deal|price|discount/i.test(v2), v2.split('\n').slice(0, 2).join(' | '));
+  if (local) {
+    await p.fill('#mwas', '150'); await p.tap('#mapply');
+    ok('An unobserved was price stays unconfirmed', /haven't observed/.test(await p.innerText('#verdict')));
+    await p.fill('#mwas', '169'); await p.tap('#mapply');
+    ok('An observed was price is confirmed', /previously saw/.test(await p.innerText('#verdict')));
+  }
   const t = await p.$('#chart circle[data-i]'); if (t) { await t.tap(); await p.waitForTimeout(200); ok('Tap on chart dot shows tooltip', /·/.test(await p.textContent('#tip')), await p.textContent('#tip')); }
   await p.evaluate(() => document.getElementById('verdict').scrollIntoView({ block: 'start' }));
   await p.screenshot({ path: out + '/screenshot-3-currys-manual-verdict.png' });
@@ -70,9 +83,17 @@ const res = []; const ok = (n, p, i = '') => { res.push({ n, p: !!p, i }); conso
   await p2.waitForTimeout(5000);
   const az = await p2.evaluate(() => ({ prices: document.getElementById('prices').innerText, verdict: document.getElementById('verdict').innerText.split('\n')[0] }));
   ok('Shared link (?u=) auto-runs: Amazon UK', /£/.test(az.prices), az.prices.replace(/\n/g, ' ') + ' | ' + az.verdict);
+  if (local) {
+    ok('Unknown and mismatched historical currencies cannot establish a deal', /Not enough history/.test(az.verdict));
+    await p2.goto(base + '/?u=https://shop.example/unknown');
+    await p2.waitForSelector('#result:not(.hidden)');
+    ok('Missing currency is displayed and prevents a deal verdict', /currency unknown/.test(await p2.innerText('#prices')) && /need the currency/.test(await p2.innerText('#verdict')));
+    ok('The chart omits the unlabelled current price', await p2.locator('#chart circle[data-i]').count() === 2);
+  }
   await p2.screenshot({ path: out + '/screenshot-7-amazon-uk-shared-link.png', fullPage: true });
   ok('No JavaScript errors', errs.length === 0, errs.join(' | '));
   await b.close();
-  require('fs').writeFileSync(out + '/ui_test_results.json', JSON.stringify(res, null, 1));
-  console.log(`\n${res.filter(r => r.p).length}/${res.length} passed`);
+  fs.writeFileSync(out + '/ui_test_results.json', JSON.stringify(res, null, 1));
+  console.log(`\n${res.filter(r => r.p).length}/${res.length} passed. Results in ${out}`);
+  if (res.some(r => !r.p)) process.exitCode = 1;
 })().catch(e => { console.error(e); process.exit(1); });

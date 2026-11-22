@@ -165,7 +165,7 @@ footer{text-align:center;color:var(--mut);font-size:12px;margin-top:22px}
     <ul>
       <li>We read the price on the store page now (from the page's product data).</li>
       <li>We rebuild the past 6 months from copies saved by the <a href="https://web.archive.org" style="color:var(--blu)" target="_blank" rel="noopener">Internet Archive</a>, about one per week.</li>
-      <li>Every product someone checks is re-checked once a day, so its history grows from now on.</li>
+      <li>We aim to re-check each tracked product daily, so its history grows over time.</li>
       <li>If the "was" price is higher than anything we saw in recent months, we flag it.</li>
       <li>Some stores block automated checks, and not every product has archived copies. When that happens we tell you. We never guess prices.</li>
     </ul>
@@ -184,7 +184,8 @@ let state = null, runId = 0;
 
 function money(v, cur) {
   if (v == null || !isFinite(v)) return "—";
-  try { return new Intl.NumberFormat(LOC[cur] || "en-GB", { style: "currency", currency: cur || "ZAR", maximumFractionDigits: v % 1 ? 2 : 0, minimumFractionDigits: v % 1 ? 2 : 0 }).format(v); }
+  if (!cur) return v.toLocaleString("en-GB") + " (currency unknown)";
+  try { return new Intl.NumberFormat(LOC[cur] || "en-GB", { style: "currency", currency: cur, ...(Number.isInteger(v) ? { minimumFractionDigits: 0 } : {}) }).format(v); }
   catch { return (cur ? cur + " " : "") + v.toFixed(2); }
 }
 const pct = (x) => (x > 0 ? "" : x < 0 ? "+" : "") + Math.abs(Math.round(x * 100)) + "%";
@@ -237,7 +238,11 @@ async function run(url, fresh) {
     $("tip").textContent = "Tap a dot to see the date and price."; $("pts").open = false;
     renderHead(); renderPrices(); renderAll();
     $("result").scrollIntoView({ behavior: "smooth", block: "start" });
-    loadSnaps(my);
+    if (d.tracked) loadSnaps(my);
+    else {
+      $("prog").classList.add("hidden"); $("retryArch").classList.add("hidden");
+      $("progtxt").textContent = "Tracking is full. Daily checks and archive lookups are unavailable for this product.";
+    }
   } catch (e) { if (my === runId) showError("Couldn't reach the checker. Check your connection and try again."); }
   finally { if (my === runId) { go.disabled = false; go.textContent = "Check this deal"; } }
 }
@@ -266,9 +271,9 @@ async function loadSnaps(my) {
         const r = await fetch(`/api/snap?url=${encodeURIComponent(state.canonical)}&ts=${s.ts}&orig=${encodeURIComponent(s.orig)}`);
         const d = await r.json();
         if (my !== runId) return;
-        if (d.status === "ok" && d.price) state.archive.push({ t: d.t, ts: d.ts, price: d.price, was: d.was, currency: d.currency });
+        if (d.status === "ok" && d.price) state.archive.push({ t: d.t, ts: d.ts, orig: d.orig, price: d.price, was: d.was, currency: d.currency });
         else state.failed++;
-      } catch { state.failed++; }
+      } catch { if (my !== runId) return; state.failed++; }
       done++; updProg(done, total); renderAll();
     }
   };
@@ -330,16 +335,17 @@ function points() {
   const cur = curPrice(); const ccy = cur ? cur.currency : null;
   const all = [
     ...state.archive.map((a) => ({ ...a, kind: "archive" })),
-    ...dedupeDays(state.history.checks).map((c) => ({ ...c, kind: "check" })),
+    ...state.history.checks.map((c) => ({ ...c, kind: "check" })),
   ].filter((x) => x.price && x.t >= Date.now() - 183 * DAY);
   // keep one currency only
-  const pick = ccy || (all[0] && all[0].currency);
-  const same = all.filter((x) => !x.currency || !pick || x.currency === pick);
-  same.sort((a, b) => a.t - b.t);
-  return { pts: same, other: all.length - same.length, ccy: pick };
+  const pick = ccy || all.find((x) => x.currency)?.currency;
+  const same = all.filter((x) => pick && x.currency === pick);
+  const pts = same.filter((x) => x.kind === "archive").concat(dedupeDays(same.filter((x) => x.kind === "check")));
+  pts.sort((a, b) => a.t - b.t);
+  return { pts, other: all.length - same.length, ccy: pick };
 }
 
-function renderAll() { if (!curPrice()) renderPrices(); renderChart(); renderVerdict(); renderTable(); }
+function renderAll() { if (!curPrice()) renderPrices(); renderChart(); renderArchiveNote(); renderVerdict(); renderTable(); }
 
 function renderVerdict() {
   const el = $("verdict"); const cur = curPrice(); const { pts, other, ccy } = points();
@@ -347,15 +353,16 @@ function renderVerdict() {
   const pr = hist.map((x) => x.price);
   const p90 = hist.filter((x) => x.t >= Date.now() - 90 * DAY).map((x) => x.price);
   let cls = "unk", big = "", body = "", flags = "";
-  if (!cur) {
-    big = "🤷 Can't judge yet"; body = "We need today's price. Type it in above to compare it with the history.";
+  if (!cur?.currency) {
+    big = "🤷 Can't judge yet"; body = cur ? "We need the currency of today's price to compare it with the history." : "We need today's price. Type it in above to compare it with the history.";
     if (pr.length) body += ` History so far: lowest ${money(Math.min(...pr), ccy)}, typical ${money(median(pr), ccy)}.`;
     el.className = "card verdict unk"; el.innerHTML = `<div class="big">${big}</div><div>${esc(body)}</div>`; state.verdictText = null; return;
   }
   const P = cur.price, W = cur.was, C = cur.currency;
   if (pr.length < 2) {
     big = "🕳️ Not enough history";
-    body = pr.length === 1 ? `We found only one older price (${money(pr[0], C)} on ${fmtDate(hist[0].t)}). That's not enough to judge.` : "We found no older prices for this product yet. We'll check it daily from now on, so come back later.";
+    body = pr.length === 1 ? `We found only one older price in ${C} (${money(pr[0], C)} on ${fmtDate(hist[0].t)}). That's not enough to judge.` : `We found no older prices in ${C} for this product yet.`;
+    if (state.tracked) body += " We'll keep checking for new prices.";
     if (W) body += ` The store claims ${Math.round((W - P) / W * 100)}% off ${money(W, C)} — we can't confirm that.`;
     el.className = "card verdict unk"; el.innerHTML = `<div class="big">${big}</div><div>${esc(body)}</div>`; state.verdictText = null; return;
   }
@@ -372,7 +379,8 @@ function renderVerdict() {
   if (W) {
     if (neverSeen) flags += `<div class="flag">🚩 The "was" price ${money(W, C)} is higher than any price we saw in 6 months (highest: ${money(high, C)}).</div>`;
     else if (inflated) flags += `<div class="flag">🚩 The "was" price ${money(W, C)} is higher than anything in the last 90 days (highest: ${money(high90, C)}).</div>`;
-    else flags += `<div class="flag ok">✓ The "was" price ${money(W, C)} matches prices we saw before.</div>`;
+    else if (pr.includes(W)) flags += `<div class="flag ok">✓ We previously saw the "was" price of ${money(W, C)}.</div>`;
+    else flags += `<p class="note">We haven't observed the exact "was" price of ${money(W, C)}.</p>`;
   }
   const realMed = `<div class="stat"><b class="${vsMed >= 0 ? "pos" : "neg"}">${vsMed >= 0 ? "−" : "+"}${Math.abs(Math.round(vsMed * 100))}%</b><span>vs usual (median)</span></div>`;
   const realLow = `<div class="stat"><b class="${vsLow >= 0 ? "pos" : "neg"}">${vsLow >= 0 ? "−" : "+"}${Math.abs(Math.round(vsLow * 100))}%</b><span>vs 6-month low</span></div>`;
@@ -381,12 +389,13 @@ function renderVerdict() {
   el.innerHTML = `<div class="big">${big}</div><div>${esc(body)}</div>${flags}
     <div class="stats"><div class="stat"><b>${money(low, C)}</b><span>6-mo low</span></div><div class="stat"><b>${money(med, C)}</b><span>usual</span></div><div class="stat"><b>${money(high, C)}</b><span>6-mo high</span></div></div>
     <div class="real">${realMed}${realLow}</div>${claimed}
-    <p class="note">Based on ${pr.length} older price${pr.length === 1 ? "" : "s"}${cur.manual ? " and the price you entered" : ""}.${other ? ` ${other} point(s) in another currency were left out.` : ""}</p>`;
+    <p class="note">Based on ${pr.length} older price${pr.length === 1 ? "" : "s"}${cur.manual ? " and the price you entered" : ""}.${other ? ` ${other} point(s) with a different or unknown currency were left out.` : ""}</p>`;
   state.verdictText = big.replace(/^\S+\s/, "");
 }
 
 function renderChart() {
-  const { pts, ccy } = points(); const cur = curPrice();
+  const { pts, ccy } = points(); const current = curPrice();
+  const cur = current?.currency && current.currency === ccy ? current : null;
   const W = 600, H = 300, L = 62, R = 14, T = 16, B = 34;
   const t1 = Date.now(), t0 = t1 - 183 * DAY;
   const all = pts.map((p) => ({ ...p }));
@@ -418,6 +427,9 @@ function renderChart() {
     const p = all[+c.dataset.i];
     $("tip").innerHTML = `<b>${esc(money(p.price, ccy))}</b> · ${p.kind === "now" ? "now" : fmtDate(p.t)} · ${p.kind === "archive" ? "archived copy" : p.kind === "check" ? "our check" : (cur.manual ? "entered by you" : "store page now")}${p.was ? ` · was ${esc(money(p.was, ccy))}` : ""}`;
   }));
+}
+
+function renderArchiveNote() {
   let note = "";
   const ai = state.archive_meta;
   if (ai) {
@@ -432,7 +444,7 @@ function renderChart() {
 function renderTable() {
   const { pts, ccy } = points();
   if (!pts.length) { $("ptable").innerHTML = `<p class="small">No data points yet.</p>`; return; }
-  $("ptable").innerHTML = `<table><tr><th>Date</th><th>Price</th><th>Was</th><th>Source</th></tr>${pts.slice().reverse().map((p) => `<tr><td>${fmtDate(p.t)}</td><td>${esc(money(p.price, ccy))}</td><td>${p.was ? esc(money(p.was, ccy)) : "—"}</td><td>${p.kind === "archive" ? `<a href="https://web.archive.org/web/${p.ts}/${esc(state.canonical)}" target="_blank" rel="noopener">archive</a>` : "our check"}</td></tr>`).join("")}</table>`;
+  $("ptable").innerHTML = `<table><tr><th>Date</th><th>Price</th><th>Was</th><th>Source</th></tr>${pts.slice().reverse().map((p) => `<tr><td>${fmtDate(p.t)}</td><td>${esc(money(p.price, ccy))}</td><td>${p.was ? esc(money(p.was, ccy)) : "—"}</td><td>${p.kind === "archive" ? `<a href="https://web.archive.org/web/${p.ts}/${esc(p.orig || state.canonical)}" target="_blank" rel="noopener">archive</a>` : "our check"}</td></tr>`).join("")}</table>`;
 }
 
 const qs = new URLSearchParams(location.search).get("u");

@@ -1,0 +1,12 @@
+{
+  "name": "bf-price-check",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/regression.test.mjs",
+    "test:ui": "node tests/ui_test.js"
+  },
+  "devDependencies": {
+    "playwright-core": "1.65.1"
+  }
+}

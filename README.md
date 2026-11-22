@@ -28,7 +28,7 @@ The tool never invents prices. If a store blocks the check, or there is no histo
 - `GET /api/check?url=<product url>[&fresh=1]` → live price (`current`), stored history (archive points + daily checks). Live results are cached 6 h (30 min when the check failed).
 - `GET /api/archive?url=<canonical>&orig=<pasted url>` → Wayback CDX lookup (last 183 days, one capture per ~7 days, max 26). Cached 12 h.
 - `GET /api/snap?url=<canonical>&ts=<14-digit>&orig=<archived url>` → price from one archived copy. Stored forever in D1 (failed fetches retried after 6 h).
-- Cron `15 * * * *`: re-checks up to 6 tracked products per run that were not checked in 20 h → every tracked product is re-checked about once a day.
+- The cron runs every minute and checks the oldest product due for a refresh after 20 hours. That provides 1,440 check slots per day for up to 1,000 tracked products.
 
 ### Price extraction (in order)
 
@@ -38,7 +38,7 @@ The tool never invents prices. If a store blocks the check, or there is no histo
 4. **schema.org Offer embedded in a script** (JSON-LD built by JavaScript or app state; the enclosing JSON object is extracted and parsed).
 5. Common shop data fields (`salePrice`, `finalPrice`, `wasPrice`…) and the GA4 e-commerce data layer.
 
-Currency comes from the page; if the page has none, it is taken from the web address (.co.za → ZAR, .co.uk → GBP, euro TLDs → EUR) and the UI says "currency guessed". The chart and verdict only compare prices in one currency. Amazon results in a different currency (Amazon shows USD to foreign visitors) are rejected.
+Currency comes from the page or a supported country domain (.co.za → ZAR, .co.uk → GBP, euro TLDs → EUR). If neither supplies a currency, the UI labels the amount and withholds the verdict. The chart and verdict compare prices in one currency. Amazon results in a different currency (Amazon shows USD to foreign visitors) are rejected.
 
 ### Verdict rules (client side)
 
@@ -53,20 +53,33 @@ Older prices = archive points + daily checks older than 24 h, last 183 days.
 ### Abuse protection
 
 - Only `http(s)` URLs, standard ports, no credentials, no IP-address hosts, no `localhost`/`.local`/`.internal` etc.
-- DNS check through Cloudflare DoH: hosts that resolve to private/reserved IPv4/IPv6 ranges are refused.
+- Store requests, redirects and scheduled checks require successful public DNS resolution through Cloudflare DoH.
 - Max 4 MB per page, 15 s timeout for stores, 25 s for the archive.
 - Rate limit (D1, per IP per minute): 20 checks, 120 archive-copy reads.
-- `/api/archive` and `/api/snap` only work for products that were checked first; archived URL host must match.
+- Archive reads require a tracked product and an original URL and timestamp selected from its Wayback index results. Product-defining query parameters are part of the match.
 - Max 1,000 tracked products; products not viewed for 120 days are dropped from the daily re-check.
 
 ## Deploy / edit
+
+For local checks, use Node 22.13+ and Python 3. The browser suite uses installed Google Chrome. Set `CHROME_PATH` to use another Chromium executable.
+
+```bash
+npm ci
+python3 build.py
+npm test
+npm run test:ui
+```
+
+The default browser suite runs the built Worker with SQLite and local store and archive fixtures. To run against a deployment, pass its URL to `npm run test:ui -- URL`. The browser test prints its temporary screenshot directory. The API smoke test accepts a deployment URL through `BASE_URL`.
+
+On upgrade, the Worker re-reads indexed archive captures into `product_snaps`, which records their original URLs. Existing tracking records stay in place. Legacy snapshot rows lack that URL, and legacy `page-data` checks lack the amount unit. The Worker excludes those rows from verdicts and retains other live price history.
 
 ```bash
 python3 build.py                 # writes dist/worker.js and deploy_exec.js
 # then run deploy_exec.js through the Cloudflare MCP "execute" tool (account 8746524b5d7c1ba84abb3db21517d7a7)
 ```
 
-Cloudflare resources: Worker `bf-price-check`, D1 database `bf-price-check-db` (`65e86f16-42db-4c07-bbd7-20ba0308d47e`) bound as `DB`, cron `15 * * * *`. No routes, no DNS, no custom domain.
+Cloudflare resources: Worker `bf-price-check`, D1 database `bf-price-check-db` (`65e86f16-42db-4c07-bbd7-20ba0308d47e`) bound as `DB`, cron `* * * * *`. No routes, no DNS, no custom domain.
 
 Note: the URL contains the account's workers.dev subdomain. If the subdomain is renamed, the URL changes to `https://bf-price-check.<new-subdomain>.workers.dev`.
 

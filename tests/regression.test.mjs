@@ -1,0 +1,142 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import worker from '../src/worker.js';
+import { localDatabase, schema } from './local-db.mjs';
+
+const product = 'https://shop.example/product?variant=large';
+const ts = new Date(Date.now() - 8 * 86400000).toISOString().replace(/\D/g, '').slice(0, 14);
+
+function publicDns(url) {
+  return Response.json({ Status: 0, Answer: url.searchParams.get('type') === 'A' ? [{ type: 1, data: '1.1.1.1' }] : [] });
+}
+
+function fixture(t, remote, dns = publicDns) {
+  const { db, env } = localDatabase();
+  t.after(() => db.close());
+  t.mock.method(globalThis, 'fetch', (raw, init) => {
+    const url = new URL(raw);
+    return url.hostname === 'cloudflare-dns.com' ? dns(url) : remote(url, init);
+  });
+  return {
+    db,
+    async api(path, args = { url: product }) {
+      const r = await worker.fetch(new Request('https://checker.example/api/' + path + '?' + new URLSearchParams(args)), env, {});
+      return { status: r.status, body: await r.json() };
+    },
+    async tick(time) {
+      let job;
+      await worker.scheduled({ scheduledTime: time }, env, { waitUntil(p) { job = p; } });
+      await job;
+    },
+  };
+}
+
+function page(price = 1999) {
+  return new Response('<script>' + JSON.stringify({
+    currentPrice: { currencyCode: 'GBP', centAmount: price },
+    listPrice: { amount: 29.99, currencyCode: 'GBP' },
+  }) + '</script>');
+}
+
+test('live prices, cached prices and stored history use the same units', async (t) => {
+  const { db, api } = fixture(t, () => page());
+  db.prepare('INSERT INTO cache VALUES (?, ?, ?)').run('chk:' + product, '{"price":1999}', Date.now() + 3600000);
+  for (const [price, source] of [[1999, 'page-data'], [19.5, 'json-ld']]) {
+    db.prepare('INSERT INTO checks(url, ts, price, source) VALUES (?, ?, ?, ?)').run(product, Date.now() - 86400000, price, source);
+  }
+  const { body } = await api('check');
+  assert.equal(body.current.price, 19.99);
+  assert.equal(body.current.was, 29.99);
+  assert.equal(body.current.currency, 'GBP');
+  assert.deepEqual(body.history.checks.map(p => p.price), [19.5, 19.99]);
+  assert.equal((await api('check')).body.cached, true);
+  db.exec(schema);
+  assert.equal(db.prepare('SELECT count(*) AS n FROM tracked').get().n, 1);
+});
+
+test('redirects are checked before download and cron revalidates DNS', async (t) => {
+  const lookups = [], visits = [];
+  let available = true;
+  const { api, db, tick } = fixture(t, (url, init) => {
+    visits.push(url.hostname);
+    assert.equal(init.redirect, 'manual');
+    if (url.hostname === 'shop.example') return Response.redirect('https://prices.example/item');
+    return page();
+  }, url => {
+    lookups.push(url.searchParams.get('name'));
+    return available ? publicDns(url) : Response.json({ Status: 2 });
+  });
+  assert.equal((await api('check')).body.current.price, 19.99);
+  assert.deepEqual(visits, ['shop.example', 'prices.example']);
+  assert.ok(lookups.includes('prices.example'));
+  available = false;
+  db.exec('UPDATE tracked SET last_checked = 0');
+  await tick(Date.now());
+  assert.equal(db.prepare('SELECT last_status FROM tracked').get().last_status, 'error');
+  assert.equal((await api('check')).status, 400);
+  assert.equal(visits.length, 2);
+});
+
+test('an unverified redirect destination is never downloaded', async (t) => {
+  const visits = [];
+  const { api } = fixture(t, url => {
+    visits.push(url.hostname);
+    return Response.redirect('https://unresolved.example/item');
+  }, url => url.searchParams.get('name') === 'shop.example' ? publicDns(url) : Response.json({ Status: 0, Answer: [] }));
+  assert.equal((await api('check')).body.current.status, 'error');
+  assert.deepEqual(visits, ['shop.example']);
+});
+
+test('only indexed captures of the requested product variant enter archive history', async (t) => {
+  const other = product.replace('large', 'small');
+  const archived = product + '&utm_source=example';
+  let replayCount = 0;
+  const { api, db } = fixture(t, (url, init) => {
+    if (url.hostname === 'shop.example') return page();
+    if (url.pathname.startsWith('/cdx/')) {
+      assert.equal(url.searchParams.get('url'), product);
+      return Response.json([['timestamp', 'original'], [ts, other], [ts, archived]]);
+    }
+    assert.equal(init.redirect, 'manual');
+    replayCount++;
+    return page(2499);
+  });
+  db.exec('CREATE TABLE snaps (url, snap_ts, price, status)');
+  db.prepare('INSERT INTO snaps VALUES (?, ?, 2500, ?)').run(product, ts, 'ok');
+  assert.deepEqual((await api('check')).body.history.archive, []);
+  assert.deepEqual((await api('archive')).body.pending, [{ ts, orig: archived }]);
+  assert.equal((await api('snap', { url: product, ts, orig: other })).status, 400);
+  assert.equal((await api('snap', { url: product, ts, orig: product })).status, 403);
+  for (let i = 0; i < 2; i++) {
+    assert.equal((await api('snap', { url: product, ts, orig: archived })).body.price, 24.99);
+  }
+  assert.equal(replayCount, 1);
+  assert.deepEqual((await api('archive')).body.pending, []);
+  assert.equal((await api('check')).body.history.archive[0].orig, archived);
+});
+
+test('oversized streaming store and replay bodies are cancelled at the limit', async (t) => {
+  let cancellations = 0;
+  const { api } = fixture(t, url => {
+    if (url.pathname.startsWith('/cdx/')) return Response.json([['timestamp', 'original'], [ts, product]]);
+    return new Response(new ReadableStream({
+      pull(controller) { controller.enqueue(new Uint8Array(1024 * 1024)); },
+      cancel() { cancellations++; },
+    }));
+  });
+  assert.match((await api('check')).body.current.message, /too large/);
+  await api('archive');
+  assert.match((await api('snap', { url: product, ts, orig: product })).body.message, /too large/);
+  assert.equal(cancellations, 2);
+});
+
+test('at capacity existing products remain tracked and the oldest one is refreshed first', async (t) => {
+  const { api, db, tick } = fixture(t, () => page());
+  const insert = db.prepare('INSERT INTO tracked (url, last_checked, last_viewed) VALUES (?, ?, ?)');
+  for (let n = 0; n < 1000; n++) insert.run('https://shop.example/' + n, n, Date.now());
+  assert.equal((await api('check')).body.tracked, false);
+  assert.equal((await api('check', { url: 'https://shop.example/999' })).body.tracked, true);
+  await tick(Date.now());
+  assert.equal(db.prepare('SELECT last_status FROM tracked WHERE url = ?').get('https://shop.example/0').last_status, 'ok');
+  assert.equal(db.prepare('SELECT count(*) AS n FROM tracked').get().n, 1000);
+});

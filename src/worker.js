@@ -1,6 +1,7 @@
 // Black Friday Price Check — Cloudflare Worker
 // Routes:  GET /                -> the app (HTML)
-//          GET /api/check?url=  -> live price + stored history + Wayback snapshot list
+//          GET /api/check?url=  -> live price + stored history
+//          GET /api/archive?url= -> Wayback snapshot list
 //          GET /api/snap?url=&ts=&orig= -> price from one Wayback snapshot (cached forever in D1)
 //          scheduled (cron)     -> re-checks tracked URLs once a day
 // Bindings: DB (D1)
@@ -12,7 +13,7 @@ const SNAP_SPACING_DAYS = 7;
 const MAX_SNAPS = 26;
 const MAX_TRACKED = 1000;
 const RECHECK_AFTER_MS = 20 * 3600 * 1000;
-const CRON_BATCH = 6;
+const LIVE_CACHE_PREFIX = "check-v2:";
 const RL = { check: 20, snap: 120 };       // requests per IP per minute
 const MAX_HTML = 4 * 1024 * 1024;
 
@@ -20,7 +21,6 @@ const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 
 const TLD_CUR = [[".co.za","ZAR"],[".za","ZAR"],[".co.uk","GBP"],[".uk","GBP"],[".com.de","EUR"],[".de","EUR"],[".fr","EUR"],[".nl","EUR"],[".be","EUR"],[".es","EUR"],[".it","EUR"],[".ie","EUR"],[".at","EUR"],[".pt","EUR"],[".fi","EUR"],[".gr","EUR"],[".lu","EUR"],[".sk","EUR"],[".si","EUR"],[".ee","EUR"],[".lv","EUR"],[".lt","EUR"],[".hr","EUR"],[".mt","EUR"],[".cy","EUR"]];
 const LANG = { ZAR: "en-ZA,en;q=0.9", GBP: "en-GB,en;q=0.9", EUR: "en-GB,en;q=0.8,de;q=0.6,nl;q=0.5,fr;q=0.5" };
-const KNOWN_CUR = new Set(["ZAR","GBP","EUR","USD"]);
 
 // ---------- helpers ----------
 const json = (obj, status = 200, extra = {}) => new Response(JSON.stringify(obj), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "access-control-allow-origin": "*", ...extra } });
@@ -73,13 +73,23 @@ function parsePrice(v) {
 // ---------- URL safety ----------
 function isPrivateIPv4(ip) {
   const p = ip.split(".").map(Number);
-  if (p.length !== 4 || p.some((x) => isNaN(x) || x < 0 || x > 255)) return false;
-  const [a, b] = p;
-  return a === 0 || a === 10 || a === 127 || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 192 && b === 0) || (a === 198 && (b === 18 || b === 19)) || a >= 224;
+  if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(ip) || p.some((x) => x > 255)) return true;
+  const [a, b, c] = p;
+  if (a === 0 || a === 10 || a === 127 || a >= 224) return true;
+  if (a === 100) return b >= 64 && b <= 127;
+  if (a === 169) return b === 254;
+  if (a === 172) return b >= 16 && b <= 31;
+  if (a === 192) return b === 168 || (b === 0 && (c === 0 || c === 2)) || (b === 88 && c === 99);
+  if (a === 198) return b === 18 || b === 19 || (b === 51 && c === 100);
+  return a === 203 && b === 0 && c === 113;
 }
 function isPrivateIPv6(ip) {
-  const s = ip.toLowerCase().replace(/^\[|\]$/g, "");
-  return s === "::1" || s === "::" || s.startsWith("fc") || s.startsWith("fd") || s.startsWith("fe8") || s.startsWith("fe9") || s.startsWith("fea") || s.startsWith("feb") || s.startsWith("::ffff:") || s.startsWith("64:ff9b");
+  if (!/^[\da-f:]+$/i.test(ip)) return true;
+  const s = new URL("http://[" + ip + "]/").hostname.slice(1, -1);
+  const [prefix, subnet] = s.split(":").map((part) => parseInt(part || "0", 16));
+  if (prefix < 0x2000 || prefix > 0x3fff) return true; // outside global unicast
+  if (prefix === 0x2001) return subnet < 0x200 || subnet === 0xdb8;
+  return prefix === 0x2002 || (prefix === 0x3fff && subnet < 0x1000);
 }
 
 function validateUrl(raw) {
@@ -89,54 +99,54 @@ function validateUrl(raw) {
   if (u.protocol !== "https:" && u.protocol !== "http:") return { error: "Only http(s) product links are allowed." };
   if (u.username || u.password) return { error: "Links with login details are not allowed." };
   if (u.port && u.port !== "80" && u.port !== "443") return { error: "Only standard web ports are allowed." };
+  u.hostname = u.hostname.replace(/\.$/, "");
   const h = u.hostname.toLowerCase();
-  if (!h.includes(".") || h === "localhost" || /\.(local|internal|lan|home|corp|localhost|arpa)$/.test(h)) return { error: "That address is not a public website." };
+  if (!h.includes(".") || h.split(".").includes("") || /\.(local|internal|lan|home|corp|localhost|arpa)$/.test(h)) return { error: "That address is not a public website." };
   if (/^[\d.]+$/.test(h) || h.includes(":") || h.startsWith("[")) return { error: "Use the store's normal web address, not an IP address." };
   if (/(^|\.)workers\.dev$|(^|\.)archive\.org$/.test(h)) return { error: "That isn't a store page." };
   u.hash = "";
   return { url: u };
 }
 
-const dnsCache = new Map();
 async function resolvesPublic(host) {
-  if (dnsCache.has(host)) return dnsCache.get(host);
-  let ok = true;
   try {
-    for (const type of ["A", "AAAA"]) {
-      const r = await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(host)}&type=${type}`, { headers: { accept: "application/dns-json" }, signal: AbortSignal.timeout(4000) });
+    const answers = await Promise.all(["A", "AAAA"].map(async (type) => {
+      const r = await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(host)}&type=${type}`, { headers: { accept: "application/dns-json" }, redirect: "error", signal: AbortSignal.timeout(4000) });
+      if (!r.ok) throw new Error("DNS lookup failed");
       const d = await r.json();
-      for (const a of d.Answer || []) {
-        if (a.type === 1 && isPrivateIPv4(a.data)) ok = false;
-        if (a.type === 28 && isPrivateIPv6(a.data)) ok = false;
-      }
-      if (type === "A" && d.Status === 3) { ok = false; break; } // NXDOMAIN
-    }
-  } catch { /* DNS lookup failed: let the fetch decide */ }
-  dnsCache.set(host, ok);
-  return ok;
+      if (d.Status !== 0 || d.TC) throw new Error("Incomplete DNS answer");
+      return d.Answer || [];
+    }));
+    const ips = answers.flat().filter((a) => a.type === 1 || a.type === 28);
+    return ips.length > 0 && ips.every((a) => a.type === 1 ? !isPrivateIPv4(a.data) : !isPrivateIPv6(a.data));
+  } catch { return false; }
 }
 
-const TRACKING = /^(utm_.*|gclid|gclsrc|dclid|fbclid|msclkid|mc_cid|mc_eid|ref|ref_|tag|linkCode|linkId|camp|creative|creativeASIN|psc|th|smid|spm|srsltid|_ga|_gl|cmp|cmpid|affiliate|aff|source|campaign|keywords|qid|sr|sprefix|crid|dib|dib_tag|pd_rd_.*|pf_rd_.*|content-id|social_share|starsLeft|ascsubtag|igshid|trk|zanpid|awc|sv1|sv_campaign_id|ito|mcid|cm_mmc|s_kwcid|ef_id|gad_source|gbraid|wbraid)$/i;
+const TRACKING = /^(utm_.*|gclid|gclsrc|dclid|fbclid|msclkid|mc_cid|mc_eid|srsltid|_ga|_gl|igshid|zanpid|awc|sv_campaign_id|cm_mmc|s_kwcid|ef_id|gad_source|gbraid|wbraid)$/i;
+const AMAZON_TRACKING = /^(ref|ref_|tag|linkCode|linkId|camp|creative|creativeASIN|psc|th|keywords|qid|sr|sprefix|crid|dib|dib_tag|pd_rd_.*|pf_rd_.*|content-id|social_share|starsLeft|ascsubtag)$/i;
 
 function canonicalize(u) {
   const c = new URL(u.toString());
   c.hash = "";
   const host = c.hostname.toLowerCase();
-  // Amazon: /dp/ASIN
-  if (/(^|\.)amazon\./.test(host)) {
-    const m = c.pathname.match(/\/(?:dp|gp\/product|gp\/aw\/d|exec\/obidos\/asin)\/([A-Z0-9]{10})/i);
-    if (m) return { canon: `https://${host.startsWith("www.") ? host : "www." + host}/dp/${m[1].toUpperCase()}`, kind: "amazon", asin: m[1].toUpperCase() };
+  const amazon = /(^|\.)amazon\./.test(host);
+  for (const k of [...c.searchParams.keys()]) {
+    if (TRACKING.test(k) || (amazon && AMAZON_TRACKING.test(k))) c.searchParams.delete(k);
   }
-  if (/(^|\.)takealot\.com$/.test(host)) {
+  c.searchParams.sort();
+  // Amazon: /dp/ASIN
+  if (amazon) {
+    const m = c.pathname.match(/\/(?:dp|gp\/product|gp\/aw\/d|exec\/obidos\/asin)\/([A-Z0-9]{10})(?:\/|$)/i);
+    if (m) return { canon: `https://${host.startsWith("www.") ? host : "www." + host}/dp/${m[1].toUpperCase()}${c.search}`, kind: "amazon", asin: m[1].toUpperCase() };
+  }
+  if (!c.search && /(^|\.)takealot\.com$/.test(host)) {
     const m = c.pathname.match(/PLID(\d+)/i);
     if (m) return { canon: `https://www.takealot.com${c.pathname.replace(/\/+$/, "")}`, kind: "takealot", plid: m[1] };
   }
   if (/(^|\.)woolworths\.co\.za$/.test(host)) {
     const m = c.pathname.match(/\/_\/(A-[0-9A-Za-z]+)/);
-    if (m) return { canon: `https://www.woolworths.co.za/prod/_/${m[1]}`, kind: "woolworths", alt: c.origin.replace("//woolworths", "//www.woolworths") + c.pathname };
+    if (m) return { canon: `https://www.woolworths.co.za/prod/_/${m[1]}${c.search}`, kind: "woolworths" };
   }
-  for (const k of [...c.searchParams.keys()]) if (TRACKING.test(k)) c.searchParams.delete(k);
-  c.searchParams.sort();
   let s = c.toString();
   if (s.endsWith("?")) s = s.slice(0, -1);
   return { canon: s, kind: "generic" };
@@ -255,6 +265,21 @@ function parseAmazon(html, out) {
   return p ? "amazon-page" : null;
 }
 
+function pageAmount(raw, fallbackCurrency) {
+  if (!raw) return {};
+  if (!raw.startsWith("{")) return { price: parsePrice(raw) };
+  try {
+    const amount = JSON.parse(raw);
+    const currency = amount.currencyCode || amount.currency || fallbackCurrency;
+    if (amount.centAmount == null) return { price: parsePrice(amount.value ?? amount.amount), currency };
+    const digits = amount.fractionDigits ?? (currency ? new Intl.NumberFormat("en", { style: "currency", currency }).resolvedOptions().maximumFractionDigits : 2);
+    const units = amount.preciseAmount ?? amount.centAmount;
+    if (!Number.isInteger(digits) || digits < 0 || digits > 6 || !/^\d+$/.test(units)) return {};
+    const price = Number(units) / 10 ** digits;
+    return price > 0 && price < 1e7 ? { price, currency } : {};
+  } catch { return {}; }
+}
+
 // Generic fallbacks used by many shop platforms (Shopify, Magento, SFCC, Next.js data)
 function parseFallback(html, out) {
   // schema.org Offer embedded in a script (JSON-LD built by JavaScript, or app state)
@@ -273,14 +298,16 @@ function parseFallback(html, out) {
       return "schema-in-script";
     }
   }
-  let m = html.match(/"(?:salePrice|sale_price|finalPrice|final_price|currentPrice|current_price|sellingPrice|offerPrice)"\s*:\s*\{?\s*(?:"(?:value|amount|centAmount)"\s*:\s*)?"?(\d[\d.,]*)"?/);
-  if (m && parsePrice(m[1])) {
-    out.price = parsePrice(m[1]);
-    const w = html.match(/"(?:wasPrice|was_price|listPrice|list_price|regularPrice|regular_price|originalPrice|original_price|strikethroughPrice|oldPrice|old_price|rrp)"\s*:\s*\{?\s*(?:"(?:value|amount)"\s*:\s*)?"?(\d[\d.,]*)"?/);
-    if (w && parsePrice(w[1]) > out.price) out.was = parsePrice(w[1]);
-    const c = html.match(/"(?:currency|currencyCode|priceCurrency)"\s*:\s*"(ZAR|GBP|EUR|USD)"/);
-    if (c && !out.currency) out.currency = c[1];
-    return "page-data";
+  const m = html.match(/"(?:salePrice|sale_price|finalPrice|final_price|currentPrice|current_price|sellingPrice|offerPrice)"\s*:\s*(\{[^{}]{1,1000}\}|"[\d.,]+"|\d+(?:\.\d+)?)/);
+  const c = m && html.match(/"(?:currency|currencyCode|priceCurrency)"\s*:\s*"([A-Z]{3})"/);
+  const current = pageAmount(m?.[1], out.currency || c?.[1]);
+  if (current.price) {
+    out.price = current.price;
+    const w = html.match(/"(?:wasPrice|was_price|listPrice|list_price|regularPrice|regular_price|originalPrice|original_price|strikethroughPrice|oldPrice|old_price|rrp)"\s*:\s*(\{[^{}]{1,1000}\}|"[\d.,]+"|\d+(?:\.\d+)?)/);
+    out.currency = current.currency || out.currency || c?.[1];
+    const previous = pageAmount(w?.[1], out.currency);
+    if (previous.price > out.price && (!previous.currency || previous.currency === out.currency)) out.was = previous.price;
+    return "page-data-v2";
   }
   // GA4 / UA e-commerce data layer: first item price
   const ei = html.search(/['"]ecommerce['"]\s*:/);
@@ -343,24 +370,61 @@ function extractFromHtml(html, host) {
 }
 
 const AMZ_COOKIE = { "amazon.co.uk": "i18n-prefs=GBP; lc-acbuk=en_GB", "amazon.de": "i18n-prefs=EUR; lc-acbde=en_GB", "amazon.fr": "i18n-prefs=EUR; lc-acbfr=en_GB", "amazon.nl": "i18n-prefs=EUR; lc-acbnl=en_GB", "amazon.es": "i18n-prefs=EUR; lc-acbes=en_GB", "amazon.it": "i18n-prefs=EUR; lc-acbit=en_GB", "amazon.co.za": "i18n-prefs=ZAR; lc-acbza=en_ZA", "amazon.ie": "i18n-prefs=EUR" };
-async function fetchPage(url, currency) {
-  const h0 = stripWww(new URL(url).hostname.toLowerCase());
-  const extra = AMZ_COOKIE[h0] ? { cookie: AMZ_COOKIE[h0] } : {};
-  const r = await fetch(url, {
-    headers: { ...extra, "user-agent": UA, accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "accept-language": LANG[currency] || "en-GB,en;q=0.9", "cache-control": "no-cache", "upgrade-insecure-requests": "1", "sec-fetch-dest": "document", "sec-fetch-mode": "navigate", "sec-fetch-site": "none" },
-    redirect: "follow", signal: AbortSignal.timeout(15000), cf: { cacheTtl: 0 },
-  });
-  const len = +(r.headers.get("content-length") || 0);
-  if (len > MAX_HTML) return { status: r.status, html: "", tooBig: true, finalUrl: r.url };
-  let html = await r.text();
-  if (html.length > MAX_HTML) html = html.slice(0, MAX_HTML);
-  return { status: r.status, html, finalUrl: r.url };
+class PageReadError extends Error {}
+
+async function readLimitedText(response) {
+  const tooLarge = "The page is too large to read.";
+  if (Number(response.headers.get("content-length")) > MAX_HTML) {
+    await response.body?.cancel();
+    throw new PageReadError(tooLarge);
+  }
+  if (!response.body) return "";
+  const reader = response.body.getReader(), decoder = new TextDecoder();
+  let bytes = 0, text = "";
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) return text + decoder.decode();
+      bytes += value.byteLength;
+      if (bytes > MAX_HTML) {
+        await reader.cancel();
+        throw new PageReadError(tooLarge);
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+  } finally { reader.releaseLock(); }
+}
+
+async function fetchStore(url, headers, timeout, verifiedHost) {
+  const signal = AbortSignal.timeout(timeout);
+  for (let hop = 0; hop <= 5; hop++) {
+    const target = validateUrl(url);
+    if (target.error) throw new PageReadError(target.error);
+    const host = target.url.hostname;
+    if (!(hop === 0 && host === verifiedHost) && !(await resolvesPublic(host))) {
+      throw new PageReadError("Couldn't verify a public address for the store.");
+    }
+    const cookie = AMZ_COOKIE[stripWww(host)];
+    const r = await fetch(target.url.href, { headers: { ...headers, ...(cookie ? { cookie } : {}) }, redirect: "manual", signal, cf: { cacheTtl: 0 } });
+    if (![301, 302, 303, 307, 308].includes(r.status)) return r;
+    const next = r.headers.get("location");
+    await r.body?.cancel();
+    if (!next) throw new PageReadError("The store returned an incomplete redirect.");
+    url = new URL(next, target.url).href;
+  }
+  throw new PageReadError("The store redirected too many times.");
+}
+
+async function fetchPage(url, currency, verifiedHost) {
+  const headers = { "user-agent": UA, accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "accept-language": LANG[currency] || "en-GB,en;q=0.9", "cache-control": "no-cache", "upgrade-insecure-requests": "1", "sec-fetch-dest": "document", "sec-fetch-mode": "navigate", "sec-fetch-site": "none" };
+  const r = await fetchStore(url, headers, 15000, verifiedHost);
+  return { status: r.status, html: await readLimitedText(r) };
 }
 
 async function takealotApi(plid) {
-  const r = await fetch(`https://api.takealot.com/rest/v-1-14-0/product-details/PLID${plid}?platform=desktop&display_credit=false`, { headers: { "user-agent": UA, accept: "application/json" }, signal: AbortSignal.timeout(12000) });
-  if (!r.ok) return { error: `Takealot API answered HTTP ${r.status}.` };
-  const d = await r.json();
+  const r = await fetchStore(`https://api.takealot.com/rest/v-1-14-0/product-details/PLID${plid}?platform=desktop&display_credit=false`, { "user-agent": UA, accept: "application/json" }, 12000);
+  if (!r.ok) { await r.body?.cancel(); return { error: `Takealot API answered HTTP ${r.status}.` }; }
+  const d = JSON.parse(await readLimitedText(r));
   const items = (d.buybox && d.buybox.items) || [];
   const it = items.find((x) => x.is_selected) || items[0];
   if (!it) return { error: "Takealot shows no offer for this product right now (maybe out of stock)." };
@@ -369,7 +433,7 @@ async function takealotApi(plid) {
   return { price, was: was && price && was > price ? was : null, currency: "ZAR", title: (d.core && d.core.title) || d.title, image: img ? img.replace("{size}", "pdpxl") : null, source: "takealot-api" };
 }
 
-async function getCurrent(canonInfo, origUrl) {
+async function getCurrent(canonInfo, origUrl, verifiedHost) {
   const host = new URL(canonInfo.canon).hostname.toLowerCase();
   const tldCur = tldCurrency(host);
   const res = { checked_at: now(), status: "ok" };
@@ -380,12 +444,7 @@ async function getCurrent(canonInfo, origUrl) {
       return { ...res, ...t };
     }
     const target = canonInfo.kind === "amazon" ? canonInfo.canon : origUrl;
-    const pg = await fetchPage(target, tldCur);
-    if (pg.finalUrl) {
-      const fh = new URL(pg.finalUrl).hostname;
-      if (/^[\d.]+$/.test(fh) && isPrivateIPv4(fh)) return { ...res, status: "error", message: "Redirected to a private address." };
-    }
-    if (pg.tooBig) return { ...res, status: "error", message: "The page is too large to read." };
+    const pg = await fetchPage(target, tldCur, verifiedHost);
     const blocked = detectBlock(pg.status, pg.html);
     if (blocked) return { ...res, status: "blocked", http: pg.status, message: blocked };
     if (pg.status === 404 || pg.status === 410) return { ...res, status: "error", http: pg.status, message: `The store says this page doesn't exist (HTTP ${pg.status}).` };
@@ -398,14 +457,21 @@ async function getCurrent(canonInfo, origUrl) {
     if (!ex.price) return { ...res, status: "noprice", http: pg.status, title: ex.title, image: ex.image, message: "We loaded the page but couldn't find a machine-readable price on it (the price may be loaded by JavaScript)." };
     return { ...res, price: ex.price, was: ex.was || null, currency, currency_guessed: currencyGuessed, title: ex.title, image: ex.image, source: ex.source, http: pg.status };
   } catch (e) {
+    if (e instanceof PageReadError) return { ...res, status: "error", message: e.message };
     return { ...res, status: "error", message: /timed? ?out|abort/i.test(String(e)) ? "The store took too long to answer." : "We couldn't reach the store." };
   }
 }
 
 // ---------- Wayback ----------
+function sameProduct(raw, canon) {
+  const v = validateUrl(raw);
+  if (v.error) return false;
+  return canonicalize(v.url).canon.replace(/^http:/, "https:") === canon.replace(/^http:/, "https:");
+}
+
 function cdxQueries(canonInfo, origUrl) {
   const q = [];
-  if (canonInfo.kind === "amazon") {
+  if (canonInfo.kind === "amazon" && !new URL(canonInfo.canon).search) {
     const host = stripWww(new URL(canonInfo.canon).hostname);
     q.push({ url: `${host}/dp/${canonInfo.asin}`, prefix: true });
     try {
@@ -414,19 +480,17 @@ function cdxQueries(canonInfo, origUrl) {
       if (m) q.push({ url: host + m[1], prefix: true });
     } catch {}
   } else {
-    const u = new URL(canonInfo.canon);
-    const noQuery = u.origin + u.pathname;
     q.push({ url: canonInfo.canon, prefix: false });
-    try { const o = new URL(origUrl); const op = o.origin + o.pathname; if (stripWww(op) !== stripWww(canonInfo.canon)) q.push({ url: op, prefix: false }); } catch {}
-    if (u.search) q.push({ url: noQuery, prefix: false });
-    else if (!u.pathname.endsWith("/")) q.push({ url: noQuery + "/", prefix: false });
+    const original = new URL(origUrl);
+    original.search = new URL(canonInfo.canon).search;
+    if (original.href !== canonInfo.canon && sameProduct(original.href, canonInfo.canon)) q.push({ url: original.href, prefix: false });
   }
   return q;
 }
 
 async function getSnapshots(env, canonInfo, origUrl) {
-  let oKey = ""; try { const o = new URL(origUrl); oKey = o.pathname; } catch {}
-  const key = "cdx:" + canonInfo.canon + "|" + oKey;
+  const oKey = new URL(origUrl).pathname;
+  const key = "cdx-v2:" + JSON.stringify([canonInfo.canon, oKey]);
   const cached = await cacheGet(env, key);
   if (cached) return cached;
   const from = ymd(new Date(now() - HISTORY_DAYS * 864e5));
@@ -437,12 +501,13 @@ async function getSnapshots(env, canonInfo, origUrl) {
       const api = `https://web.archive.org/cdx/search/cdx?url=${encodeURIComponent(q.url)}${q.prefix ? "&matchType=prefix" : ""}&from=${from}&output=json&fl=timestamp,original,statuscode,mimetype&filter=!statuscode:[345]..&filter=mimetype:text/html|warc/revisit&collapse=timestamp:8&limit=1500`;
       let r;
       for (let attempt = 0; attempt < 3; attempt++) {
-        r = await fetch(api, { headers: { "user-agent": "bf-price-check/1.0 (price history tool)" }, signal: AbortSignal.timeout(25000) });
-        if (r.status !== 503 && r.status !== 429 && r.status !== 502) break;
+        r = await fetch(api, { headers: { "user-agent": "bf-price-check/1.0 (price history tool)" }, redirect: "error", signal: AbortSignal.timeout(25000) });
+        if (attempt === 2 || ![503, 429, 502].includes(r.status)) break;
+        await r.body?.cancel();
         await new Promise((ok) => setTimeout(ok, 1500 * (attempt + 1)));
       }
-      if (!r.ok) return { err: `The Internet Archive answered HTTP ${r.status}.` };
-      const txt = await r.text();
+      if (!r.ok) { await r.body?.cancel(); return { err: `The Internet Archive answered HTTP ${r.status}.` }; }
+      const txt = await readLimitedText(r);
       if (!txt.trim().startsWith("[")) return { err: "The Internet Archive is busy or offline right now." };
       return { rows: JSON.parse(txt).slice(1) };
     } catch (e) { return { err: "The Internet Archive took too long to answer." }; }
@@ -450,7 +515,14 @@ async function getSnapshots(env, canonInfo, origUrl) {
   let okCount = 0;
   for (const r of results) { if (r.rows) { okCount++; rows = rows.concat(r.rows); } else { status = "error"; message = r.err; } }
   if (okCount) { status = "ok"; message = null; }
-  { const seen = new Set(); rows = rows.filter((r) => { const k = r[0].slice(0, 8); if (seen.has(k)) return false; seen.add(k); return true; }); }
+  const seen = new Set();
+  rows = rows.filter(([ts, orig]) => {
+    if (!/^\d{14}$/.test(ts) || tsToMs(ts) > now() || !sameProduct(orig, canonInfo.canon)) return false;
+    const day = ts.slice(0, 8);
+    if (day < from || seen.has(day)) return false;
+    seen.add(day);
+    return true;
+  });
   rows.sort((a, b) => a[0].localeCompare(b[0]));
   // thin out: newest first, one per SNAP_SPACING_DAYS
   const picked = [];
@@ -468,16 +540,19 @@ async function getSnapshots(env, canonInfo, origUrl) {
 async function fetchSnapshot(ts, orig) {
   const host = new URL(orig).hostname.toLowerCase();
   try {
-    const r = await fetch(`https://web.archive.org/web/${ts}id_/${orig}`, { headers: { "user-agent": "bf-price-check/1.0 (price history tool)" }, redirect: "follow", signal: AbortSignal.timeout(25000) });
-    if (r.status === 429 || r.status >= 500) return { status: "retry", message: `Archive HTTP ${r.status}` };
-    if (!r.ok) return { status: "error", message: `Archive HTTP ${r.status}` };
-    let html = await r.text();
-    if (html.length > MAX_HTML) html = html.slice(0, MAX_HTML);
+    // A replay redirect can point to a different product, date or the live store.
+    const r = await fetch(`https://web.archive.org/web/${ts}id_/${orig}`, { headers: { "user-agent": "bf-price-check/1.0 (price history tool)" }, redirect: "manual", signal: AbortSignal.timeout(25000) });
+    if (!r.ok) {
+      await r.body?.cancel();
+      return { status: r.status === 429 || r.status >= 500 ? "retry" : "error", message: `Archive HTTP ${r.status}` };
+    }
+    const html = await readLimitedText(r);
     if (detectBlock(200, html)) return { status: "blocked", message: "The archived copy is a bot-check page." };
     const ex = extractFromHtml(html, host);
     if (!ex.price) return { status: "noprice" };
     return { status: "ok", price: ex.price, was: ex.was || null, currency: ex.currency || tldCurrency(host) };
   } catch (e) {
+    if (e instanceof PageReadError) return { status: "error", message: e.message };
     return { status: "retry", message: "Archive timeout" };
   }
 }
@@ -500,20 +575,23 @@ async function recordCheck(env, canon, cur) {
   if (cur.price) await env.DB.prepare("INSERT INTO checks (url, ts, price, was, currency, source, title) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(canon, cur.checked_at, cur.price, cur.was || null, cur.currency || null, cur.source || null, cur.title || null).run();
 }
 async function track(env, canon, origUrl, cur) {
-  const exists = await env.DB.prepare("SELECT url FROM tracked WHERE url = ?").bind(canon).first();
-  if (exists) {
-    await env.DB.prepare("UPDATE tracked SET last_viewed = ?, last_checked = ?, last_status = ?, title = COALESCE(?, title), check_count = check_count + 1 WHERE url = ?").bind(now(), cur.checked_at, cur.status, cur.title || null, canon).run();
-    return true;
-  }
-  const n = await env.DB.prepare("SELECT COUNT(*) AS n FROM tracked").first();
-  if (n && n.n >= MAX_TRACKED) return false;
-  await env.DB.prepare("INSERT INTO tracked (url, orig_url, title, added_at, last_viewed, last_checked, last_status, check_count) VALUES (?, ?, ?, ?, ?, ?, ?, 1)").bind(canon, origUrl, cur.title || null, now(), now(), cur.checked_at, cur.status).run();
-  return true;
+  const viewed = now();
+  const row = await env.DB.prepare(`
+    INSERT INTO tracked (url, orig_url, title, added_at, last_viewed, last_checked, last_status, check_count)
+    SELECT ?, ?, ?, ?, ?, ?, ?, 1
+    WHERE EXISTS (SELECT 1 FROM tracked WHERE url = ?) OR (SELECT COUNT(*) FROM tracked) < ?
+    ON CONFLICT(url) DO UPDATE SET orig_url = excluded.orig_url, last_viewed = excluded.last_viewed,
+      last_checked = MAX(COALESCE(tracked.last_checked, 0), excluded.last_checked),
+      last_status = CASE WHEN excluded.last_checked >= COALESCE(tracked.last_checked, 0) THEN excluded.last_status ELSE tracked.last_status END,
+      title = COALESCE(excluded.title, tracked.title), check_count = tracked.check_count + 1
+    RETURNING url`).bind(canon, origUrl, cur.title || null, viewed, viewed, cur.checked_at, cur.status, canon, MAX_TRACKED).first();
+  return !!row;
 }
 async function storedHistory(env, canon) {
   const since = now() - HISTORY_DAYS * 864e5;
-  const checks = await env.DB.prepare("SELECT ts, price, was, currency FROM checks WHERE url = ? AND ts >= ? ORDER BY ts").bind(canon, since).all();
-  const snaps = await env.DB.prepare("SELECT snap_ts, price, was, currency, status, fetched_at FROM snaps WHERE url = ?").bind(canon).all();
+  // Old page-data rows did not retain the unit, so their amounts cannot be rescaled reliably.
+  const checks = await env.DB.prepare("SELECT ts, price, was, currency FROM checks WHERE url = ? AND ts >= ? AND source IS NOT 'page-data' ORDER BY ts").bind(canon, since).all();
+  const snaps = await env.DB.prepare("SELECT snap_ts, orig, price, was, currency, status FROM product_snaps WHERE url = ? AND snap_ts >= ? AND status NOT IN ('pending', 'retry')").bind(canon, ymd(new Date(since))).all();
   return { checks: checks.results || [], snaps: snaps.results || [] };
 }
 
@@ -528,11 +606,11 @@ async function apiCheck(req, env, ctx) {
   const host = v.url.hostname.toLowerCase();
   if (!(await resolvesPublic(host))) return json({ error: "That address doesn't point to a public website." }, 400);
   const fresh = params.get("fresh") === "1";
-  const ckey = "chk:" + canonInfo.canon;
+  const ckey = LIVE_CACHE_PREFIX + canonInfo.canon;
   let current = fresh ? null : await cacheGet(env, ckey);
   let cached = !!current;
   if (!current) {
-    current = await getCurrent(canonInfo, v.url.toString());
+    current = await getCurrent(canonInfo, v.url.toString(), host);
     await cachePut(env, ckey, current, current.status === "ok" ? CHECK_TTL_MS : 30 * 60 * 1000);
     await recordCheck(env, canonInfo.canon, current);
   }
@@ -542,7 +620,7 @@ async function apiCheck(req, env, ctx) {
     url: v.url.toString(), canonical: canonInfo.canon, host: stripWww(host), tld_currency: tldCurrency(host),
     current, cached, tracked,
     history: {
-      archive: hist.snaps.filter((s) => s.status === "ok").map((s) => ({ t: tsToMs(s.snap_ts), ts: s.snap_ts, price: s.price, was: s.was, currency: s.currency })),
+      archive: hist.snaps.filter((s) => s.status === "ok").map((s) => ({ t: tsToMs(s.snap_ts), ts: s.snap_ts, orig: s.orig, price: s.price, was: s.was, currency: s.currency })),
       archive_failed: hist.snaps.filter((s) => s.status !== "ok" && s.status !== "retry").length,
       checks: hist.checks.map((c) => ({ t: c.ts, price: c.price, was: c.was, currency: c.currency })),
     },
@@ -555,14 +633,20 @@ async function apiArchive(req, env) {
   const canon = new URL(req.url).searchParams.get("url") || "";
   const tr = await env.DB.prepare("SELECT url, orig_url FROM tracked WHERE url = ?").bind(canon).first();
   if (!tr) return json({ error: "Check the product first." }, 403);
-  let orig = tr.orig_url || canon;
+  let orig = sameProduct(tr.orig_url, canon) ? tr.orig_url : canon;
   const op = new URL(req.url).searchParams.get("orig");
-  if (op) { try { const o = new URL(op); if ((o.protocol === "https:" || o.protocol === "http:") && stripWww(o.hostname.toLowerCase()) === stripWww(new URL(canon).hostname.toLowerCase()) && canonicalize(o).canon === canon) orig = o.toString(); } catch {} }
-  const canonInfo = canonicalize(new URL(orig));
+  if (sameProduct(op, canon)) orig = op;
+  const canonInfo = canonicalize(new URL(canon));
   const snapsInfo = await getSnapshots(env, canonInfo, orig);
-  const rows = await env.DB.prepare("SELECT snap_ts, status, fetched_at FROM snaps WHERE url = ?").bind(canon).all();
-  const done = new Map((rows.results || []).map((s) => [s.snap_ts, s]));
-  const pending = snapsInfo.snaps.filter((s) => { const d = done.get(s.ts); return !d || (d.status === "retry" && now() - d.fetched_at > 6 * 3600e3); });
+  let pending = [];
+  if (snapsInfo.snaps.length) {
+    const slots = snapsInfo.snaps.map(() => "(?, ?, ?)").join(", ");
+    const values = snapsInfo.snaps.flatMap((s) => [canon, s.ts, s.orig]);
+    await env.DB.prepare("INSERT INTO product_snaps (url, snap_ts, orig) VALUES " + slots + " ON CONFLICT(url, snap_ts) DO NOTHING").bind(...values).run();
+    const rows = await env.DB.prepare("SELECT snap_ts AS ts, orig FROM product_snaps WHERE url = ? AND (status = 'pending' OR (status = 'retry' AND fetched_at <= ?)) ORDER BY snap_ts").bind(canon, now() - 6 * 3600e3).all();
+    const selected = new Set(snapsInfo.snaps.map((s) => s.ts));
+    pending = rows.results.filter((s) => selected.has(s.ts));
+  }
   return json({ status: snapsInfo.status, message: snapsInfo.message, captures_6mo: snapsInfo.total, sampled: snapsInfo.snaps.length, pending, queries: snapsInfo.queries });
 }
 
@@ -571,32 +655,28 @@ async function apiSnap(req, env) {
   const p = new URL(req.url).searchParams;
   const canon = p.get("url") || "", ts = p.get("ts") || "", orig = p.get("orig") || "";
   if (!/^\d{14}$/.test(ts)) return json({ error: "bad ts" }, 400);
-  let o;
-  try { o = new URL(orig); } catch { return json({ error: "bad orig" }, 400); }
-  let c;
-  try { c = new URL(canon); } catch { return json({ error: "bad url" }, 400); }
-  if (stripWww(o.hostname.toLowerCase()) !== stripWww(c.hostname.toLowerCase())) return json({ error: "host mismatch" }, 400);
-  const tr = await env.DB.prepare("SELECT url FROM tracked WHERE url = ?").bind(canon).first();
-  if (!tr) return json({ error: "Check the product first." }, 403);
-  const have = await env.DB.prepare("SELECT snap_ts, price, was, currency, status, fetched_at FROM snaps WHERE url = ? AND snap_ts = ?").bind(canon, ts).first();
-  if (have && (have.status !== "retry" || now() - have.fetched_at < 6 * 3600e3)) return json({ ts, t: tsToMs(ts), ...have, cached: true });
+  if (!sameProduct(orig, canon)) return json({ error: "This copy belongs to a different product." }, 400);
+  const have = await env.DB.prepare("SELECT s.* FROM product_snaps s JOIN tracked t ON t.url = s.url WHERE s.url = ? AND s.snap_ts = ? AND s.orig = ?").bind(canon, ts, orig).first();
+  if (!have) return json({ error: "Look up the archived copies for this product first." }, 403);
+  if (have.status !== "pending" && (have.status !== "retry" || now() - have.fetched_at < 6 * 3600e3)) return json({ ts, t: tsToMs(ts), ...have, cached: true });
   if (await rateLimit(env, ip, "snap")) return json({ error: "rate limited", status: "retry" }, 429);
   const r = await fetchSnapshot(ts, orig);
-  await env.DB.prepare("INSERT INTO snaps (url, snap_ts, price, was, currency, status, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(url, snap_ts) DO UPDATE SET price = excluded.price, was = excluded.was, currency = excluded.currency, status = excluded.status, fetched_at = excluded.fetched_at").bind(canon, ts, r.price || null, r.was || null, r.currency || null, r.status, now()).run();
-  return json({ ts, t: tsToMs(ts), ...r });
+  await env.DB.prepare("UPDATE product_snaps SET price = ?, was = ?, currency = ?, status = ?, fetched_at = ? WHERE url = ? AND snap_ts = ? AND status <> 'ok'").bind(r.price || null, r.was || null, r.currency || null, r.status, now(), canon, ts).run();
+  return json({ ts, orig, t: tsToMs(ts), ...r });
 }
 
-async function cron(env) {
-  const due = await env.DB.prepare("SELECT url, orig_url FROM tracked WHERE last_checked IS NULL OR last_checked < ? ORDER BY last_checked LIMIT ?").bind(now() - RECHECK_AFTER_MS, CRON_BATCH).all();
+async function cron(env, scheduledTime) {
+  const due = await env.DB.prepare("SELECT url, orig_url FROM tracked WHERE last_checked IS NULL OR last_checked < ? ORDER BY last_checked LIMIT 1").bind(now() - RECHECK_AFTER_MS).all();
   for (const row of due.results || []) {
-    let canonInfo;
-    try { canonInfo = canonicalize(new URL(row.orig_url || row.url)); } catch { continue; }
-    const cur = await getCurrent(canonInfo, row.orig_url || row.url);
+    const orig = sameProduct(row.orig_url, row.url) ? row.orig_url : row.url;
+    const v = validateUrl(orig);
+    const cur = v.url ? await getCurrent(canonicalize(v.url), v.url.href) : { status: "error", checked_at: now() };
     await recordCheck(env, row.url, cur);
     await env.DB.prepare("UPDATE tracked SET last_checked = ?, last_status = ?, check_count = check_count + 1 WHERE url = ?").bind(cur.checked_at, cur.status, row.url).run();
-    if (cur.status === "ok") await cachePut(env, "chk:" + row.url, cur, CHECK_TTL_MS);
+    if (cur.status === "ok") await cachePut(env, LIVE_CACHE_PREFIX + row.url, cur, CHECK_TTL_MS);
   }
   // housekeeping
+  if (new Date(scheduledTime).getUTCMinutes() !== 0) return;
   await env.DB.prepare("DELETE FROM rl WHERE win < ?").bind(Math.floor(now() / 60000) - 5).run();
   await env.DB.prepare("DELETE FROM cache WHERE exp < ?").bind(now()).run();
   await env.DB.prepare("DELETE FROM tracked WHERE last_viewed < ?").bind(now() - 120 * 864e5).run();
@@ -619,6 +699,6 @@ export default {
     }
   },
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(cron(env));
+    ctx.waitUntil(cron(env, event.scheduledTime));
   },
 };
