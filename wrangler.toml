@@ -1,0 +1,16 @@
+name = "bf-price-check"
+main = "dist/worker.js"
+compatibility_date = "2026-11-01"
+workers_dev = true
+preview_urls = false
+
+[build]
+command = "python3 build.py"
+
+[triggers]
+crons = ["15 * * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "bf-price-check-db"
+database_id = "65e86f16-42db-4c07-bbd7-20ba0308d47e"
