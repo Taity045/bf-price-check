@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """End-to-end API test: /api/check then every pending /api/snap. Usage: test_full.py URL [URL...]"""
 import sys, json, urllib.parse, urllib.request, concurrent.futures as cf
-B = "https://bf-price-check.lala-board.workers.dev"
+B = "https://bf-price-check.tm-deal-lab.workers.dev"
 def get(path):
     req = urllib.request.Request(B + path, headers={"user-agent": "bf-test"})
     try:

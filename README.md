@@ -1,6 +1,6 @@
 # Deal or Dud? — Black Friday price checker
 
-Live: https://bf-price-check.lala-board.workers.dev
+Live: https://bf-price-check.tm-deal-lab.workers.dev
 
 Paste a product link from an online store. The tool shows:
 

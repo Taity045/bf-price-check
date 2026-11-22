@@ -1,7 +1,7 @@
 #!/bin/bash
 # usage: ./test_api.sh URL  -> prints summary of /api/check
 set -eo pipefail
-B=${BASE_URL:-https://bf-price-check.lala-board.workers.dev}
+B=${BASE_URL:-https://bf-price-check.tm-deal-lab.workers.dev}
 product_url=${1:?Pass a product URL}
 encoded=$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "$product_url")
 curl -sS --fail-with-body --max-time 90 "$B/api/check?url=$encoded${2:-}" | python3 -c '
