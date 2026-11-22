@@ -109,19 +109,25 @@ function validateUrl(raw) {
 }
 
 async function resolvesPublic(host) {
-  // A host is public when at least one lookup (A or AAAA) answers and every address returned is public.
-  // A failed lookup of one type (e.g. SERVFAIL on AAAA) is ignored when the other type answers.
-  const lookups = await Promise.all(["A", "AAAA"].map(async (type) => {
-    try {
-      const r = await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(host)}&type=${type}`, { headers: { accept: "application/dns-json" }, redirect: "error", signal: AbortSignal.timeout(4000) });
-      if (!r.ok) return null;
-      const d = await r.json();
-      if (d.Status !== 0 || d.TC) return null;
-      return (d.Answer || []).filter((a) => a.type === 1 || a.type === 28);
-    } catch { return null; }
-  }));
+  // Literal private names are already rejected in validateUrl. Here we look the host up (DoH, with fallbacks).
+  // Every address returned must be public. If no resolver answers, we do not block (fail open).
+  const endpoints = ["https://1.1.1.1/dns-query", "https://dns.google/resolve"];
+  const lookup = async (type) => {
+    for (const ep of endpoints) {
+      try {
+        const r = await fetch(`${ep}?name=${encodeURIComponent(host)}&type=${type}`, { headers: { accept: "application/dns-json" }, redirect: "error", signal: AbortSignal.timeout(3000) });
+        if (!r.ok) continue;
+        const d = await r.json();
+        if (d.Status !== 0 && d.Status !== 3) continue;
+        return (d.Answer || []).filter((a) => a.type === 1 || a.type === 28);
+      } catch { /* try next resolver */ }
+    }
+    return null;
+  };
+  const lookups = await Promise.all([lookup("A"), lookup("AAAA")]);
   const ips = lookups.filter(Boolean).flat();
-  return ips.length > 0 && ips.every((a) => a.type === 1 ? !isPrivateIPv4(a.data) : !isPrivateIPv6(a.data));
+  if (ips.length === 0) return true;
+  return ips.every((a) => a.type === 1 ? !isPrivateIPv4(a.data) : !isPrivateIPv6(a.data));
 }
 
 // Marketing / tracking parameters that never select a different product.
