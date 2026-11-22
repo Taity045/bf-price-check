@@ -9,8 +9,8 @@
 const CHECK_TTL_MS = 6 * 3600 * 1000;      // cache a live check for 6 h
 const CDX_TTL_MS = 12 * 3600 * 1000;       // cache the snapshot list for 12 h
 const HISTORY_DAYS = 183;
-const SNAP_SPACING_DAYS = 7;
-const MAX_SNAPS = 26;
+const SNAP_SPACING_DAYS = 5;
+const MAX_SNAPS = 38;
 const MAX_TRACKED = 1000;
 const RECHECK_AFTER_MS = 20 * 3600 * 1000;
 const LIVE_CACHE_PREFIX = "check-v2:";
@@ -115,7 +115,7 @@ async function resolvesPublic(host) {
   const lookup = async (type) => {
     for (const ep of endpoints) {
       try {
-        const r = await fetch(`${ep}?name=${encodeURIComponent(host)}&type=${type}`, { headers: { accept: "application/dns-json" }, redirect: "error", signal: AbortSignal.timeout(3000) });
+        const r = await fetch(`${ep}?name=${encodeURIComponent(host)}&type=${type}`, { headers: { accept: "application/dns-json" }, redirect: "manual", signal: AbortSignal.timeout(3000) });
         if (!r.ok) continue;
         const d = await r.json();
         if (d.Status !== 0 && d.Status !== 3) continue;
@@ -484,11 +484,11 @@ function cdxQueries(canonInfo, origUrl) {
   const q = [];
   if (canonInfo.kind === "amazon") {
     const host = stripWww(new URL(canonInfo.canon).hostname);
-    q.push({ url: `${host}/dp/${canonInfo.asin}`, prefix: true });
+    q.push({ url: `${host}/dp/${canonInfo.asin}`, prefix: false });
     try {
       const op = new URL(origUrl).pathname;
       const m = op.match(new RegExp(`^(/[^/]+/dp/${canonInfo.asin})`, "i"));
-      if (m) q.push({ url: host + m[1], prefix: true });
+      if (m) q.push({ url: host + m[1], prefix: false });
     } catch {}
   } else {
     q.push({ url: canonInfo.canon, prefix: false });
@@ -507,7 +507,7 @@ function cdxQueries(canonInfo, origUrl) {
 
 async function getSnapshots(env, canonInfo, origUrl) {
   const oKey = new URL(origUrl).pathname;
-  const key = "cdx-v2:" + JSON.stringify([canonInfo.canon, oKey]);
+  const key = "cdx-v3:" + JSON.stringify([canonInfo.canon, oKey]);
   const cached = await cacheGet(env, key);
   if (cached) return cached;
   const from = ymd(new Date(now() - HISTORY_DAYS * 864e5));
@@ -515,10 +515,10 @@ async function getSnapshots(env, canonInfo, origUrl) {
   const queries = cdxQueries(canonInfo, origUrl);
   const results = await Promise.all(queries.map(async (q) => {
     try {
-      const api = `https://web.archive.org/cdx/search/cdx?url=${encodeURIComponent(q.url)}${q.prefix ? "&matchType=prefix" : ""}&from=${from}&output=json&fl=timestamp,original,statuscode,mimetype&filter=!statuscode:[345]..&filter=mimetype:text/html|warc/revisit&collapse=timestamp:8&limit=1500`;
+      const api = `https://web.archive.org/cdx/search/cdx?url=${encodeURIComponent(q.url)}${q.prefix ? "&matchType=prefix" : ""}&from=${from}&output=json&fl=timestamp,original,statuscode,mimetype&filter=!statuscode:[345]..&collapse=timestamp:8&limit=1500`;
       let r;
       for (let attempt = 0; attempt < 3; attempt++) {
-        r = await fetch(api, { headers: { "user-agent": "bf-price-check/1.0 (price history tool)" }, redirect: "error", signal: AbortSignal.timeout(25000) });
+        r = await fetch(api, { headers: { "user-agent": "bf-price-check/1.0 (price history tool)" }, redirect: "manual", signal: AbortSignal.timeout(25000) });
         if (attempt === 2 || ![503, 429, 502].includes(r.status)) break;
         await r.body?.cancel();
         await new Promise((ok) => setTimeout(ok, 1500 * (attempt + 1)));
@@ -527,7 +527,7 @@ async function getSnapshots(env, canonInfo, origUrl) {
       const txt = await readLimitedText(r);
       if (!txt.trim().startsWith("[")) return { err: "The Internet Archive is busy or offline right now." };
       return { rows: JSON.parse(txt).slice(1) };
-    } catch (e) { return { err: "The Internet Archive took too long to answer." }; }
+    } catch (e) { return { err: "The Internet Archive took too long to answer.", detail: String(e && e.message || e).slice(0, 120) }; }
   }));
   let okCount = 0;
   for (const r of results) { if (r.rows) { okCount++; rows = rows.concat(r.rows); } else { status = "error"; message = r.err; } }
@@ -549,7 +549,7 @@ async function getSnapshots(env, canonInfo, origUrl) {
     if (last - t >= SNAP_SPACING_DAYS * 864e5 - 36e5) { picked.push({ ts: rows[i][0], orig: rows[i][1] }); last = t; }
   }
   picked.reverse();
-  const val = { status, message, total: rows.length, snaps: picked, queries: queries.map((q, i) => ({ url: q.url, prefix: q.prefix, rows: results[i].rows ? results[i].rows.length : null, error: results[i].err || null })) };
+  const val = { status, message, total: rows.length, snaps: picked, queries: queries.map((q, i) => ({ url: q.url, prefix: q.prefix, rows: results[i].rows ? results[i].rows.length : null, error: results[i].err || null, detail: results[i].detail || null })) };
   if (status === "ok") await cachePut(env, key, val, okCount === results.length ? CDX_TTL_MS : 3600e3);
   return val;
 }

@@ -1,27 +1,27 @@
 [
  {
-  "label": "Takealot · AirPods Pro 3",
-  "cc": "ZA",
-  "url": "https://www.takealot.com/apple-airpods-pro-3/PLID99471433"
- },
- {
-  "label": "Currys · AirPods 4",
-  "cc": "UK",
-  "url": "https://www.currys.co.uk/products/apple-airpods-4-with-active-noise-cancellation-white-10270519.html"
- },
- {
-  "label": "Amazon UK · Atomic Habits",
-  "cc": "UK",
-  "url": "https://www.amazon.co.uk/Atomic-Habits-Proven-Build-Break/dp/1847941834"
- },
- {
-  "label": "Woolworths · Briefs 3-pack",
-  "cc": "ZA",
-  "url": "https://www.woolworths.co.za/prod/Men/Underwear-Sleepwear/AU-StayNew-COOLTECH-Cotton-Briefs-3-Pack/_/A-508972132"
- },
- {
-  "label": "MediaMarkt · AirPods Pro 2",
+  "label": "MediaMarkt · AirPods Pro 3",
   "cc": "DE",
-  "url": "https://www.mediamarkt.de/de/product/_apple-mtjv3zma-airpods-pro-2nd-gen-in-ear-kopfhorer-bluetooth-white-143389795.html"
+  "url": "https://www.mediamarkt.de/de/product/_apple-airpods-pro-3-in-ear-kopfhorer-bluetooth-white-3013574.html"
+ },
+ {
+  "label": "MediaMarkt · Galaxy S26",
+  "cc": "DE",
+  "url": "https://www.mediamarkt.de/de/product/_samsung-galaxy-s26-256-gb-black-dual-sim-3033289.html"
+ },
+ {
+  "label": "MediaMarkt · Galaxy A57",
+  "cc": "DE",
+  "url": "https://www.mediamarkt.de/de/product/_samsung-galaxy-a57-256-gb-awesome-gray-dual-sim-3039261.html"
+ },
+ {
+  "label": "MediaMarkt · Galaxy Tab A11",
+  "cc": "DE",
+  "url": "https://www.mediamarkt.de/de/product/_samsung-galaxy-tab-a11-wi-fi-tablet-128-gb-11-zoll-grau-3020224.html"
+ },
+ {
+  "label": "MediaMarkt · Galaxy S25",
+  "cc": "DE",
+  "url": "https://www.mediamarkt.de/de/product/_samsung-galaxy-s25-5g-256-gb-icyblue-dual-sim-2972629.html"
  }
 ]

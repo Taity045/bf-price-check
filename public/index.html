@@ -446,8 +446,8 @@ function renderVerdict() {
     setVerdict("unk", "Can't judge yet", `<p class="vbody">${esc(body)}</p>`); state.verdictText = null; return;
   }
   const P = cur.price, W = cur.was, C = cur.currency;
-  if (pr.length < 2) {
-    body = pr.length === 1 ? `We found only one older price in ${C} (${money(pr[0], C)} on ${fmtDate(hist[0].t)}). That's not enough to judge.` : `We found no older prices in ${C} for this product yet.`;
+  if (pr.length < 3) {
+    body = pr.length >= 1 ? `We found only ${pr.length} older price${pr.length === 1 ? "" : "s"} in ${C} (latest ${money(pr[pr.length - 1], C)} on ${fmtDate(hist[hist.length - 1].t)}). We need at least 3 to judge.` : `We found no older prices in ${C} for this product yet.`;
     if (state.tracked) body += " We'll keep checking for new prices.";
     if (W) body += ` The shop claims ${Math.round((W - P) / W * 100)}% off ${money(W, C)}. We can't confirm that.`;
     setVerdict("unk", "Not enough history", `<p class="vbody">${esc(body)}</p>`); state.verdictText = null; return;
