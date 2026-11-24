@@ -212,7 +212,9 @@ for (const base of [...new Set([BASE, "https://eish.veldwire.com", "https://bf-p
   await p.goto(base + "/"); await p.click("#bmBtn"); await p.waitForSelector("#bmDlg[open]");
   const href = await p.getAttribute("#bmLink", "href");
   ok(`${base}: dialog link is the javascript: code`, href === `javascript:void(location.href='${base}/?url='+encodeURIComponent(location.href))`, href);
-  ok(`${base}: code box has the same code`, (await p.inputValue("#bmCode")) === href);
+  ok(`${base}: copy source has the same code`, (await p.inputValue("#bmCode")) === href);
+  ok(`${base}: the javascript code is not shown`, !(await p.evaluate(() => { const r = document.getElementById("bmCode").getBoundingClientRect(); return r.right > 0 && r.width > 2; })) && !/javascript:/.test(await p.innerText("#bmDlg")));
+  ok(`${base}: footer note text`, (await p.innerText("footer")).includes("We show only real prices from the shop and price archives. If we find no history, we tell you. Always check the shop's page before you buy."));
   await p.click("#bmCopy"); await p.waitForTimeout(300);
   ok(`${base}: copy works`, (await p.evaluate(() => navigator.clipboard.readText().catch(() => ""))) === href && /Copied/.test(await p.textContent("#bmCopy")));
   await p.screenshot({ path: `${OUT}/bookmark-dialog-${new URL(base).hostname.split(".")[0]}.png` });

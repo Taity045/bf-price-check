@@ -112,7 +112,7 @@ th{font-size:12px;font-weight:500;color:var(--mut)}
 footer{margin-top:40px;padding-top:14px;border-top:1px solid var(--line);font-size:13px;color:var(--mut);text-align:center}
 .flinks{display:flex;flex-wrap:wrap;justify-content:center;column-gap:4px}
 .flinks a{display:inline-flex;align-items:center;min-height:44px;padding:0 4px;color:var(--ink)}
-#bmHint.warn{color:var(--ink);font-weight:700}#counter{margin:4px 0 8px}#counter b{color:var(--bad)}
+.vh{position:absolute!important;left:-9999px;width:1px;height:1px;opacity:0}#bmHint.warn{color:var(--ink);font-weight:700}#counter{margin:4px 0 8px}#counter b{color:var(--bad)}
 .spin{display:inline-block;width:14px;height:14px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:sp .8s linear infinite;vertical-align:-2px;margin-right:8px}
 @keyframes sp{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.spin{animation-duration:2.4s}.prog i{transition:none}}
@@ -356,7 +356,7 @@ footer{border-top:2px dashed var(--ink)}
       <button type="button" class="linkbtn" id="askBtn">Ask us to add a shop</button>
       <a href="/privacy">Privacy</a>
     </nav>
-    Prices come from the shop's page and the <a href="https://web.archive.org" target="_blank" rel="noopener">Internet Archive</a>. We never guess a price. Check the shop before you buy.
+    We show only real prices from the shop and price archives. If we find no history, we tell you. Always check the shop's page before you buy.
   </footer>
 </main>
 
@@ -426,13 +426,13 @@ footer{border-top:2px dashed var(--ink)}
     <p class="note" id="bmHint" role="status">The button does nothing on this page. Use it on a product page.</p>
     <h3 style="margin-top:14px">On a phone or tablet</h3>
     <ol class="note" style="padding-left:18px">
-      <li>Push "Copy the code".</li>
+      <li>Push "Copy the bookmark".</li>
       <li>Add a bookmark for this page.</li>
-      <li>Edit the bookmark. Change the name to "Deal or Dud?". Delete the address and paste the code in its place.</li>
+      <li>Edit the bookmark. Change the name to "Deal or Dud?". Delete the address and paste in its place.</li>
       <li>On a product page, open your bookmarks and push "Deal or Dud?".</li>
     </ol>
-    <textarea class="code" id="bmCode" rows="3" readonly aria-label="Bookmark code">__BM__</textarea>
-    <div class="formrow"><button type="button" class="go" id="bmCopy">Copy the code</button></div>
+    <textarea class="code vh" id="bmCode" rows="1" readonly tabindex="-1" aria-hidden="true">__BM__</textarea>
+    <div class="formrow"><button type="button" class="go" id="bmCopy">Copy the bookmark</button></div>
   </div>
 </dialog>
 
@@ -983,9 +983,9 @@ if ($("bmLink").getAttribute("href") !== BM) { $("bmLink").setAttribute("href", 
 $("bmLink").addEventListener("click", (e) => { e.preventDefault(); const h = $("bmHint"); h.textContent = "Do not click it here. Drag it to your bookmarks bar. Then use it on a product page."; h.classList.add("warn"); });
 $("bmBtn").addEventListener("click", () => $("bmDlg").showModal());
 $("bmCopy").addEventListener("click", async () => {
-  const done = (t) => { toast(t); $("bmCopy").textContent = "Copied ✓"; setTimeout(() => { $("bmCopy").textContent = "Copy the code"; }, 2000); };
-  try { await navigator.clipboard.writeText(BM); done("Code copied"); }
-  catch { $("bmCode").focus(); $("bmCode").select(); try { document.execCommand("copy"); done("Code copied"); } catch { toast("Select the code and copy it."); } }
+  const done = (t) => { toast(t); $("bmCopy").textContent = "Copied ✓"; setTimeout(() => { $("bmCopy").textContent = "Copy the bookmark"; }, 2000); };
+  try { await navigator.clipboard.writeText(BM); done("Bookmark copied"); }
+  catch { $("bmCode").focus(); $("bmCode").select(); try { document.execCommand("copy"); done("Bookmark copied"); } catch { toast("Copy did not work. Use the drag button on a computer."); } }
 });
 
 // ---------- bot check (Cloudflare Turnstile, only when it is set up) ----------
