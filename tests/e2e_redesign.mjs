@@ -88,6 +88,31 @@ for (const i of [0, 1, 2]) {
   await p.screenshot({ path: `${OUT}/redesign-result-desktop.png`, fullPage: true });
   await p.context().close();
 }
+// 5. thin-history shop, rate limit and dark mode
+{
+  const p = await page(mobile); await p.goto(BASE + "/");
+  await p.fill("#u", "https://www.takealot.com/apple-airpods-pro-3/PLID99471433"); await p.press("#u", "Enter");
+  await p.waitForSelector("#result:not(.hidden)", { timeout: 60000 }); await waitArchive(p);
+  const big = (await p.textContent("#verdict .big")).trim();
+  ok("Takealot check shows a price and a clear status", /R\s?[\d ,]+/.test(await p.textContent("#prices")) && big.length > 3, big);
+  ok("Takealot check no JS errors", p._errs.length === 0, p._errs.join(" | "));
+  await p.route("**/api/check**", (r) => r.fulfill({ status: 429, contentType: "application/json", body: JSON.stringify({ error: "Slow down a little — too many checks in a minute. Try again shortly." }) }));
+  await p.click("#go"); await p.waitForFunction(() => !document.getElementById("error").classList.contains("hidden"), null, { timeout: 10000 });
+  ok("rate limit message shown", /Slow down/.test(await p.textContent("#error")));
+  await p.route("**/api/check**", (r) => r.abort());
+  await p.click("#go"); await p.waitForFunction(() => /connection/.test(document.getElementById("error").textContent), null, { timeout: 10000 });
+  ok("offline message shown", true);
+  ok("button re-enabled after network error", !(await p.isDisabled("#go")));
+  await p.context().close();
+}
+{
+  const p = await page({ ...mobile, colorScheme: "dark" });
+  await p.goto(BASE + "/?u=" + encodeURIComponent("https://www.evetech.co.za/amd-ryzen-5-5500-intel-arc-b580-budget-gaming-pc-16gb-512gb-nvme/best-pc-deal/22997"));
+  await p.waitForSelector("#result:not(.hidden)", { timeout: 60000 }); await waitArchive(p);
+  ok("dark mode renders", (await p.evaluate(() => getComputedStyle(document.body).backgroundColor)) !== "rgb(255, 255, 255)");
+  await p.screenshot({ path: `${OUT}/redesign-result-dark.png`, fullPage: true });
+  await p.context().close();
+}
 await browser.close();
 const failed = results.filter((r) => !r.pass);
 console.log(`\n${results.length - failed.length}/${results.length} passed`);
