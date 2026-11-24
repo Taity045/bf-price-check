@@ -91,3 +91,17 @@ Note: the URL contains the account's workers.dev subdomain. If the subdomain is 
 - The Internet Archive sometimes answers 503 or is slow; the tool retries and shows a "Try the archive again" button.
 - Marketplace listings (Amazon, MediaMarkt, Takealot) can change seller, so archived prices may be from a different seller.
 - Free-plan Worker limits (CPU time, 50 sub-requests per call) apply; each archive copy is fetched in its own request to stay inside them.
+
+## Shop requests
+
+People can ask us to add a shop (button "Ask us to add this shop"). The Worker stores each request in D1 table `shop_requests` (it creates the table on first use). Only a hash of the IP is kept. Requests are not shown anywhere public.
+
+Read them:
+
+```
+npx wrangler d1 execute bf-price-check-db --remote --command "SELECT id, datetime(created_at/1000,'unixepoch') AS at, host, shop_text, product_url, email FROM shop_requests ORDER BY id DESC LIMIT 50"
+```
+
+(The token needs D1 Read or Edit for this; the Cloudflare dashboard D1 console works too.)
+
+The list of shops we check is `SHOPS` in `src/worker.js` (also served at `/api/shops`).

@@ -14,7 +14,7 @@ const MAX_SNAPS = 64;
 const MAX_TRACKED = 1000;
 const RECHECK_AFTER_MS = 20 * 3600 * 1000;
 const LIVE_CACHE_PREFIX = "check-v3:";
-const RL = { check: 20, snap: 120 };       // requests per IP per minute
+const RL = { check: 20, snap: 120, req: 5 };       // requests per IP per minute
 const MAX_HTML = 4 * 1024 * 1024;
 
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
@@ -695,6 +695,61 @@ async function storedHistory(env, canon) {
   return { checks: checks.results || [], snaps: snaps.results || [] };
 }
 
+// ---------- supported shops ----------
+// Shops whose pages we read reliably. "archive" = the shop blocks live checks, so we use archived copies only.
+const SHOPS = [
+  { name: "Takealot", host: "takealot.com", cc: "ZA" },
+  { name: "Woolworths", host: "woolworths.co.za", cc: "ZA" },
+  { name: "Checkers", host: "checkers.co.za", cc: "ZA" },
+  { name: "Clicks", host: "clicks.co.za", cc: "ZA" },
+  { name: "Loot", host: "loot.co.za", cc: "ZA" },
+  { name: "Evetech", host: "evetech.co.za", cc: "ZA" },
+  { name: "Cycle Lab", host: "cyclelab.com", cc: "ZA" },
+  { name: "Amazon South Africa", host: "amazon.co.za", cc: "ZA" },
+  { name: "Amazon UK", host: "amazon.co.uk", cc: "UK" },
+  { name: "Currys", host: "currys.co.uk", cc: "UK", archive: true },
+  { name: "MediaMarkt Germany", host: "mediamarkt.de", cc: "DE" },
+  { name: "Amazon Germany", host: "amazon.de", cc: "DE" },
+];
+function shopFor(host) {
+  const h = stripWww(String(host || "").toLowerCase());
+  return SHOPS.find((x) => h === x.host || h.endsWith("." + x.host)) || null;
+}
+
+// ---------- shop requests ----------
+let requestsTableReady = false;
+async function ensureRequestsTable(env) {
+  if (requestsTableReady) return;
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS shop_requests (id INTEGER PRIMARY KEY AUTOINCREMENT, host TEXT, shop_text TEXT NOT NULL, product_url TEXT, email TEXT, created_at INTEGER NOT NULL, ip_hash TEXT)").run();
+  requestsTableReady = true;
+}
+async function sha256(s) {
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function apiRequest(req, env) {
+  if (req.method !== "POST") return json({ error: "method not allowed" }, 405);
+  if (!/application\/json/i.test(req.headers.get("content-type") || "")) return json({ error: "Send the form as JSON." }, 415);
+  const ip = req.headers.get("cf-connecting-ip") || "0";
+  let body;
+  try { const t = await req.text(); if (t.length > 6000) return json({ error: "The request is too long." }, 413); body = JSON.parse(t); } catch { return json({ error: "We could not read the form." }, 400); }
+  if (!body || typeof body !== "object") return json({ error: "We could not read the form." }, 400);
+  // honeypot: real people never fill this hidden field
+  if (body.website) return json({ ok: true });
+  const clean = (v, max) => String(v == null ? "" : v).replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
+  const shop = clean(body.shop, 200), product = clean(body.product_url, 2048), email = clean(body.email, 254);
+  if (shop.length < 2) return json({ error: "Type the shop name or website." }, 400);
+  if (product && !/^https?:\/\/[^\s]+\.[^\s]+/i.test(product)) return json({ error: "The product link must start with http:// or https://." }, 400);
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return json({ error: "Check the email address." }, 400);
+  if (await rateLimit(env, ip, "req")) return json({ error: "You sent many requests. Try again in a minute." }, 429);
+  let host = null;
+  try { host = stripWww(new URL(/^https?:/i.test(shop) ? shop : product || ("https://" + shop)).hostname.toLowerCase()); } catch {}
+  if (host && !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(host)) host = null;
+  await ensureRequestsTable(env);
+  await env.DB.prepare("INSERT INTO shop_requests (host, shop_text, product_url, email, created_at, ip_hash) VALUES (?, ?, ?, ?, ?, ?)").bind(host, shop, product || null, email || null, now(), (await sha256("bf-req:" + ip)).slice(0, 32)).run();
+  return json({ ok: true });
+}
+
 // ---------- API handlers ----------
 async function apiCheck(req, env, ctx) {
   const ip = req.headers.get("cf-connecting-ip") || "0";
@@ -725,6 +780,7 @@ async function apiCheck(req, env, ctx) {
       checks: hist.checks.map((c) => ({ t: c.ts, price: c.price, was: c.was, currency: c.currency })),
     },
     history_days: HISTORY_DAYS,
+    shop: (() => { const x = shopFor(host); return x ? { name: x.name, archive: !!x.archive } : null; })(),
   });
 }
 
@@ -790,8 +846,10 @@ export default {
   async fetch(req, env, ctx) {
     const url = new URL(req.url);
     try {
-      if (req.method === "OPTIONS") return new Response(null, { headers: { "access-control-allow-origin": "*", "access-control-allow-methods": "GET", "access-control-allow-headers": "content-type" } });
+      if (req.method === "OPTIONS") return new Response(null, { headers: { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST", "access-control-allow-headers": "content-type" } });
+      if (url.pathname === "/api/request") return await apiRequest(req, env);
       if (req.method !== "GET" && req.method !== "HEAD") return json({ error: "method not allowed" }, 405);
+      if (url.pathname === "/api/shops") return json({ shops: SHOPS.map(({ name, host, cc, archive }) => ({ name, host, cc, archive: !!archive })) }, 200, { "cache-control": "public, max-age=3600" });
       if (url.pathname === "/api/check") return await apiCheck(req, env, ctx);
       if (url.pathname === "/api/archive") return await apiArchive(req, env);
       if (url.pathname === "/api/snap") return await apiSnap(req, env);

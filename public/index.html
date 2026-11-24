@@ -102,6 +102,28 @@ footer{margin-top:40px;padding-top:14px;border-top:1px solid var(--line);font-si
 @media (prefers-reduced-motion:reduce){.spin{animation-duration:2.4s}.prog i{transition:none}}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:var(--bg);font-size:14px;font-weight:600;padding:10px 16px;border-radius:99px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:9}
 .toast.on{opacity:1}
+.linkbtn{background:none;border:0;padding:0 4px;min-height:44px;color:var(--ink);text-decoration:underline;text-underline-offset:3px;font-size:13px}
+.unsup{margin-top:12px;padding:12px 14px;border-radius:10px;background:var(--soft);font-size:15px}
+.unsup b{display:block;margin-bottom:6px}
+.unsup .btn2{margin-top:8px}
+dialog{border:0;border-radius:16px;padding:0;width:min(520px,calc(100vw - 24px));max-height:calc(100dvh - 24px);background:var(--bg);color:var(--ink);box-shadow:0 10px 40px rgba(0,0,0,.25)}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+.dlg{padding:20px}
+.dlg h2{font-size:20px;margin:0 0 8px}
+.dlghead{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.x{background:none;border:0;font-size:22px;min-width:44px}
+.shoplist{list-style:none;padding:0;margin:8px 0 0}
+.shoplist li{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:15px}
+.field{display:flex;flex-direction:column;gap:4px;margin-top:12px;font-size:14px}
+.field input{height:46px;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--soft);color:var(--ink);font:16px var(--sans)}
+.field input:focus{outline:none;border-color:var(--ink);background:var(--bg)}
+.hp{position:absolute!important;left:-9999px;width:1px;height:1px;overflow:hidden}
+.formrow{display:flex;gap:8px;margin-top:16px}
+.formrow button{flex:1;height:46px;border-radius:var(--r);font-weight:600}
+.formrow .go{border:0}
+.formrow .sec{border:1px solid var(--line);background:var(--bg)}
+.fmsg{margin-top:10px;font-size:14px;min-height:20px}
+.fmsg.ok{color:var(--good)}.fmsg.bad{color:var(--bad)}
 @media (max-width:420px){form{flex-direction:column}.go{width:100%}.manual{grid-template-columns:1fr 1fr}.manual label:last-child{grid-column:1/-1}}
 </style>
 </head>
@@ -134,6 +156,7 @@ footer{margin-top:40px;padding-top:14px;border-top:1px solid var(--line);font-si
       </div>
       <div class="prices" id="prices"></div>
       <div class="small" id="psrc"></div>
+      <div class="unsup hidden" id="unsup"></div>
       <div id="manualbox" class="hidden">
         <p class="note" id="manualmsg"></p>
         <div class="manual">
@@ -170,8 +193,33 @@ footer{margin-top:40px;padding-top:14px;border-top:1px solid var(--line);font-si
     </div>
   </section>
 
-  <footer>Prices come from the shop's page and the <a href="https://web.archive.org" target="_blank" rel="noopener">Internet Archive</a>. We never guess a price. Check the shop before you buy.</footer>
+  <footer>
+    <div><button type="button" class="linkbtn" id="shopsBtn">Shops we check</button> · <button type="button" class="linkbtn" id="askBtn">Ask us to add a shop</button></div>
+    Prices come from the shop's page and the <a href="https://web.archive.org" target="_blank" rel="noopener">Internet Archive</a>. We never guess a price. Check the shop before you buy.
+  </footer>
 </main>
+
+<dialog id="shopsDlg" aria-labelledby="shopsTitle">
+  <div class="dlg">
+    <div class="dlghead"><h2 id="shopsTitle">Shops we check</h2><button type="button" class="x" data-close aria-label="Close">×</button></div>
+    <ul class="shoplist" id="shoplist"><li>Loading…</li></ul>
+    <p class="note">Other shops can work too, but the result is less certain.</p>
+    <div class="formrow"><button type="button" class="sec" id="shopsAsk">Ask us to add a shop</button><button type="button" class="go" data-close>Close</button></div>
+  </div>
+</dialog>
+
+<dialog id="reqDlg" aria-labelledby="reqTitle">
+  <form class="dlg" id="reqForm" novalidate>
+    <div class="dlghead"><h2 id="reqTitle">Ask us to add a shop</h2><button type="button" class="x" data-close aria-label="Close">×</button></div>
+    <p class="note" style="margin-top:0">We will do our best to add this shop. Some shops block price checks, so we cannot add every shop.</p>
+    <label class="field">Shop name or website<input id="rShop" maxlength="200" required autocomplete="off" placeholder="For example: www.example.co.za"></label>
+    <label class="field">Product link (optional)<input id="rUrl" type="url" inputmode="url" maxlength="2048" autocomplete="off" placeholder="https://"></label>
+    <label class="field">Your email, if you want an update (optional)<input id="rEmail" type="email" inputmode="email" maxlength="254" autocomplete="email" placeholder="you@example.com"></label>
+    <div class="hp" aria-hidden="true"><label>Website<input id="rWeb" tabindex="-1" autocomplete="off"></label></div>
+    <div class="fmsg" id="rMsg" role="status"></div>
+    <div class="formrow"><button type="button" class="sec" data-close>Cancel</button><button type="submit" class="go" id="rSend">Send request</button></div>
+  </form>
+</dialog>
 <div class="toast" id="toast" role="status"></div>
 
 <script>
@@ -248,7 +296,7 @@ async function run(url, fresh) {
     $("result").classList.remove("hidden");
     $("tip").textContent = "Tap a point to see its date and price."; $("pts").open = false;
     $("plink").href = d.url;
-    renderHead(); renderPrices(); renderAll();
+    renderHead(); renderPrices(); renderSupport(); renderAll();
     $("result").scrollIntoView({ behavior: "smooth", block: "start" });
     if (d.tracked) loadSnaps(my);
     else {
@@ -478,6 +526,59 @@ function renderTable() {
   const { pts, ccy } = points();
   if (!pts.length) { $("ptable").innerHTML = `<p class="small">No data points yet.</p>`; return; }
   $("ptable").innerHTML = `<table><tr><th>Date</th><th>Price</th><th>Was</th><th>Source</th></tr>${pts.slice().reverse().map((p) => `<tr><td>${fmtDate(p.t)}</td><td>${esc(money(p.price, ccy))}</td><td>${p.was ? esc(money(p.was, ccy)) : "—"}</td><td>${p.kind === "archive" ? `<a href="https://web.archive.org/web/${p.ts}/${esc(p.orig || state.canonical)}" target="_blank" rel="noopener">archive</a>` : "our check"}</td></tr>`).join("")}</table>`;
+}
+
+
+// shops list and shop requests
+document.querySelectorAll("dialog [data-close]").forEach((b) => b.addEventListener("click", () => b.closest("dialog").close()));
+document.querySelectorAll("dialog").forEach((d) => d.addEventListener("click", (e) => { if (e.target === d) d.close(); }));
+let shopsLoaded = false;
+async function openShops() {
+  $("shopsDlg").showModal();
+  if (shopsLoaded) return;
+  try {
+    const d = await (await fetch("/api/shops")).json();
+    const cc = { ZA: "South Africa", UK: "United Kingdom", DE: "Germany" };
+    $("shoplist").innerHTML = d.shops.map((x) => `<li><span>${esc(x.name)}${x.archive ? ' <span class="small">(archived prices only)</span>' : ""}</span><span class="small">${esc(cc[x.cc] || x.cc)}</span></li>`).join("");
+    shopsLoaded = true;
+  } catch { $("shoplist").innerHTML = "<li>We could not load the list. Try again.</li>"; }
+}
+function openRequest(host, url) {
+  if ($("shopsDlg").open) $("shopsDlg").close();
+  $("rShop").value = host || ""; $("rUrl").value = url || ""; $("rMsg").textContent = ""; $("rMsg").className = "fmsg";
+  $("rSend").disabled = false; $("rSend").textContent = "Send request";
+  $("reqDlg").showModal(); (host ? $("rEmail") : $("rShop")).focus();
+}
+$("shopsBtn").addEventListener("click", openShops);
+$("askBtn").addEventListener("click", () => openRequest(state && !state.shop ? state.host : "", state && !state.shop ? state.url : ""));
+$("shopsAsk").addEventListener("click", () => openRequest("", ""));
+$("reqForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const msg = $("rMsg"), btn = $("rSend");
+  const shop = $("rShop").value.trim(), url = $("rUrl").value.trim(), email = $("rEmail").value.trim();
+  const bad = (t) => { msg.textContent = t; msg.className = "fmsg bad"; };
+  if (shop.length < 2) { bad("Type the shop name or website."); $("rShop").focus(); return; }
+  if (url && !/^https?:\/\/\S+\.\S+/i.test(url)) { bad("The product link must start with https://"); $("rUrl").focus(); return; }
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) { bad("Check the email address."); $("rEmail").focus(); return; }
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span>Sending…'; msg.textContent = ""; msg.className = "fmsg";
+  try {
+    const r = await fetch("/api/request", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ shop, product_url: url, email, website: $("rWeb").value }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) { bad(d.error || "We could not send the request. Try again."); btn.disabled = false; btn.textContent = "Send request"; return; }
+    msg.textContent = "Thank you. We received your request."; msg.className = "fmsg ok";
+    btn.textContent = "Sent";
+    setTimeout(() => { if ($("reqDlg").open) $("reqDlg").close(); }, 1800);
+  } catch { bad("We could not send the request. Check your connection and try again."); btn.disabled = false; btn.textContent = "Send request"; }
+});
+function renderSupport() {
+  const el = $("unsup");
+  if (state.shop) { el.classList.add("hidden"); el.innerHTML = ""; return; }
+  const ok = state.current.status === "ok" && state.current.price;
+  el.innerHTML = ok
+    ? `<b>This shop is not on our list yet.</b>We read a price, but the result is less certain.<button type="button" class="btn2" id="unsupAsk">Ask us to add this shop</button>`
+    : `<b>We do not check this shop yet.</b>You can type the price you see below, or ask us to add the shop.<button type="button" class="btn2" id="unsupAsk">Ask us to add this shop</button>`;
+  el.classList.remove("hidden");
+  $("unsupAsk").addEventListener("click", () => openRequest(state.host, state.url));
 }
 
 let rz; addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => state && renderChart(), 150); });

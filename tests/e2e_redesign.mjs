@@ -113,6 +113,45 @@ for (const i of [0, 1, 2]) {
   await p.screenshot({ path: `${OUT}/redesign-result-dark.png`, fullPage: true });
   await p.context().close();
 }
+// 6. shops list, unsupported shop and the request form
+{
+  const p = await page(mobile); await p.goto(BASE + "/");
+  await p.click("#shopsBtn"); await p.waitForFunction(() => document.querySelectorAll("#shoplist li").length >= 10, null, { timeout: 15000 });
+  ok("shops list opens", await p.isVisible("#shopsDlg"));
+  ok("shops list has Cycle Lab", (await p.textContent("#shoplist")).includes("Cycle Lab"));
+  await p.click("#shopsDlg button.go[data-close]"); ok("shops list closes", !(await p.isVisible("#shopsDlg")));
+  await p.click("#askBtn"); ok("footer ask opens form", await p.isVisible("#reqDlg"));
+  await p.click("#reqDlg .x"); ok("form closes with ×", !(await p.isVisible("#reqDlg")));
+  // unsupported shop with no readable price
+  await p.fill("#u", "https://example.com/some-product"); await p.click("#go");
+  await p.waitForSelector("#result:not(.hidden)", { timeout: 60000 }); await waitArchive(p);
+  ok("unsupported shop message", (await p.textContent("#unsup")).includes("We do not check this shop yet."));
+  ok("unsupported shop shows manual price box", await p.isVisible("#manualbox"));
+  await p.screenshot({ path: `${OUT}/unsupported-shop.png`, fullPage: true });
+  await p.click("#unsupAsk");
+  ok("form prefilled with host", (await p.inputValue("#rShop")) === "example.com");
+  ok("form prefilled with product link", (await p.inputValue("#rUrl")).includes("example.com/some-product"));
+  ok("form has the best-effort note", (await p.textContent("#reqDlg")).includes("Some shops block price checks"));
+  await p.fill("#rShop", ""); await p.click("#rSend"); ok("form needs shop", /Type the shop/.test(await p.textContent("#rMsg")));
+  await p.fill("#rShop", "example.com"); await p.fill("#rEmail", "not-an-email"); await p.click("#rSend"); ok("form checks email", /email/.test(await p.textContent("#rMsg")));
+  await p.fill("#rEmail", ""); await p.fill("#rShop", process.env.E2E_SHOP || "e2e-test example.com");
+  await p.screenshot({ path: `${OUT}/request-form.png` });
+  await p.click("#rSend"); await p.waitForFunction(() => /Thank you|could not|many/.test(document.getElementById("rMsg").textContent), null, { timeout: 15000 });
+  ok("form submit succeeds", /Thank you/.test(await p.textContent("#rMsg")), await p.textContent("#rMsg"));
+  await p.waitForTimeout(2200); ok("form closes after success", !(await p.isVisible("#reqDlg")));
+  ok("unsupported flow no JS errors", p._errs.length === 0, p._errs.join(" | "));
+  await p.context().close();
+}
+// 7. Cycle Lab is supported and reads a price
+{
+  const p = await page(mobile);
+  await p.goto(BASE + "/?u=" + encodeURIComponent("https://www.cyclelab.com/product/dm101124-dm-bike-gravel-carb-orbea-terra-700c-slv-l"));
+  await p.waitForSelector("#result:not(.hidden)", { timeout: 60000 }); await waitArchive(p);
+  ok("Cycle Lab price read", /R\s?69\s?999/.test((await p.textContent("#prices")).replace(/[\u00a0,]/g, " ")), await p.textContent("#prices"));
+  ok("Cycle Lab is on the list (no unsupported box)", !(await p.isVisible("#unsup")));
+  await p.screenshot({ path: `${OUT}/cyclelab-result.png`, fullPage: true });
+  await p.context().close();
+}
 await browser.close();
 const failed = results.filter((r) => !r.pass);
 console.log(`\n${results.length - failed.length}/${results.length} passed`);
