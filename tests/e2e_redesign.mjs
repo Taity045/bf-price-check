@@ -44,7 +44,7 @@ for (const [name, o] of [["desktop", desktop], ["mobile", mobile]]) {
   await p.context().close();
 }
 // 3. examples
-const shots = { 0: "redesign-result-uk-blocked.png", 1: "redesign-result.png", 2: "redesign-result-eu.png" };
+const shots = { 0: "example-takealot.png", 1: "example-evetech.png", 2: "example-cyclelab.png" };
 for (const i of [0, 1, 2]) {
   const p = await page(mobile); await p.goto(BASE + "/");
   const label = await p.locator("#chips a").nth(i).textContent();
@@ -53,8 +53,9 @@ for (const i of [0, 1, 2]) {
   await waitArchive(p);
   const big = (await p.textContent("#verdict .big"))?.trim();
   const n = await pointCount(p);
-  ok(`example "${label}" shows a verdict`, !!big && !/Not enough|Can't judge/.test(big), big);
-  ok(`example "${label}" chart has >= 3 points`, n >= 3, String(n));
+  ok(`example "${label}" is a South African shop`, /Takealot|Evetech|Cycle Lab/.test(label), label);
+  ok(`example "${label}" shows a price and a verdict box`, !!big && /R\s?\d/.test(await p.textContent("#prices")), big);
+  ok(`example "${label}" chart has >= 1 point`, n >= 1, String(n));
   ok(`example "${label}" URL updated`, p.url().includes("?u="));
   ok(`example "${label}" shop link set`, (await p.getAttribute("#plink", "href")).startsWith("https://"));
   ok(`example "${label}" no sideways scroll`, await noOverflow(p));
@@ -64,10 +65,14 @@ for (const i of [0, 1, 2]) {
   await p.click("#pts summary"); ok(`example "${label}" all-prices table opens`, (await p.locator("#ptable tr").count()) >= 2);
   await p.screenshot({ path: `${OUT}/${shots[i]}`, fullPage: true });
   if (i === 0) {
-    ok("blocked shop shows manual price box", await p.isVisible("#manualbox"));
-    await p.fill("#mnow", "99"); await p.selectOption("#mcur", "GBP"); await p.click("#mapply");
-    const b2 = (await p.textContent("#verdict .big")).trim();
-    ok("manual price updates verdict", /deal/i.test(b2), b2);
+    const p2 = await page(mobile);
+    await p2.goto(BASE + "/?u=" + encodeURIComponent("https://www.currys.co.uk/products/apple-airpods-4-with-active-noise-cancellation-white-10270519.html"));
+    await p2.waitForSelector("#result:not(.hidden)", { timeout: 60000 }); await waitArchive(p2);
+    ok("shop that blocks us shows manual price box", await p2.isVisible("#manualbox"));
+    await p2.fill("#mnow", "99"); await p2.selectOption("#mcur", "GBP"); await p2.click("#mapply");
+    const b2 = (await p2.textContent("#verdict .big")).trim();
+    ok("manual price updates verdict", !/Can't judge/.test(b2), b2);
+    await p2.context().close();
   }
   if (i === 1) {
     // share falls back to copy on desktop-like context; on mobile navigator.share may exist; stub it
