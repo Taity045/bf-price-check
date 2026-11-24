@@ -92,7 +92,7 @@ for (const w of WIDTHS) for (const scheme of ["light", "dark"]) {
   ok("verdict stamp was revealed", await p.evaluate(() => { const v = document.getElementById("verdict"); return v.classList.contains("unk") || v.dataset.revealed === v.querySelector(".big").textContent.trim(); }));
   ok("verdict looks like a stamp", await p.evaluate(() => { const v = document.getElementById("verdict"); if (v.classList.contains("unk")) return true; const cs = getComputedStyle(v.querySelector(".big")); return cs.textTransform === "uppercase" && parseFloat(cs.borderTopWidth) >= 2 && cs.transform !== "none"; }));
   const best = await p.locator("#verdict .best").textContent().catch(() => "");
-  ok("best time to buy line from real data", /lowest in the last 12 months/i.test(best), best);
+  ok("best time to buy line from real data", /lowest.* in the last 12 months/i.test(best), best);
   // share
   await p.click("#share"); await p.waitForSelector("#shareDlg[open]");
   const wa = await p.getAttribute("#shareWa", "href");
@@ -161,6 +161,23 @@ for (const [n, o] of [["1280", wide(1280)], ["390", phone()]]) {
   await p.waitForFunction(() => /Thank you|could not|many|person/.test(document.getElementById("rMsg").textContent), null, { timeout: 15000 }).catch(() => {});
   ok(`${n}: result form submits`, /Thank you/.test(await p.textContent("#rMsg")), await p.textContent("#rMsg"));
   ok(`${n}: request flow no JS errors`, p._errs.length === 0, p._errs.join(" | "));
+  await p.context().close();
+}
+// known-blocked shop: plain message and manual box, no "ask us" form; shops list has no Amazon
+{
+  const p = await page(phone());
+  await p.goto(BASE + "/?u=" + encodeURIComponent("https://www.amazon.co.za/dp/B0DGJ7HYG1"));
+  await p.waitForSelector("#result:not(.hidden)", { timeout: 60000 });
+  const blockedOk = await p.evaluate(() => !document.getElementById("unsup").classList.contains("hidden"));
+  const t = await p.textContent("#unsup");
+  const priceRead = await p.evaluate(() => !document.querySelector("#prices .none"));
+  ok("Amazon shows 'often blocks our checks' when no price", priceRead || (blockedOk && /Amazon South Africa often blocks our checks\. You can type the price below\./.test(t)), t);
+  ok("blocked shop has no ask-us button", !(await p.isVisible("#unsupAsk")));
+  ok("blocked shop shows the manual price box", priceRead || await p.isVisible("#manualbox"));
+  await p.screenshot({ path: `${OUT}/feature-blocked-shop.png`, fullPage: true });
+  await p.click("#shopsBtn"); await p.waitForFunction(() => document.querySelectorAll("#shoplist li").length >= 40, null, { timeout: 15000 }).catch(() => {});
+  const list = await p.textContent("#shoplist");
+  ok("shops list has only working shops (no Amazon)", !/Amazon/.test(list) && /Takealot/.test(list) && /Cycle Lab/.test(list), (await p.locator("#shoplist li").count()) + " shops");
   await p.context().close();
 }
 // a page loaded before a deploy asks for an older script name: it must still get the script

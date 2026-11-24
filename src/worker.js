@@ -710,25 +710,18 @@ async function storedHistory(env, canon) {
 }
 
 // ---------- supported shops ----------
-// Shops whose pages we read reliably. "archive" = the shop blocks live checks, so we use archived copies only.
-const SHOPS = [
-  { name: "Takealot", host: "takealot.com", cc: "ZA" },
-  { name: "Woolworths", host: "woolworths.co.za", cc: "ZA" },
-  { name: "Checkers", host: "checkers.co.za", cc: "ZA" },
-  { name: "Clicks", host: "clicks.co.za", cc: "ZA" },
-  { name: "Loot", host: "loot.co.za", cc: "ZA" },
-  { name: "Evetech", host: "evetech.co.za", cc: "ZA" },
-  { name: "Cycle Lab", host: "cyclelab.com", cc: "ZA" },
-  { name: "Amazon South Africa", host: "amazon.co.za", cc: "ZA" },
-  { name: "Amazon UK", host: "amazon.co.uk", cc: "UK" },
-  { name: "Currys", host: "currys.co.uk", cc: "UK", archive: true },
-  { name: "MediaMarkt Germany", host: "mediamarkt.de", cc: "DE" },
-  { name: "Amazon Germany", host: "amazon.de", cc: "DE" },
-];
-function shopFor(host) {
-  const h = stripWww(String(host || "").toLowerCase());
-  return SHOPS.find((x) => h === x.host || h.endsWith("." + x.host)) || null;
+// Shops we read live (from research/retailers.json, see src/shops.js), and shops known to block us.
+const SHOPS = SHOP_LIST.works;
+function matchShop(list, url) {
+  let u; try { u = new URL(url); } catch { return null; }
+  const h = stripWww(u.hostname.toLowerCase()), path = u.pathname.toLowerCase();
+  return list.find((x) => x.d.some((d) => {
+    const i = d.indexOf("/"), dh = i < 0 ? d : d.slice(0, i), dp = i < 0 ? "" : d.slice(i);
+    return (h === dh || h.endsWith("." + dh)) && (!dp || path === dp || path.startsWith(dp + "/"));
+  })) || null;
 }
+const shopFor = (url) => matchShop(SHOP_LIST.works, /^https?:/.test(url) ? url : "https://" + url + "/");
+const blockedShopFor = (url) => matchShop(SHOP_LIST.blocked, url);
 
 // ---------- shop requests ----------
 let requestsTableReady = false;
@@ -801,7 +794,8 @@ async function apiCheck(req, env, ctx) {
     },
     history_days: HISTORY_DAYS, verdict,
     ids: { gtin: current.gtin || null, mpn: current.mpn || null },
-    shop: (() => { const x = shopFor(host); return x ? { name: x.name, archive: !!x.archive } : null; })(),
+    shop: (() => { const x = shopFor(v.url.href); return x ? { name: x.name } : null; })(),
+    blocked_shop: (() => { const x = shopFor(v.url.href) ? null : blockedShopFor(v.url.href); return x ? { name: x.name } : null; })(),
   });
 }
 
@@ -888,7 +882,7 @@ export default {
       if (url.pathname === "/api/e2e/cleanup") return await apiE2ECleanup(req, env);
       if (url.pathname === "/api/e2e/mail-test") return await apiMailTest(req, env);
       if (req.method !== "GET" && req.method !== "HEAD") return json({ error: "method not allowed" }, 405);
-      if (url.pathname === "/api/shops") return json({ shops: SHOPS.map(({ name, host, cc, archive }) => ({ name, host, cc, archive: !!archive })) }, 200, { "cache-control": "public, max-age=3600" });
+      if (url.pathname === "/api/shops") return json({ shops: SHOPS.map(({ name, cc, d }) => ({ name, cc, host: d[0] })) }, 200, { "cache-control": "public, max-age=3600" });
       if (url.pathname === "/api/check") return await apiCheck(req, env, ctx);
       if (url.pathname === "/api/config") return json({ alerts: alertsOn(env), min_judged: WALL_MIN_JUDGED, turnstile: turnstileOn(env) ? env.TURNSTILE_SITEKEY : null }, 200, { "cache-control": "public, max-age=300" });
       if (url.pathname === "/api/verdict") return await apiVerdict(req, env);

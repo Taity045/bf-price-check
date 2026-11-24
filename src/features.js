@@ -86,7 +86,7 @@ async function apiVerdict(req, env) {
 }
 
 // ---------- wall, shop scores, counter ----------
-function shopName(host) { const s = shopFor(host); return s ? s.name : host; }
+function shopName(host) { const s = shopFor(host) || blockedShopFor("https://" + host + "/"); return s ? s.name : host; }
 async function wallData(env) {
   const cached = await cacheGet(env, "wall-v1");
   if (cached) return cached;

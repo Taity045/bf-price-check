@@ -120,7 +120,7 @@ async function renderOg(info) {
   cv.text(F.s, "Deal or Dud?", 120, 93, ink);
   if (!info.verdict && !info.price) {
     wrap(F.h1, "You think you found a good deal? Let's find out!", 1056, 3).forEach((l, i) => cv.text(F.h1, l, 72, 250 + i * 92, ink));
-    cv.text(F.b, "Paste a product link. See 12 months of prices.", 72, 520, mut);
+    cv.text(F.b, "Paste a product link. Compare it with older prices.", 72, 520, mut);
     cv.rect(0, OG_H - 24, OG_W, 24, "#ffc21a");
     return encodePng(cv);
   }
@@ -138,7 +138,7 @@ async function renderOg(info) {
   // facts line
   const facts = [];
   if (info.verdict === "Fake discount" && info.high90) facts.push(`Highest in 90 days: ${ogMoney(info.high90, info.currency)}`);
-  else if (info.low) facts.push(`12-month low: ${ogMoney(info.low, info.currency)}`);
+  else if (info.low) facts.push(`Lowest we found: ${ogMoney(info.low, info.currency)}`);
   if (info.med) facts.push(`Usual: ${ogMoney(info.med, info.currency)}`);
   if (!info.verdict && info.was && info.price) facts.push(`The shop says ${Math.round((1 - info.price / info.was) * 100)}% off. We need more history to judge.`);
   if (facts.length) cv.text(F.s, ogClean(facts.join("  ·  ")), 72, yP + 62, mut, 640);
@@ -158,7 +158,7 @@ async function renderOg(info) {
       cv.rect(b.x - 1, Math.min(a.y, b.y) - 2, 4, Math.abs(b.y - a.y) + 4, ink);
     }
     if (info.price) { cv.disc(cx1, Y(info.price), 11, ink); cv.disc(cx1, Y(info.price), 8, "#ffc21a"); }
-    cv.text(F.s, "Last 12 months", cx0, cy1 + 46, mut);
+    cv.text(F.s, "Prices we found", cx0, cy1 + 46, mut);
   }
   cv.rect(0, OG_H - 64, OG_W, 64, "#ffc21a"); cv.rect(0, OG_H - 66, OG_W, 2, ink);
   cv.text(F.s, ogClean(`${info.host || ""}  ·  Prices from the shop and the Internet Archive`), 72, OG_H - 24, ink, 1056);
@@ -180,7 +180,7 @@ async function apiOg(req, env) {
   if (u) { const vv = validateUrl(u); if (vv.url) canon = canonicalize(vv.url).canon; }
   let info = null;
   if (canon) { const tr = await env.DB.prepare("SELECT url FROM tracked WHERE url = ?").bind(canon).first(); if (tr) info = await ogInfo(env, canon); }
-  const key = "og-v2:" + (info ? canon + ":" + (info.updated_at || 0) : "home");
+  const key = "og-v3:" + (info ? canon + ":" + (info.updated_at || 0) : "home");
   const c = await cacheGet(env, key);
   let png;
   if (c && c.b64) png = Uint8Array.from(atob(c.b64), (x) => x.charCodeAt(0));
@@ -203,7 +203,7 @@ async function homeWithMeta(req, env, html) {
   if (!info) return html;
   const money = (v) => ogMoney(v, info.currency);
   const title = `${info.verdict ? info.verdict + ": " : ""}${info.title || info.host}`.slice(0, 120);
-  const desc = [info.price ? `Now ${money(info.price)}` : "", info.was ? `the shop says it was ${money(info.was)}` : "", info.verdict === "Fake discount" && info.high90 ? `but the highest price in 90 days was ${money(info.high90)}` : info.low ? `12-month low ${money(info.low)}` : ""].filter(Boolean).join(", ") + ".";
+  const desc = [info.price ? `Now ${money(info.price)}` : "", info.was ? `the shop says it was ${money(info.was)}` : "", info.verdict === "Fake discount" && info.high90 ? `but the highest price in 90 days was ${money(info.high90)}` : info.low ? `lowest we found ${money(info.low)}` : ""].filter(Boolean).join(", ") + ".";
   const img = `${url.origin}/og.png?u=${encodeURIComponent(canon)}&v=${info.updated_at || 0}`;
   const meta = `<meta property="og:title" content="${escHtml(title)}">\n<meta property="og:description" content="${escHtml(desc)}">\n<meta property="og:image" content="${escHtml(img)}">\n<meta property="og:image:width" content="1200">\n<meta property="og:image:height" content="630">\n<meta property="og:type" content="website">\n<meta property="og:url" content="${escHtml(url.origin + "/?u=" + encodeURIComponent(u))}">\n<meta name="twitter:card" content="summary_large_image">`;
   const ns = `<noscript><div class="card" style="margin-top:20px"><p class="small">${escHtml(info.host || "")}</p><h2>${escHtml(info.title || "")}</h2>${info.verdict ? `<p><b>${escHtml(info.verdict)}</b></p>` : ""}<p class="num">${escHtml(desc)}</p><p class="small">Turn on JavaScript to see the full price history.</p></div></noscript>`;

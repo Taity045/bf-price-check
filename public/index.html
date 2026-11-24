@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Deal or Dud? · You think you found a good deal? Let's find out!</title>
-<meta name="description" content="Paste a product link. See 12 months of that shop's prices and find out if the deal is real.">
+<meta name="description" content="Paste a product link. We compare today's price with older prices from the same shop, up to 12 months back.">
 <meta property="og:title" content="Deal or Dud?">
-<meta property="og:description" content="Paste a product link. See 12 months of prices and find out if the deal is real.">
+<meta property="og:description" content="Paste a product link. We compare today's price with older prices from the same shop.">
 <meta property="og:image" content="/og.png">
 <!--CANONICAL-->
 <meta name="theme-color" content="#fbfaf6" media="(prefers-color-scheme: light)">
@@ -252,7 +252,7 @@ footer{border-top:2px dashed var(--ink)}
 
   <section class="hero">
     <h1>You think you found a <mark>good deal</mark>? Let's find out!</h1>
-    <p class="sub">Paste a product link. We compare today's price with 12 months of that shop's prices.</p>
+    <p class="sub">Paste a product link. We compare today's price with older prices from the same shop, up to 12 months back.</p>
     <form id="f" action="/" method="get" autocomplete="off" novalidate>
       <label for="u" class="hidden">Product link</label>
       <input id="u" name="u" type="url" inputmode="url" placeholder="Paste a product link" aria-label="Product link" enterkeyhint="go">
@@ -297,7 +297,7 @@ footer{border-top:2px dashed var(--ink)}
     </section>
 
     <div class="card">
-      <div class="charthead"><h3>12 months of prices</h3><span class="small num" id="cnt"></span></div>
+      <div class="charthead"><h3>Price history</h3><span class="small num" id="cnt"></span></div>
       <div class="prog" id="prog"><i></i></div>
       <div class="small" id="progtxt" style="margin-top:6px"></div>
       <div id="chart"></div>
@@ -323,7 +323,7 @@ footer{border-top:2px dashed var(--ink)}
 
   <section id="wallView" class="page hidden" aria-labelledby="wallTitle">
     <h1 id="wallTitle">Fake discount wall</h1>
-    <p class="sub" style="margin:0">The biggest fake discounts we found. A fake discount is a "was" price that is higher than any price in the last 90 days, while today's price is the usual price.</p>
+    <p class="sub" style="margin:0">The biggest fake discounts we found in our checks. Here, a fake discount is a "was" price that is higher than every price we saw in the last 90 days, while today's price is about the usual price.</p>
     <p class="note" id="wallCount"></p>
     <h2>Worst fake discounts</h2>
     <ul class="olist wall" id="wallList"><li>Loading…</li></ul>
@@ -368,7 +368,7 @@ footer{border-top:2px dashed var(--ink)}
   <div class="dlg">
     <div class="dlghead"><h2 id="shopsTitle">Shops we check</h2><button type="button" class="x" data-close aria-label="Close">×</button></div>
     <ul class="shoplist" id="shoplist"><li>Loading…</li></ul>
-    <p class="note">Other shops can work too, but the result is less certain.</p>
+    <p class="note">We can read prices on these shops' pages. Some products can still fail. Other shops can work too, but the result is less certain.</p>
     <div class="formrow"><button type="button" class="sec" id="shopsAsk">Ask us to add a shop</button><button type="button" class="go" data-close>Close</button></div>
   </div>
 </dialog>
@@ -480,7 +480,9 @@ const pct = (x) => Math.abs(Math.round(x * 100)) + "%";
 const signed = (x) => (x >= 0 ? "−" : "+") + Math.abs(Math.round(x * 100)) + "%";
 const fmtDate = (t) => new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("on"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("on"), 1800); }
+const toastQ = [];
+function toast(msg) { toastQ.push(msg); if (toastQ.length === 1) nextToast(); }
+function nextToast() { const t = $("toast"); if (!toastQ.length) return; t.textContent = toastQ[0]; t.classList.add("on"); setTimeout(() => { t.classList.remove("on"); toastQ.shift(); setTimeout(nextToast, 200); }, 1800); }
 function parseNum(s) { if (!s) return null; s = String(s).replace(/[^\d.,]/g, ""); if (/,\d{2}$/.test(s)) s = s.replace(/\./g, "").replace(",", "."); else s = s.replace(/,/g, ""); const n = parseFloat(s); return n > 0 ? n : null; }
 
 // examples
@@ -504,8 +506,8 @@ function shareInfo() {
   const link = SITE + "/?u=" + encodeURIComponent(state.url);
   const v = state.v || {}, t = state.title || "this deal";
   let text;
-  if (v.big === "Fake discount" && v.W) text = `Caught a fake discount! ${t}: the shop says it was ${money(v.W, v.C)}, but it has not cost that in 90 days. Do not fall for it.`;
-  else if (v.big === "Real deal") text = `Real deal! ${t} is at its lowest price in 12 months: ${money(v.P, v.C)}.`;
+  if (v.big === "Fake discount" && v.W) text = `Caught a fake discount! ${t}: the shop says it was ${money(v.W, v.C)}, but we did not see that price in the last 90 days.`;
+  else if (v.big === "Real deal") text = `Real deal! ${t} is at the lowest price we found in 12 months: ${money(v.P, v.C)}.`;
   else if (state.verdictText) text = `${state.verdictText}: ${t}`;
   else text = `Is this deal real? ${t}`;
   return { link, text };
@@ -689,8 +691,8 @@ function bestLine(P, C) {
   const { pts, ccy } = points();
   if (ccy !== C || pts.length < 3) return "";
   const low = pts.reduce((m, x) => (x.price < m.price ? x : m));
-  if (P != null && P <= low.price) return `<p class="best">Today's price is the lowest in the last 12 months.</p>`;
-  return `<p class="best">Lowest in the last 12 months: <b>${esc(money(low.price, C))}</b> in ${esc(new Date(low.t).toLocaleDateString("en-GB", { month: "long", year: "numeric" }))}.</p>`;
+  if (P != null && P <= low.price) return `<p class="best">Today's price is the lowest we found in the last 12 months.</p>`;
+  return `<p class="best">Lowest price we found in the last 12 months: <b>${esc(money(low.price, C))}</b> in ${esc(new Date(low.t).toLocaleDateString("en-GB", { month: "long", year: "numeric" }))}.</p>`;
 }
 
 function renderVerdict() {
@@ -723,7 +725,7 @@ function renderVerdict() {
   const vsMed = (med - P) / med, vsLow = (low - P) / low;
   const inflated = W && W > high90 * 1.03;
   const neverSeen = W && W > high * 1.03;
-  if (P <= low * 1.005 && vsMed >= 0.05) { cls = "good"; big = "Real deal"; body = `This is the lowest price in twelve months, ${pct(vsMed)} below the usual ${money(med, C)}.`; }
+  if (P <= low * 1.005 && vsMed >= 0.05) { cls = "good"; big = "Real deal"; body = `This is the lowest price we found in twelve months, ${pct(vsMed)} below the usual ${money(med, C)}.`; }
   else if (inflated && vsMed < 0.05) { cls = "bad"; big = "Fake discount"; body = `The "was" price looks inflated. Today's price is about what it usually costs (${money(med, C)}).`; }
   else if (P > med * 1.03) { cls = "bad"; big = "Pricier than usual"; body = `It usually costs ${money(med, C)}. Today's price is ${pct(vsMed)} higher. Wait if you can.`; }
   else if (vsMed >= 0.05) { cls = "good"; big = "Decent deal"; body = `${pct(vsMed)} below the usual ${money(med, C)}, but it has been cheaper: ${money(low, C)}.`; }
@@ -740,7 +742,7 @@ function renderVerdict() {
   state.v = { big, P, W, C, high90, med, low };
   const claimed = W ? `<p class="note">The shop claims ${Math.round((W - P) / W * 100)}% off ${esc(money(W, C))}. Real saving against the usual price: ${esc(money(Math.max(0, med - P), C))}.</p>` : "";
   setVerdict(cls, big, `<p class="vbody">${esc(body)}</p>${flags}
-    <div class="stats num"><div class="stat"><b>${esc(money(low, C))}</b><span class="lab">12-month low</span></div><div class="stat"><b>${esc(money(med, C))}</b><span class="lab">Usual price</span></div><div class="stat"><b>${esc(money(high, C))}</b><span class="lab">12-month high</span></div></div>
+    <div class="stats num"><div class="stat"><b>${esc(money(low, C))}</b><span class="lab">Lowest we found</span></div><div class="stat"><b>${esc(money(med, C))}</b><span class="lab">Usual price</span></div><div class="stat"><b>${esc(money(high, C))}</b><span class="lab">Highest we found</span></div></div>
     ${bestLine(P, C)}${bfLine}${claimed}
     ${archivedAt ? `<p class="note">Compared using the latest archived price (${esc(fmtDate(archivedAt))}).</p>` : ""}<p class="note">Based on ${pr.length} older price${pr.length === 1 ? "" : "s"}${cur.manual ? " and the price you entered" : ""}.${other ? ` ${other} point(s) with a different or unknown currency were left out.` : ""}</p>`);
   state.verdictText = big;
@@ -815,7 +817,7 @@ async function openShops() {
   try {
     const d = await (await fetch("/api/shops")).json();
     const cc = { ZA: "South Africa", UK: "United Kingdom", DE: "Germany" };
-    $("shoplist").innerHTML = d.shops.map((x) => `<li><span>${esc(x.name)}${x.archive ? ' <span class="small">(archived prices only)</span>' : ""}</span><span class="small">${esc(cc[x.cc] || x.cc)}</span></li>`).join("");
+    $("shoplist").innerHTML = d.shops.map((x) => `<li><span>${esc(x.name)}</span><span class="small">${esc(cc[x.cc] || x.cc)}</span></li>`).join("");
     shopsLoaded = true;
   } catch { $("shoplist").innerHTML = "<li>We could not load the list. Try again.</li>"; }
 }
@@ -850,8 +852,12 @@ $("reqForm").addEventListener("submit", async (e) => {
 });
 function renderSupport() {
   const el = $("unsup");
-  if (state.shop) { el.classList.add("hidden"); el.innerHTML = ""; return; }
   const ok = state.current.status === "ok" && state.current.price;
+  if (state.shop || (state.blocked_shop && ok)) { el.classList.add("hidden"); el.innerHTML = ""; return; }
+  if (state.blocked_shop) {
+    el.innerHTML = `<b>${esc(state.blocked_shop.name)} often blocks our checks.</b> You can type the price below.`;
+    el.classList.remove("hidden"); return;
+  }
   el.innerHTML = ok
     ? `<b>This shop is not on our list yet.</b>We read a price, but the result is less certain.<button type="button" class="btn2" id="unsupAsk">Ask us to add this shop</button>`
     : `<b>We do not check this shop yet.</b>You can type the price you see below, or ask us to add the shop.<button type="button" class="btn2" id="unsupAsk">Ask us to add this shop</button>`;
