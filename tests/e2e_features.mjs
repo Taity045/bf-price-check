@@ -298,7 +298,7 @@ for (const base of [...new Set([BASE, "https://eish.veldwire.com", "https://bf-p
   ok("privacy page has no Your rights section", !/Your rights|Information Regulator/.test(txt) && !(await p.$("#privAsk")));
   const all = await p.content();
   ok("no full name or email on the page", !/Tatenda|Magondo|gmail|hello@/i.test(all));
-  ok("no Made by text and no name in the page", !(await p.$("#madeby")) && !/Taity|Made by/i.test(await p.content()));
+  ok("no Made by text and no name in the page", !(await p.$("#madeby")) && !/T[a]ity|Made by/i.test(await p.content()));
   ok("pages no JS errors", p._errs.length === 0, p._errs.join(" | "));
   await p.context().close();
 }
