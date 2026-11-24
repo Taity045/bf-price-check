@@ -6,7 +6,7 @@ import { chromium } from "playwright-core";
 
 const BASE = (process.argv[2] || process.env.BASE || "http://127.0.0.1:8787").replace(/\/$/, "");
 const SHOTS = process.env.SHOTS || "e2e-artifacts";
-const HOME_BUDGET = Number(process.env.HOME_BUDGET || 150 * 1024); // bytes for the first view (HTML, JS, CSS, fonts)
+const HOME_BUDGET = Number(process.env.HOME_BUDGET || 100 * 1024); // bytes for the first view (HTML, JS, CSS, fonts)
 mkdirSync(SHOTS, { recursive: true });
 
 const results = [];
