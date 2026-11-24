@@ -13,7 +13,7 @@ const SNAP_SPACING_DAYS = 6;
 const MAX_SNAPS = 64;
 const MAX_TRACKED = 1000;
 const RECHECK_AFTER_MS = 20 * 3600 * 1000;
-const LIVE_CACHE_PREFIX = "check-v2:";
+const LIVE_CACHE_PREFIX = "check-v3:";
 const RL = { check: 20, snap: 120 };       // requests per IP per minute
 const MAX_HTML = 4 * 1024 * 1024;
 
@@ -29,8 +29,12 @@ const ymd = (d) => d.toISOString().slice(0, 10).replace(/-/g, "");
 const tsToMs = (ts) => Date.UTC(+ts.slice(0,4), +ts.slice(4,6)-1, +ts.slice(6,8), +ts.slice(8,10)||0, +ts.slice(10,12)||0, +ts.slice(12,14)||0);
 const stripWww = (h) => h.replace(/^www\d?\./, "").replace(/^m\./, "");
 
+// South African stores that use a .com (or other) domain.
+const HOST_CUR = { "cyclelab.com": "ZAR", "takealot.com": "ZAR", "bash.com": "ZAR", "superbalist.com": "ZAR", "mrp.com": "ZAR", "pepstores.com": "ZAR", "loot.co.za": "ZAR", "dionwired.com": "ZAR", "hificorp.com": "ZAR", "evetech.com": "ZAR", "builders.com": "ZAR", "sportsmanswarehouse.com": "ZAR", "makro.com": "ZAR", "game.com": "ZAR", "zando.com": "ZAR", "netflorist.com": "ZAR" };
 function tldCurrency(host) {
-  for (const [t, c] of TLD_CUR) if (host.endsWith(t)) return c;
+  const h = stripWww(String(host || "").toLowerCase());
+  if (HOST_CUR[h]) return HOST_CUR[h];
+  for (const [t, c] of TLD_CUR) if (h.endsWith(t)) return c;
   return null;
 }
 
@@ -287,6 +291,57 @@ function pageAmount(raw, fallbackCurrency) {
 }
 
 // Generic fallbacks used by many shop platforms (Shopify, Magento, SFCC, Next.js data)
+// GA4 "view_item" event pushed to dataLayer/gtag: ecommerce { currency, value, items: [{ price }] }.
+// Only the view_item event is used, so prices of related products (view_item_list) are ignored.
+function parseDataLayer(html, out) {
+  const re = /["']?event["']?\s*[:,]\s*["']view_item["']/g;
+  let m;
+  while ((m = re.exec(html))) {
+    const seg = html.slice(m.index, m.index + 2500);
+    const cur = seg.match(/["']?currency["']?\s*:\s*["']([A-Z]{3})["']/);
+    const item = seg.match(/items["']?\s*:\s*\[\s*\{([\s\S]{0,1500}?)\}/);
+    const ip = item && item[1].match(/["']?price["']?\s*:\s*["']?([\d.,\s]+)["']?/);
+    const val = seg.match(/["']?value["']?\s*:\s*["']?([\d.,\s]+)["']?/);
+    const price = parsePrice((ip && ip[1]) || (val && val[1]));
+    if (!price) continue;
+    out.price = price;
+    if (cur && !out.currency) out.currency = cur[1];
+    const name = item && item[1].match(/["']?item_name["']?\s*:\s*["']([^"']{2,200})["']/);
+    if (name && !out.title) out.title = name[1].trim();
+    // a discount amount in the same item gives the list price
+    const disc = item && item[1].match(/["']?discount["']?\s*:\s*["']?-?\s*(?:R|£|€)?\s*([\d.,]+)["']?/);
+    const d = disc && parsePrice(disc[1]);
+    if (d && d > 0 && d < price * 10) out.was = Math.round((price + d) * 100) / 100;
+    return "datalayer";
+  }
+  return null;
+}
+
+// Last resort: the price block of the main product, e.g. <h3 class="r_price">R 69,999.99</h3> <del>R 119,999.99</del>.
+// Only blocks whose class names say they belong to the product detail area are used, and the
+// amount must carry a currency symbol, so prices of related products are not picked.
+function parseMainPriceBlock(html, out) {
+  const blockRe = /class\s*=\s*["'][^"']*(?:details?[-_ ]?box[-_ ]?price|product[-_ ]?(?:info|detail|main)[^"']*price|pdp[-_ ]?price|product-price-main|price[-_ ]?main)[^"']*["']/gi;
+  const m = blockRe.exec(html);
+  if (!m) return null;
+  const blk = html.slice(m.index, m.index + 1500);
+  const amt = /(R|£|€)\s?(\d{1,3}(?:[ ,\u00a0]\d{3})*(?:[.,]\d{2})?|\d+(?:[.,]\d{2})?)(?!\d)/;
+  const strikeRe = /<(del|s|strike)\b[^>]*>([\s\S]{0,200}?)<\/\1>|class\s*=\s*["'][^"']*(?:old|was|inst|regular|list)[-_]?price[^"']*["'][^>]*>([^<]{0,80})/i;
+  const sm = blk.match(strikeRe);
+  const strikeTxt = sm ? (sm[2] || sm[3] || "") : "";
+  const rest = sm ? blk.replace(sm[0], " ") : blk;
+  const pm = rest.replace(/<[^>]+>/g, " ").match(amt);
+  if (!pm) return null;
+  const price = parsePrice(pm[2]);
+  if (!price) return null;
+  out.price = price;
+  if (!out.currency) out.currency = symbolCurrency(pm[0]);
+  const wm = strikeTxt.replace(/<[^>]+>/g, " ").match(amt);
+  const was = wm && parsePrice(wm[2]);
+  if (was && was > price) out.was = was;
+  return "price-block";
+}
+
 function parseFallback(html, out) {
   // schema.org Offer embedded in a script (JSON-LD built by JavaScript, or app state)
   const offRe = /"@type"\s*:\s*"(?:Offer|AggregateOffer)"/g;
@@ -366,8 +421,18 @@ function extractFromHtml(html, host) {
   const metaSrc = parseMeta(html, out);
   if (!source) source = metaSrc;
   if (!source) source = parseFallback(html, out);
+  if (!source) source = parseDataLayer(html, out);
+  if (!source) {
+    const tmp = {};
+    const blk = parseMainPriceBlock(html, tmp);
+    if (blk) { source = blk; out.price = tmp.price; if (tmp.was) out.was = tmp.was; if (!out.currency) out.currency = tmp.currency; }
+  } else if (source === "datalayer" && !out.was) {
+    // the visible block often shows the crossed-out price; use it only when it matches the same price
+    const tmp = {};
+    if (parseMainPriceBlock(html, tmp) && tmp.price === out.price && tmp.was) out.was = tmp.was;
+  }
   if (!out.title) { const t = html.match(/<title[^>]*>([^<]{1,300})<\/title>/i); if (t) out.title = decodeEntities(t[1].trim()); }
-  if (out.title) out.title = decodeEntities(out.title).slice(0, 200);
+  if (out.title) out.title = decodeEntities(out.title).replace(/\s+/g, " ").trim().slice(0, 200);
   if (out.image && typeof out.image !== "string") out.image = null;
   if (out.image && !/^https?:\/\//.test(out.image)) out.image = null;
   if (out.currency) { out.currency = String(out.currency).toUpperCase().trim(); if (out.currency === "R" ) out.currency = "ZAR"; if (!/^[A-Z]{3}$/.test(out.currency)) out.currency = null; }
@@ -646,7 +711,7 @@ async function apiCheck(req, env, ctx) {
   let cached = !!current;
   if (!current) {
     current = await getCurrent(canonInfo, v.url.toString(), host);
-    await cachePut(env, ckey, current, current.status === "ok" ? CHECK_TTL_MS : 30 * 60 * 1000);
+    await cachePut(env, ckey, current, current.status === "ok" ? CHECK_TTL_MS : 10 * 60 * 1000);
     await recordCheck(env, canonInfo.canon, current);
   }
   const tracked = await track(env, canonInfo.canon, v.url.toString(), current);
