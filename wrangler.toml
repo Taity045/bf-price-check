@@ -25,3 +25,4 @@ name = "EMAIL"
 SITE_URL = "https://bf-price-check.tm-deal-lab.workers.dev"
 MAIL_FROM = "no-reply@veldwire.com"
 ALERTS = "off"
+WALL = "off"   # turn on when there are at least ~10 real fake-discount catches from ZA/UK shops

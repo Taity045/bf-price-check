@@ -884,9 +884,10 @@ export default {
       if (req.method !== "GET" && req.method !== "HEAD") return json({ error: "method not allowed" }, 405);
       if (url.pathname === "/api/shops") return json({ shops: SHOPS.map(({ name, cc, d }) => ({ name, cc, host: d[0] })) }, 200, { "cache-control": "public, max-age=3600" });
       if (url.pathname === "/api/check") return await apiCheck(req, env, ctx);
-      if (url.pathname === "/api/config") return json({ alerts: alertsOn(env), min_judged: WALL_MIN_JUDGED, turnstile: turnstileOn(env) ? env.TURNSTILE_SITEKEY : null }, 200, { "cache-control": "public, max-age=300" });
+      if (url.pathname === "/api/config") return json({ wall: env.WALL === "on", alerts: alertsOn(env), min_judged: WALL_MIN_JUDGED, turnstile: turnstileOn(env) ? env.TURNSTILE_SITEKEY : null }, 200, { "cache-control": "public, max-age=300" });
       if (url.pathname === "/api/verdict") return await apiVerdict(req, env);
       if (url.pathname === "/api/others") return await apiOthers(req, env);
+      if (env.WALL !== "on" && (url.pathname === "/wall" || url.pathname === "/api/wall" || url.pathname === "/api/stats")) return url.pathname === "/wall" ? Response.redirect(url.origin + "/", 302) : json({ error: "off" }, 404);
       if (url.pathname === "/api/wall") return json(await wallData(env), 200, { "cache-control": "public, max-age=300" });
       if (url.pathname === "/api/stats") { const w = await wallData(env); return json({ fake_total: w.fake_total }, 200, { "cache-control": "public, max-age=300" }); }
       if (url.pathname === "/og.png") return await apiOg(req, env);

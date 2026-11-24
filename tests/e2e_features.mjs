@@ -47,7 +47,7 @@ for (const w of WIDTHS) for (const scheme of ["light", "dark"]) {
   const p = await page({ ...(w < 768 ? phone(w) : wide(w)), colorScheme: scheme });
   await mockApi(p);
   const tag = `${w}px ${scheme}`;
-  for (const [name, path] of [["home", "/"], ["wall", "/wall"], ["privacy", "/privacy"], ["result", "/?u=" + encodeURIComponent(PC)]]) {
+  for (const [name, path] of [["home", "/"], ["privacy", "/privacy"], ["result", "/?u=" + encodeURIComponent(PC)]]) {
     await p.goto(BASE + path);
     if (name === "result") { await p.waitForSelector("#result:not(.hidden)", { timeout: 30000 }); await waitArchive(p); }
     if (name === "wall") await p.waitForFunction(() => !/Loading/.test(document.getElementById("wallList").textContent), null, { timeout: 20000 });
@@ -72,7 +72,7 @@ for (const w of WIDTHS) for (const scheme of ["light", "dark"]) {
 // landscape phone
 {
   const p = await page({ ...phone(844, 390) }); await mockApi(p);
-  for (const path of ["/", "/?u=" + encodeURIComponent(PC), "/wall"]) {
+  for (const path of ["/", "/?u=" + encodeURIComponent(PC), "/privacy"]) {
     await p.goto(BASE + path); await p.waitForTimeout(400);
     ok(`landscape phone ${path.slice(0, 12)}: no sideways scroll`, await noOverflow(p));
   }
@@ -142,16 +142,27 @@ for (const w of WIDTHS) for (const scheme of ["light", "dark"]) {
   ok("other shops hides weak matches (PC: no barcode or model match)", Array.isArray(r.matches) && r.matches.length === 0, JSON.stringify(r).slice(0, 120));
 }
 // 3b. "Ask us to add a shop": footer link and result button, desktop and phone, with a real submit (test row)
-for (const [n, o] of [["1280", wide(1280)], ["390", phone()]]) {
+for (const [n, o] of [["1440", wide(1440)], ["1280", wide(1280)], ["390", phone()]]) {
   const p = await page(o);
   if (KEY) await p.route("**/api/request", (r) => r.continue({ headers: { ...r.request().headers(), "x-e2e-key": KEY } }));
   await p.goto(BASE + "/");
   await p.click("#askBtn"); await p.waitForSelector("#reqDlg[open]", { timeout: 5000 }).catch(() => {});
   ok(`${n}: footer "Ask us to add a shop" opens the form`, await p.isVisible("#reqDlg"));
-  await p.fill("#rShop", "e2e-test footer " + n); await p.click("#rSend");
+  const lay = await p.evaluate(() => {
+    const r = (id) => document.getElementById(id).getBoundingClientRect();
+    const d = document.querySelector("#reqDlg").getBoundingClientRect(), t = r("reqTitle"), shop = r("rShop"), mail = r("rEmail"), send = r("rSend");
+    const inside = [shop, mail, send].every((b) => b.left >= d.left - 1 && b.right <= d.right + 1 && b.bottom <= d.bottom + 1);
+    return { titleOneLine: t.height < 48, stacked: shop.top > t.bottom && mail.top > shop.bottom, wide: shop.width >= Math.min(300, d.width - 60), inside, fitsScreen: d.bottom <= innerHeight + 1 && d.right <= innerWidth + 1 };
+  });
+  ok(`${n}: form layout (title on one line, fields stacked, full width, inside the box)`, lay.titleOneLine && lay.stacked && lay.wide && lay.inside && lay.fitsScreen, JSON.stringify(lay));
+  await p.screenshot({ path: `${OUT}/hotfix-request-${n}-open.png` });
+  await p.fill("#rShop", "e2e-test footer " + n); await p.fill("#rEmail", "e2e-test@example.com"); await p.click("#rSend");
   await p.waitForFunction(() => /Thank you|could not|many|person/.test(document.getElementById("rMsg").textContent), null, { timeout: 15000 }).catch(() => {});
   ok(`${n}: footer form submits`, /Thank you/.test(await p.textContent("#rMsg")), await p.textContent("#rMsg"));
-  await p.waitForTimeout(2000);
+  await p.screenshot({ path: `${OUT}/hotfix-request-${n}-success.png` });
+  await p.waitForTimeout(2200);
+  ok(`${n}: form closes after success`, !(await p.isVisible("#reqDlg")));
+  await p.click("#askBtn"); await p.click("#reqDlg .x"); ok(`${n}: form closes with x`, !(await p.isVisible("#reqDlg")));
   await p.goto(BASE + "/?u=" + encodeURIComponent("https://www.example.com/some-product"));
   await p.waitForSelector("#unsupAsk", { timeout: 60000 }).catch(() => {});
   await p.click("#unsupAsk"); await p.waitForSelector("#reqDlg[open]", { timeout: 5000 }).catch(() => {});
@@ -182,6 +193,15 @@ for (const [n, o] of [["1280", wide(1280)], ["390", phone()]]) {
 }
 // a page loaded before a deploy asks for an older script name: it must still get the script
 { const r = await fetch(BASE + "/app.0123456789.js"); ok("old script name still works after a deploy", r.ok && /javascript/.test(r.headers.get("content-type"))); }
+{
+  const p = await page(phone());
+  await p.goto(BASE + "/"); await p.click("#bmBtn"); await p.waitForTimeout(300);
+  await p.click("#bmCopy"); await p.waitForTimeout(300);
+  ok("390: bookmark copy shows feedback", /Copied/.test(await p.textContent("#bmCopy")));
+  await p.screenshot({ path: `${OUT}/hotfix-bookmark-390.png` });
+  await p.click("#bmDlg .x"); ok("390: bookmark modal closes", !(await p.isVisible("#bmDlg")));
+  await p.context().close();
+}
 // 4. bookmark button and ?url=
 {
   const p = await page(wide(1280));
@@ -193,7 +213,8 @@ for (const [n, o] of [["1280", wide(1280)], ["390", phone()]]) {
   await p.click("#bmCopy"); await p.waitForTimeout(300);
   ok("copy the code copies it", (await p.evaluate(() => navigator.clipboard.readText().catch(() => ""))) === code);
   ok("copy shows feedback", /Copied/.test(await p.textContent("#bmCopy")) && /copied/i.test(await p.textContent("#toast")));
-  await p.screenshot({ path: `${OUT}/feature-bookmark.png` });
+  await p.screenshot({ path: `${OUT}/hotfix-bookmark-1280.png` });
+  await p.click("#bmLink"); ok("clicking the drag button explains what to do", /Drag it/.test(await p.textContent("#bmHint")));
   await p.click("#bmDlg .x"); ok("bookmark modal closes", !(await p.isVisible("#bmDlg")));
   // run the bookmarklet on a real product page: it must open this site with ?url= and run a check
   await p.goto(PC, { waitUntil: "domcontentloaded", timeout: 45000 }).catch(() => {});
@@ -201,6 +222,7 @@ for (const [n, o] of [["1280", wide(1280)], ["390", phone()]]) {
   ok("bookmarklet opens the site with ?url=", p.url().startsWith(BASE + "/?") , p.url().slice(0, 100));
   await p.waitForSelector("#result:not(.hidden)", { timeout: 60000 }).catch(() => {});
   ok("bookmarklet runs a check", await p.isVisible("#result"));
+  await p.waitForTimeout(1500); await p.screenshot({ path: `${OUT}/hotfix-bookmarklet-run-1280.png` });
   await p.goto(BASE + "/?url=" + encodeURIComponent(PC)); await p.waitForSelector("#result:not(.hidden)", { timeout: 60000 });
   ok("?url= link runs a check", (await p.textContent("#prices")).includes("R"));
   await p.context().close();
@@ -243,12 +265,9 @@ for (const [n, o] of [["1280", wide(1280)], ["390", phone()]]) {
 // 7. wall, counter, privacy, footer
 {
   const p = await page(phone());
-  await p.goto(BASE + "/wall"); await p.waitForFunction(() => !/Loading/.test(document.getElementById("wallList").textContent), null, { timeout: 20000 });
-  ok("wall page loads", (await p.textContent("h1:not(.hidden)")).length > 0 && await p.isVisible("#wallView"));
-  ok("wall has fakes or a clear empty state", (await p.locator("#wallList li").count()) >= 1);
-  ok("shop scores table or empty note", (await p.textContent("#scoreTable")).length > 5);
-  const stats = await (await fetch(BASE + "/api/stats")).json();
-  ok("counter shows only real fakes", (await p.isVisible("#counter")) === stats.fake_total > 0, "fake_total=" + stats.fake_total);
+  await p.goto(BASE + "/");
+  ok("wall link hidden while the wall is off", !(await p.isVisible("#wallLink")) && !(await p.isVisible("#counter")));
+  await p.goto(BASE + "/wall"); ok("/wall goes to the home page while off", new URL(p.url()).pathname === "/");
   await p.goto(BASE + "/privacy");
   const txt = await p.textContent("#privacyView");
   ok("privacy page mentions Turnstile", /Turnstile/.test(txt));

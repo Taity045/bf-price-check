@@ -44,7 +44,7 @@ button{font:inherit;color:inherit;cursor:pointer;touch-action:manipulation;min-h
 .hero{padding:32px 0 8px;text-align:center}
 h1{font-size:clamp(26px,6.4vw,40px);line-height:1.15;letter-spacing:-.02em;margin:0 0 8px;text-wrap:balance}
 .sub{color:var(--mut);margin:0 auto;max-width:30em}
-form{display:flex;flex-direction:column;gap:8px;margin:24px 0 0}
+#f{display:flex;flex-direction:column;gap:8px;margin:24px 0 0}
 #u{flex:none;width:100%;min-width:0;height:50px;padding:0 14px;border:1px solid var(--line);border-radius:var(--r);background:var(--soft);color:var(--ink);font:16px var(--sans)}
 #u:focus{outline:none;border-color:var(--ink);background:var(--bg)}
 .go{height:50px;padding:0 20px;border:0;border-radius:var(--r);background:var(--acc);color:var(--bg);font-weight:600;white-space:nowrap;width:100%}
@@ -175,7 +175,7 @@ dialog.dlg-fb[open]{display:block;position:fixed;z-index:20;left:12px;right:12px
 .wall li{flex-direction:column;align-items:flex-start;gap:2px}
 .tbl{width:100%;overflow-x:auto}
 @media (min-width:480px){
-  form{flex-direction:row}#u{flex:1;width:auto}.go{width:auto}
+  #f{flex-direction:row}#u{flex:1;width:auto}#f .go{width:auto}
   .manual{grid-template-columns:1fr 1fr 90px}.manual label:last-child{grid-column:auto}
   .badges{grid-template-columns:repeat(3,minmax(0,1fr))}
   .sharelist{grid-template-columns:1fr 1fr}
@@ -354,7 +354,7 @@ footer{border-top:2px dashed var(--ink)}
     <p id="counter" class="hidden"><a href="/wall"><b id="counterN"></b> fake discounts caught so far</a></p>
     <nav class="flinks" aria-label="More">
       <button type="button" class="linkbtn" id="shopsBtn">Shops we check</button>
-      <a href="/wall">Fake discount wall</a>
+      <a href="/wall" id="wallLink" class="hidden">Fake discount wall</a>
       <button type="button" class="linkbtn" id="bmBtn">Bookmark button</button>
       <button type="button" class="linkbtn" id="askBtn">Ask us to add a shop</button>
       <a href="/privacy">Privacy</a>
@@ -424,6 +424,7 @@ footer{border-top:2px dashed var(--ink)}
     <h3 style="margin-top:14px">Computer</h3>
     <p class="note">Show your bookmarks bar. Then drag this button to the bar:</p>
     <p style="margin:12px 0"><a class="bm" id="bmLink" href="#" title="Drag me to your bookmarks bar">Deal or Dud?</a></p>
+    <p class="note" id="bmHint" role="status"></p>
     <h3 style="margin-top:14px">Phone</h3>
     <ol class="note" style="padding-left:18px">
       <li>Copy the code below.</li>
@@ -482,7 +483,7 @@ const fmtDate = (t) => new Date(t).toLocaleDateString("en-GB", { day: "numeric",
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const toastQ = [];
 function toast(msg) { toastQ.push(msg); if (toastQ.length === 1) nextToast(); }
-function nextToast() { const t = $("toast"); if (!toastQ.length) return; t.textContent = toastQ[0]; t.classList.add("on"); setTimeout(() => { t.classList.remove("on"); toastQ.shift(); setTimeout(nextToast, 200); }, 1800); }
+function nextToast() { const t = $("toast"); if (!toastQ.length) return; const d = document.querySelector("dialog[open]"); (d || document.body).appendChild(t); t.textContent = toastQ[0]; t.classList.add("on"); setTimeout(() => { t.classList.remove("on"); toastQ.shift(); setTimeout(nextToast, 200); }, 1800); }
 function parseNum(s) { if (!s) return null; s = String(s).replace(/[^\d.,]/g, ""); if (/,\d{2}$/.test(s)) s = s.replace(/\./g, "").replace(",", "."); else s = s.replace(/,/g, ""); const n = parseFloat(s); return n > 0 ? n : null; }
 
 // examples
@@ -981,7 +982,7 @@ function renderStats() {
 // ---------- bookmark button ----------
 const BM = `javascript:(function(){location.href='${SITE}/?url='+encodeURIComponent(location.href)})();`;
 $("bmLink").href = BM; $("bmCode").value = BM;
-$("bmLink").addEventListener("click", (e) => { e.preventDefault(); toast("Drag this button to your bookmarks bar"); });
+$("bmLink").addEventListener("click", (e) => { e.preventDefault(); $("bmHint").textContent = "Do not click it here. Drag it to your bookmarks bar, then click it on a product page."; });
 $("bmBtn").addEventListener("click", () => $("bmDlg").showModal());
 $("bmCopy").addEventListener("click", async () => {
   const done = (t) => { toast(t); $("bmCopy").textContent = "Copied ✓"; setTimeout(() => { $("bmCopy").textContent = "Copy the code"; }, 2000); };
@@ -991,7 +992,7 @@ $("bmCopy").addEventListener("click", async () => {
 
 // ---------- bot check (Cloudflare Turnstile, only when it is set up) ----------
 let cfg = { alerts: false, turnstile: null };
-const cfgReady = fetch("/api/config").then((r) => r.json()).then((c) => { cfg = c || cfg; $("alertBtn").classList.toggle("hidden", !cfg.alerts); }).catch(() => {});
+const cfgReady = fetch("/api/config").then((r) => r.json()).then((c) => { cfg = c || cfg; $("alertBtn").classList.toggle("hidden", !cfg.alerts); $("wallLink").classList.toggle("hidden", !cfg.wall); }).catch(() => {});
 let tsLoad = null; const tsTok = {}, tsWid = {};
 function tsScript() {
   if (tsLoad) return tsLoad;
@@ -1034,7 +1035,7 @@ $("alertForm").addEventListener("submit", async (e) => {
 });
 
 // ---------- fake discount counter ----------
-fetch("/api/stats").then((r) => r.json()).then((d) => { if (d && d.fake_total > 0) { $("counterN").textContent = d.fake_total.toLocaleString("en-GB"); $("counter").classList.remove("hidden"); } }).catch(() => {});
+cfgReady.then(() => cfg.wall ? fetch("/api/stats").then((r) => r.json()) : null).then((d) => { if (d && d.fake_total > 0) { $("counterN").textContent = d.fake_total.toLocaleString("en-GB"); $("counter").classList.remove("hidden"); } }).catch(() => {});
 
 // ---------- pages: /wall and /privacy ----------
 async function showWall() {
