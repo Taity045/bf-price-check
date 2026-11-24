@@ -5,3 +5,7 @@ CREATE TABLE IF NOT EXISTS tracked (url TEXT PRIMARY KEY, orig_url TEXT, title T
 CREATE INDEX IF NOT EXISTS idx_tracked_last ON tracked(last_checked);
 CREATE TABLE IF NOT EXISTS cache (k TEXT PRIMARY KEY, v TEXT, exp INTEGER);
 CREATE TABLE IF NOT EXISTS rl (k TEXT PRIMARY KEY, n INTEGER, win INTEGER);
+CREATE TABLE IF NOT EXISTS verdicts (url TEXT PRIMARY KEY, host TEXT, title TEXT, verdict TEXT, price REAL, was REAL, currency TEXT, low REAL, med REAL, high REAL, high90 REAL, n INTEGER, gap REAL, archived INTEGER DEFAULT 0, low_t INTEGER, updated_at INTEGER);
+CREATE INDEX IF NOT EXISTS idx_verdicts_v ON verdicts(verdict, gap);
+CREATE TABLE IF NOT EXISTS alerts (id INTEGER PRIMARY KEY AUTOINCREMENT, url TEXT NOT NULL, orig_url TEXT, title TEXT, email TEXT NOT NULL, target REAL NOT NULL, currency TEXT, token TEXT NOT NULL, status TEXT NOT NULL, created_at INTEGER NOT NULL, sent_at INTEGER, last_price REAL, test INTEGER DEFAULT 0);
+CREATE INDEX IF NOT EXISTS idx_alerts_url ON alerts(url, status);

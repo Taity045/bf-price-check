@@ -483,7 +483,7 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const toastQ = [];
 function toast(msg) { toastQ.push(msg); if (toastQ.length === 1) nextToast(); }
 function nextToast() { const t = $("toast"); if (!toastQ.length) return; const d = document.querySelector("dialog[open]"); (d || document.body).appendChild(t); t.textContent = toastQ[0]; t.classList.add("on"); setTimeout(() => { t.classList.remove("on"); toastQ.shift(); setTimeout(nextToast, 200); }, 1800); }
-function parseNum(s) { if (!s) return null; s = String(s).replace(/[^\d.,]/g, ""); if (/,\d{2}$/.test(s)) s = s.replace(/\./g, "").replace(",", "."); else s = s.replace(/,/g, ""); const n = parseFloat(s); return n > 0 ? n : null; }
+function parseNum(s) { if (!s) return null; s = String(s).replace(/[^\d.,]/g, ""); if (/,\d{2}$/.test(s)) s = s.replace(/\./g, "").replace(",", "."); else if (/^[1-9]\d{0,2}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, ""); else s = s.replace(/,/g, ""); const n = parseFloat(s); return n > 0 ? n : null; }
 
 // examples
 EXAMPLES.forEach((e) => {
@@ -657,6 +657,12 @@ function renderPrices() {
   } else mb.classList.add("hidden");
 }
 
+// Black Friday is the day after the fourth Thursday of November. Use this year's once its week is over.
+function lastBlackFriday() {
+  const bfOf = (y) => { const wd = new Date(Date.UTC(y, 10, 1)).getUTCDay(); return Date.UTC(y, 10, 1 + ((4 - wd + 7) % 7) + 22); };
+  const y = new Date().getUTCFullYear();
+  return Date.now() >= bfOf(y) + 4 * DAY ? bfOf(y) : bfOf(y - 1);
+}
 function median(a) { const s = [...a].sort((x, y) => x - y), n = s.length; return n ? (n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2) : null; }
 
 // keep the last check of each day
@@ -736,9 +742,9 @@ function renderVerdict() {
     else if (pr.includes(W)) flags += `<div class="flag ok">We previously saw the "was" price of ${esc(money(W, C))}.</div>`;
     else flags += `<p class="note">We haven't observed the exact "was" price of ${esc(money(W, C))}.</p>`;
   }
-  const bfLo = Date.UTC(2025, 10, 24), bfHi = Date.UTC(2025, 11, 2);
+  const bf = lastBlackFriday(), bfLo = bf - 4 * DAY, bfHi = bf + 4 * DAY;
   const bfPts = hist.filter((x) => x.t >= bfLo && x.t < bfHi);
-  const bfLine = bfPts.length ? (() => { const b = bfPts.reduce((m, x) => (x.price < m.price ? x : m)); return `<p class="note">Last Black Friday (late Nov 2025): ${esc(money(b.price, C))} on ${esc(fmtDate(b.t))}${P < b.price ? ", so today is cheaper." : P > b.price ? `, so today is ${esc(pct((P - b.price) / b.price))} higher.` : ", the same as today."}</p>`; })() : "";
+  const bfLine = bfPts.length ? (() => { const b = bfPts.reduce((m, x) => (x.price < m.price ? x : m)); return `<p class="note">Last Black Friday (late Nov ${new Date(bf).getUTCFullYear()}): ${esc(money(b.price, C))} on ${esc(fmtDate(b.t))}${P < b.price ? ", so today is cheaper." : P > b.price ? `, so today is ${esc(pct((P - b.price) / b.price))} higher.` : ", the same as today."}</p>`; })() : "";
   state.v = { big, P, W, C, high90, med, low };
   const claimed = W ? `<p class="note">The shop claims ${Math.round((W - P) / W * 100)}% off ${esc(money(W, C))}. Real saving against the usual price: ${esc(money(Math.max(0, med - P), C))}.</p>` : "";
   setVerdict(cls, big, `<p class="vbody">${esc(body)}</p>${flags}
@@ -758,7 +764,7 @@ function renderChart() {
   if (cur) all.push({ t: t1, price: cur.price, kind: "now", was: cur.was });
   $("cnt").textContent = `${pts.length} price${pts.length === 1 ? "" : "s"}`;
   const ys = all.map((p) => p.price); if (cur && cur.was) ys.push(cur.was);
-  if (!ys.length) { $("chart").innerHTML = `<div class="small" style="padding:36px 0;text-align:center;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule)">No prices to draw yet.</div>`; return; }
+  if (!ys.length) { $("chart").innerHTML = `<div class="small" style="padding:36px 0;text-align:center;border-top:1px solid var(--line);border-bottom:1px solid var(--line)">No prices to draw yet.</div>`; return; }
   let lo = Math.min(...ys), hi = Math.max(...ys); if (hi === lo) { hi *= 1.1; lo *= 0.9; }
   const pad = (hi - lo) * 0.12; lo = Math.max(0, lo - pad); hi += pad;
   const L = Math.max(44, Math.max(axMoney(lo).length, axMoney(hi).length) * 7 + 12);
@@ -794,7 +800,7 @@ function renderArchiveNote() {
   if (ai) {
     if (ai.status !== "ok") note = `Price history from the Internet Archive isn't available right now: ${ai.message || "unknown error"}.`;
     else if (!(ai.captures_12mo ?? ai.captures_6mo)) note = "The Internet Archive has no copies of this page from the last twelve months, so older prices are missing.";
-    else note = `Archived copies: ${(ai.captures_12mo ?? ai.captures_6mo)} days in 12 months. We read ${ai.sampled}.`;
+    else { const n = ai.captures_12mo ?? ai.captures_6mo; note = `Archived copies: ${n} day${n === 1 ? "" : "s"} in 12 months. We looked at ${ai.sampled}.`; }
     if (state.failed) note += ` ${state.failed} had no price we could read.`;
   }
   $("archnote").textContent = note;

@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "pretest": "python3 build.py",
     "test": "node --test tests/regression.test.mjs",
     "test:ui": "node tests/ui_test.js"
   },
