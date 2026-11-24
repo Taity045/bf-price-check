@@ -105,3 +105,50 @@ npx wrangler d1 execute bf-price-check-db --remote --command "SELECT id, datetim
 (The token needs D1 Read or Edit for this; the Cloudflare dashboard D1 console works too.)
 
 The list of shops we check is `SHOPS` in `src/worker.js` (also served at `/api/shops`).
+
+## Features (Nov 2026)
+
+All extra features stay off the home page. They sit behind small links (header "Saved", footer links) or show only on a result.
+
+| Feature | Where | Data |
+|---|---|---|
+| Other shops | Result page, only when a match is strong (same barcode or model number) | Takealot public API |
+| Saved and Your stats | Header "Saved" | Your browser only (localStorage) |
+| Badges and streak | Saved > Your stats | Your browser only |
+| Bookmark button | Footer "Bookmark button" | Opens `/?url=<page>` on this site |
+| Share card | `/og.png?u=<link>`, and server meta tags on `/?u=<link>` | D1 `verdicts` |
+| Fake discount wall and shop scores | `/wall` | D1 `verdicts` (score shown from 5 judged products) |
+| Best time to buy | Verdict card | Chart points |
+| Price alerts | Result "Alert me" (hidden while `ALERTS = "off"`) | D1 `alerts` |
+| Privacy | `/privacy` | — |
+
+Tables `verdicts` and `alerts` are made at run time (`CREATE TABLE IF NOT EXISTS`).
+
+### Settings
+
+`wrangler.toml` vars: `SITE_URL` (links in emails), `MAIL_FROM` (sender address), `ALERTS` (`on`/`off`).
+
+Worker secrets (never in the repo):
+
+- `OWNER_EMAIL`: where shop requests are emailed. Must be a verified destination address in Cloudflare Email Routing.
+- `E2E_KEY`: lets test runs skip email and remove their own rows (`POST /api/e2e/cleanup`).
+- `TURNSTILE_SECRET` plus var `TURNSTILE_SITEKEY`: turn on Cloudflare Turnstile on the forms. Without them the forms use the honeypot and rate limits only.
+
+Set a secret: `npx wrangler secret put OWNER_EMAIL`.
+
+### Price alerts
+
+On the Workers Free plan, Cloudflare Email can send only to verified addresses. To send alerts to anyone: move to Workers Paid, onboard the sender domain in Email Sending, then set `ALERTS = "on"`.
+
+### Tests
+
+```
+node tests/e2e_redesign.mjs [BASE] [SHOTDIR]
+node tests/e2e_features.mjs [BASE] [SHOTDIR]
+```
+
+The test key is read from `$E2E_KEY` or `/workspace/bf-secrets/e2e_key`. Both suites remove their test rows at the end.
+
+### Fonts and build
+
+`build.py` minifies the page script and CSS with esbuild (targets Chrome 70, Safari 12), names the script and fonts by hash, and embeds them in the Worker. Fonts are self-hosted subsets (Bricolage Grotesque, IBM Plex Mono; SIL Open Font License). Re-make them with `scripts/make_fonts.py`; the share-image glyphs with `scripts/make_og_font.py`.

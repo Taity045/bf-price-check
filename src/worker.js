@@ -13,8 +13,8 @@ const SNAP_SPACING_DAYS = 6;
 const MAX_SNAPS = 64;
 const MAX_TRACKED = 1000;
 const RECHECK_AFTER_MS = 20 * 3600 * 1000;
-const LIVE_CACHE_PREFIX = "check-v3:";
-const RL = { check: 20, snap: 120, req: 5 };       // requests per IP per minute
+const LIVE_CACHE_PREFIX = "check-v4:";
+const RL = { check: 20, snap: 120, req: 5, verdict: 40, others: 20 };       // requests per IP per minute
 const MAX_HTML = 4 * 1024 * 1024;
 
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
@@ -195,6 +195,9 @@ function walkLd(node, out, depth = 0) {
   if (node["@graph"]) walkLd(node["@graph"], out, depth + 1);
   if (typeHas(node, ["Product", "ProductGroup", "IndividualProduct", "ProductModel", "Book", "Vehicle", "SomeProducts"])) {
     if (!out.title && node.name) out.title = String(node.name);
+    if (!out.gtin) { const g = node.gtin13 || node.gtin || node.gtin12 || node.gtin14 || node.gtin8 || node.ean; if (g && /^\d{8,14}$/.test(String(g).trim())) out.gtin = String(g).trim(); }
+    if (!out.mpn && node.mpn) out.mpn = String(node.mpn).slice(0, 60);
+    if (!out.brand && node.brand) out.brand = String(typeof node.brand === "object" ? node.brand.name || "" : node.brand).slice(0, 60) || undefined;
     if (!out.image && node.image) { const im = Array.isArray(node.image) ? node.image[0] : node.image; out.image = typeof im === "string" ? im : im && (im.url || im.contentUrl); }
     if (node.offers) readOffer(node.offers, out);
     if (!out.price && node.hasVariant) walkLd(node.hasVariant, out, depth + 1);
@@ -495,6 +498,17 @@ async function fetchPage(url, currency, verifiedHost) {
   return { status: r.status, html: await readLimitedText(r, true) };
 }
 
+function takealotBarcode(d) {
+  let found = null;
+  const walk = (n, depth) => {
+    if (found || !n || typeof n !== "object" || depth > 8) return;
+    if (Array.isArray(n)) { for (const x of n) walk(x, depth + 1); return; }
+    if (n.item_type === "barcode" && /^\d{8,14}$/.test(String(n.displayable_text || "").trim())) { found = String(n.displayable_text).trim(); return; }
+    for (const k in n) walk(n[k], depth + 1);
+  };
+  walk(d.product_information, 0);
+  return found || undefined;
+}
 async function takealotApi(plid) {
   const r = await fetchStore(`https://api.takealot.com/rest/v-1-14-0/product-details/PLID${plid}?platform=desktop&display_credit=false`, { "user-agent": UA, accept: "application/json" }, 12000);
   if (!r.ok) { await r.body?.cancel(); return { error: `Takealot API answered HTTP ${r.status}.` }; }
@@ -504,7 +518,7 @@ async function takealotApi(plid) {
   if (!it) return { error: "Takealot shows no offer for this product right now (maybe out of stock)." };
   const price = parsePrice(it.price), was = parsePrice(it.listing_price);
   const img = d.gallery && d.gallery.images && d.gallery.images[0];
-  return { price, was: was && price && was > price ? was : null, currency: "ZAR", title: (d.core && d.core.title) || d.title, image: img ? img.replace("{size}", "pdpxl") : null, source: "takealot-api" };
+  return { price, was: was && price && was > price ? was : null, currency: "ZAR", title: (d.core && d.core.title) || d.title, image: img ? img.replace("{size}", "pdpxl") : null, source: "takealot-api", gtin: takealotBarcode(d), brand: (d.core && d.core.brand) || undefined };
 }
 
 async function getCurrent(canonInfo, origUrl, verifiedHost) {
@@ -529,7 +543,7 @@ async function getCurrent(canonInfo, origUrl, verifiedHost) {
     if (ex.price && canonInfo.kind === "amazon" && tldCur && currency !== tldCur) return { ...res, status: "noprice", http: pg.status, title: ex.title, image: ex.image, message: `Amazon showed us a price in ${currency} instead of ${tldCur} (it does this for visitors outside the country), so we can't read the local price.` };
     if (!ex.price && canonInfo.kind === "amazon") return { ...res, status: "noprice", http: pg.status, title: ex.title, image: ex.image, message: "Amazon didn't show a buy price to us. It often hides the price for visitors outside the country (our checker runs on servers abroad), or the item is unavailable." };
     if (!ex.price) return { ...res, status: "noprice", http: pg.status, title: ex.title, image: ex.image, message: "We loaded the page but couldn't find a machine-readable price on it (the price may be loaded by JavaScript)." };
-    return { ...res, price: ex.price, was: ex.was || null, currency, currency_guessed: currencyGuessed, title: ex.title, image: ex.image, source: ex.source, http: pg.status };
+    return { ...res, price: ex.price, was: ex.was || null, currency, currency_guessed: currencyGuessed, title: ex.title, image: ex.image, source: ex.source, http: pg.status, gtin: ex.gtin, mpn: ex.mpn, brand: ex.brand };
   } catch (e) {
     if (e instanceof PageReadError) return { ...res, status: "error", message: e.message };
     return { ...res, status: "error", message: /timed? ?out|abort/i.test(String(e)) ? "The store took too long to answer." : "We couldn't reach the store." };
@@ -727,7 +741,7 @@ async function sha256(s) {
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
   return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
-async function apiRequest(req, env) {
+async function apiRequest(req, env, ctx) {
   if (req.method !== "POST") return json({ error: "method not allowed" }, 405);
   if (!/application\/json/i.test(req.headers.get("content-type") || "")) return json({ error: "Send the form as JSON." }, 415);
   const ip = req.headers.get("cf-connecting-ip") || "0";
@@ -741,12 +755,16 @@ async function apiRequest(req, env) {
   if (shop.length < 2) return json({ error: "Type the shop name or website." }, 400);
   if (product && !/^https?:\/\/[^\s]+\.[^\s]+/i.test(product)) return json({ error: "The product link must start with http:// or https://." }, 400);
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return json({ error: "Check the email address." }, 400);
-  if (await rateLimit(env, ip, "req")) return json({ error: "You sent many requests. Try again in a minute." }, 429);
+  const test = isE2E(req, env);
+  if (test && !shop.startsWith("e2e-test")) return json({ error: "Test requests must start with e2e-test." }, 400);
+  if (!test && await rateLimit(env, ip, "req")) return json({ error: "You sent many requests. Try again in a minute." }, 429);
+  if (!test && !(await verifyTurnstile(env, body.ts, ip))) return json({ error: "We could not check that you are a person. Try again." }, 403);
   let host = null;
   try { host = stripWww(new URL(/^https?:/i.test(shop) ? shop : product || ("https://" + shop)).hostname.toLowerCase()); } catch {}
   if (host && !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(host)) host = null;
   await ensureRequestsTable(env);
   await env.DB.prepare("INSERT INTO shop_requests (host, shop_text, product_url, email, created_at, ip_hash) VALUES (?, ?, ?, ?, ?, ?)").bind(host, shop, product || null, email || null, now(), (await sha256("bf-req:" + ip)).slice(0, 32)).run();
+  if (!test && ctx) ctx.waitUntil(notifyOwnerOfRequest(env, { shop, host, product, email }).catch(() => {}));
   return json({ ok: true });
 }
 
@@ -771,6 +789,8 @@ async function apiCheck(req, env, ctx) {
   }
   const tracked = await track(env, canonInfo.canon, v.url.toString(), current);
   const hist = await storedHistory(env, canonInfo.canon);
+  let verdict = null;
+  try { const j = judge(current, hist); verdict = publicVerdict(j); if (tracked && j.verdict) ctx.waitUntil(saveVerdict(env, canonInfo.canon, current.title, j).catch(() => {})); } catch {}
   return json({
     url: v.url.toString(), canonical: canonInfo.canon, host: stripWww(host), tld_currency: tldCurrency(host),
     current, cached, tracked,
@@ -779,7 +799,8 @@ async function apiCheck(req, env, ctx) {
       archive_failed: hist.snaps.filter((s) => s.status !== "ok" && s.status !== "retry").length,
       checks: hist.checks.map((c) => ({ t: c.ts, price: c.price, was: c.was, currency: c.currency })),
     },
-    history_days: HISTORY_DAYS,
+    history_days: HISTORY_DAYS, verdict,
+    ids: { gtin: current.gtin || null, mpn: current.mpn || null },
     shop: (() => { const x = shopFor(host); return x ? { name: x.name, archive: !!x.archive } : null; })(),
   });
 }
@@ -822,7 +843,9 @@ async function apiSnap(req, env) {
 }
 
 async function cron(env, scheduledTime) {
-  const due = await env.DB.prepare("SELECT url, orig_url FROM tracked WHERE last_checked IS NULL OR last_checked < ? ORDER BY last_checked LIMIT 1").bind(now() - RECHECK_AFTER_MS).all();
+  await ensureFeatureTables(env);
+  // Products with an active price alert go first.
+  const due = await env.DB.prepare("SELECT url, orig_url FROM tracked WHERE last_checked IS NULL OR last_checked < ? ORDER BY (url IN (SELECT url FROM alerts WHERE status = 'active')) DESC, last_checked LIMIT 2").bind(now() - RECHECK_AFTER_MS).all();
   for (const row of due.results || []) {
     // Always move last_checked forward, so one failing product can't block the queue.
     let cur = { status: "error", checked_at: now() };
@@ -832,14 +855,26 @@ async function cron(env, scheduledTime) {
       if (v.url) cur = await getCurrent(canonicalize(v.url), v.url.href);
       await recordCheck(env, row.url, cur);
       if (cur.status === "ok") await cachePut(env, LIVE_CACHE_PREFIX + row.url, cur, CHECK_TTL_MS);
+      if (cur.status === "ok") { await refreshVerdict(env, row.url).catch(() => {}); await checkAlerts(env, row.url, cur, env.SITE_URL || "https://bf-price-check.tm-deal-lab.workers.dev").catch(() => {}); }
     } catch { cur = { ...cur, status: "error" }; }
     await env.DB.prepare("UPDATE tracked SET last_checked = ?, last_status = ?, check_count = check_count + 1 WHERE url = ?").bind(cur.checked_at, cur.status, row.url).run();
   }
   // housekeeping
-  if (new Date(scheduledTime).getUTCMinutes() !== 0) return;
+  // The cron runs at minute 15 of each hour; clean up every 6 hours.
+  if (new Date(scheduledTime).getUTCHours() % 6 !== 0) return;
+  await env.DB.prepare("UPDATE alerts SET status = 'expired' WHERE status IN ('pending', 'active') AND created_at < ?").bind(now() - ALERT_DAYS * 864e5).run();
+  await env.DB.prepare("DELETE FROM alerts WHERE status = 'pending' AND created_at < ?").bind(now() - 3 * 864e5).run();
+  await env.DB.prepare("UPDATE tracked SET last_viewed = ? WHERE url IN (SELECT url FROM alerts WHERE status = 'active')").bind(now()).run();
   await env.DB.prepare("DELETE FROM rl WHERE win < ?").bind(Math.floor(now() / 60000) - 5).run();
   await env.DB.prepare("DELETE FROM cache WHERE exp < ?").bind(now()).run();
   await env.DB.prepare("DELETE FROM tracked WHERE last_viewed < ?").bind(now() - 120 * 864e5).run();
+}
+
+async function pageHtml(req, env) {
+  const origin = new URL(req.url).origin;
+  let html = HTML.replace('content="/og.png"', `content="${origin}/og.png"`).replace("<!--CANONICAL-->", `<link rel="canonical" href="${origin}/">`);
+  if (new URL(req.url).pathname === "/") { try { html = await homeWithMeta(req, env, html); } catch {} }
+  return html.replace("<!--NOSCRIPT-->", '<noscript><p class="note" style="text-align:center">Turn on JavaScript to see price history. You can still paste a link and press Check price.</p></noscript>');
 }
 
 export default {
@@ -847,13 +882,29 @@ export default {
     const url = new URL(req.url);
     try {
       if (req.method === "OPTIONS") return new Response(null, { headers: { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST", "access-control-allow-headers": "content-type" } });
-      if (url.pathname === "/api/request") return await apiRequest(req, env);
+      if (/^\/api\/(check|archive|snap|others|verdict|request|alert)$/.test(url.pathname)) { const g = apiGuard(req); if (g) return g; }
+      if (url.pathname === "/api/request") return await apiRequest(req, env, ctx);
+      if (url.pathname === "/api/alert") return await apiAlert(req, env, ctx);
+      if (url.pathname === "/api/e2e/cleanup") return await apiE2ECleanup(req, env);
+      if (url.pathname === "/api/e2e/mail-test") return await apiMailTest(req, env);
       if (req.method !== "GET" && req.method !== "HEAD") return json({ error: "method not allowed" }, 405);
       if (url.pathname === "/api/shops") return json({ shops: SHOPS.map(({ name, host, cc, archive }) => ({ name, host, cc, archive: !!archive })) }, 200, { "cache-control": "public, max-age=3600" });
       if (url.pathname === "/api/check") return await apiCheck(req, env, ctx);
+      if (url.pathname === "/api/config") return json({ alerts: alertsOn(env), min_judged: WALL_MIN_JUDGED, turnstile: turnstileOn(env) ? env.TURNSTILE_SITEKEY : null }, 200, { "cache-control": "public, max-age=300" });
+      if (url.pathname === "/api/verdict") return await apiVerdict(req, env);
+      if (url.pathname === "/api/others") return await apiOthers(req, env);
+      if (url.pathname === "/api/wall") return json(await wallData(env), 200, { "cache-control": "public, max-age=300" });
+      if (url.pathname === "/api/stats") { const w = await wallData(env); return json({ fake_total: w.fake_total }, 200, { "cache-control": "public, max-age=300" }); }
+      if (url.pathname === "/og.png") return await apiOg(req, env);
+      if (url.pathname === "/alert/confirm") return await alertLink(req, env, "confirm");
+      if (url.pathname === "/alert/stop") return await alertLink(req, env, "stop");
       if (url.pathname === "/api/archive") return await apiArchive(req, env);
       if (url.pathname === "/api/snap") return await apiSnap(req, env);
-      if (url.pathname === "/" || url.pathname === "/index.html") return new Response(HTML, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300", "x-content-type-options": "nosniff", "referrer-policy": "no-referrer" } });
+      if (["/", "/index.html", "/wall", "/privacy"].includes(url.pathname)) return new Response(await pageHtml(req, env), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache", "x-content-type-options": "nosniff", "referrer-policy": "no-referrer" } });
+      if (url.pathname.startsWith("/fonts/") && FONTS[url.pathname.slice(7)]) return new Response(Uint8Array.from(atob(FONTS[url.pathname.slice(7)]), (c) => c.charCodeAt(0)), { headers: { "content-type": "font/woff2", "cache-control": "public, max-age=31536000, immutable", "access-control-allow-origin": "*" } });
+      // The page names the script by its hash. A page loaded before a deploy may ask for an older name:
+      // serve the current script for it (short cache), so buttons never stop working after a deploy.
+      if (/^\/app\.[0-9a-f]{10}\.js$/.test(url.pathname)) return new Response(APP.js, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": url.pathname === "/" + APP.name ? "public, max-age=31536000, immutable" : "no-cache" } });
       if (url.pathname === "/favicon.ico") return new Response(null, { status: 204 });
       return new Response("Not found", { status: 404 });
     } catch (e) {

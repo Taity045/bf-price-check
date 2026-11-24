@@ -4,6 +4,8 @@ const BASE = process.argv[2] || "https://bf-price-check.tm-deal-lab.workers.dev"
 const OUT = process.argv[3] || "screenshots";
 const exe = process.env.CHROME || "/usr/bin/google-chrome";
 const results = []; const ok = (name, pass, info = "") => { results.push({ name, pass, info }); console.log((pass ? "PASS " : "FAIL ") + name + (info ? " — " + info : "")); };
+import fs from "fs";
+const KEY = process.env.E2E_KEY || (fs.existsSync("/workspace/bf-secrets/e2e_key") ? fs.readFileSync("/workspace/bf-secrets/e2e_key", "utf8").trim() : "");
 const browser = await chromium.launch({ executablePath: exe, args: ["--no-sandbox"] });
 async function page(opts) {
   const ctx = await browser.newContext(opts);
@@ -25,6 +27,7 @@ for (const [name, o] of [["desktop", desktop], ["mobile", mobile]]) {
   ok(`home ${name} no sideways scroll`, await noOverflow(p));
   ok(`home ${name} no coffee/donate`, !(await p.content()).match(/coffee|donate/i));
   ok(`home ${name} 3 example links`, (await p.locator("#chips a").count()) === 3);
+  ok(`home ${name} new heading`, (await p.textContent("h1")).trim() === "You think you found a good deal? Let's find out!");
   await p.screenshot({ path: `${OUT}/redesign-${name}.png`, fullPage: true });
   ok(`home ${name} no JS errors`, p._errs.length === 0, p._errs.join(" | "));
   await p.context().close();
@@ -69,10 +72,11 @@ for (const i of [0, 1, 2]) {
   if (i === 1) {
     // share falls back to copy on desktop-like context; on mobile navigator.share may exist; stub it
     await p.evaluate(() => { navigator.share = undefined; });
-    await p.click("#share"); await p.waitForTimeout(400);
+    await p.click("#share"); await p.click("#shareCopy"); await p.waitForTimeout(400);
     const clip = await p.evaluate(() => navigator.clipboard.readText().catch(() => ""));
     ok("share copies link", clip.includes("/?u="), clip.slice(0, 80));
     ok("share shows toast", (await p.textContent("#toast")).includes("copied"));
+    await p.click("#shareDlg .x");
     await p.click("#again"); await p.waitForFunction(() => !document.getElementById("go").disabled, null, { timeout: 60000 });
     ok("check again keeps result", await p.isVisible("#result"));
   }
@@ -136,6 +140,8 @@ for (const i of [0, 1, 2]) {
   await p.fill("#rShop", "example.com"); await p.fill("#rEmail", "not-an-email"); await p.click("#rSend"); ok("form checks email", /email/.test(await p.textContent("#rMsg")));
   await p.fill("#rEmail", ""); await p.fill("#rShop", process.env.E2E_SHOP || "e2e-test example.com");
   await p.screenshot({ path: `${OUT}/request-form.png` });
+  // test requests carry the test key, so they are not emailed and are removed at the end
+  if (KEY) await p.route("**/api/request", (r) => r.continue({ headers: { ...r.request().headers(), "x-e2e-key": KEY } }));
   await p.click("#rSend"); await p.waitForFunction(() => /Thank you|could not|many/.test(document.getElementById("rMsg").textContent), null, { timeout: 15000 });
   ok("form submit succeeds", /Thank you/.test(await p.textContent("#rMsg")), await p.textContent("#rMsg"));
   await p.waitForTimeout(2200); ok("form closes after success", !(await p.isVisible("#reqDlg")));
@@ -153,6 +159,7 @@ for (const i of [0, 1, 2]) {
   await p.context().close();
 }
 await browser.close();
+if (KEY) { const r = await fetch(BASE + "/api/e2e/cleanup", { method: "POST", headers: { "x-e2e-key": KEY } }); const d = await r.json().catch(() => ({})); ok("test rows removed from D1", r.ok && d.ok, JSON.stringify(d)); }
 const failed = results.filter((r) => !r.pass);
 console.log(`\n${results.length - failed.length}/${results.length} passed`);
 process.exit(failed.length ? 1 : 0);

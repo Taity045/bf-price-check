@@ -3,21 +3,29 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Deal or Dud? · Is that deal real?</title>
+<title>Deal or Dud? · You think you found a good deal? Let's find out!</title>
 <meta name="description" content="Paste a product link. See 12 months of that shop's prices and find out if the deal is real.">
 <meta property="og:title" content="Deal or Dud?">
 <meta property="og:description" content="Paste a product link. See 12 months of prices and find out if the deal is real.">
-<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#111214" media="(prefers-color-scheme: dark)">
+<meta property="og:image" content="/og.png">
+<!--CANONICAL-->
+<meta name="theme-color" content="#fbfaf6" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23111214'/><path d='M8 20l5-5 4 4 7-8' fill='none' stroke='%23fff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+<link rel="preload" href="/fonts/display.woff2" as="font" type="font/woff2" crossorigin>
 <style>
+@font-face{font-family:"DoD Display";src:url(/fonts/display.woff2) format("woff2");font-weight:800;font-display:optional}
+@font-face{font-family:"DoD Fallback";src:local("Arial Black"),local("Arial Bold"),local("Helvetica Neue Bold"),local("Arial");size-adjust:92%;ascent-override:96%;descent-override:26%}
+@font-face{font-family:"DoD Mono";src:url(/fonts/mono.woff2) format("woff2");font-weight:600;font-display:swap}
 :root{--bg:#fff;--ink:#111214;--mut:#5f6368;--line:#e3e5e8;--soft:#f5f6f7;--acc:#111214;--good:#137333;--bad:#c5221f;--meh:#8a5a00;--r:12px;
   --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
 @media (prefers-color-scheme:dark){:root{--bg:#111214;--ink:#eceef1;--mut:#a0a6ad;--line:#2a2d31;--soft:#1b1d20;--acc:#eceef1;--good:#5bd08a;--bad:#ff7a70;--meh:#e2b54c}}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 var(--sans)}
-body{min-height:100dvh;padding-bottom:env(safe-area-inset-bottom)}
-main{max-width:680px;margin:0 auto;padding:0 16px 48px}
+body{min-height:100vh;min-height:100dvh;padding-bottom:env(safe-area-inset-bottom)}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+main{max-width:680px;margin:0 auto;padding:0 max(16px,env(safe-area-inset-right)) 48px max(16px,env(safe-area-inset-left))}
+img,svg{max-width:100%}
 a{color:inherit;text-underline-offset:3px}
 button{font:inherit;color:inherit;cursor:pointer;touch-action:manipulation;min-height:44px}
 :focus-visible{outline:2px solid var(--ink);outline-offset:2px}
@@ -27,19 +35,23 @@ button{font:inherit;color:inherit;cursor:pointer;touch-action:manipulation;min-h
 .note{font-size:14px;color:var(--mut);margin:10px 0 0}
 .lab{display:block;font-size:12px;color:var(--mut)}
 
-.top{display:flex;align-items:center;height:56px;border-bottom:1px solid var(--line);margin:0 -16px;padding:0 16px}
+.top{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:56px;border-bottom:1px solid var(--line);margin:0 -16px;padding:0 16px}
+.topnav{display:flex;gap:2px}
+.topnav .linkbtn{font-size:14px;text-decoration:none;padding:0 8px;border-radius:99px}
+.topnav .linkbtn:hover{background:var(--soft)}
+.cnt{display:inline-block;min-width:18px;margin-left:4px;padding:0 5px;border-radius:99px;background:var(--soft);font-size:12px;line-height:18px;text-align:center}
 .brand{font-weight:700;text-decoration:none;letter-spacing:-.01em;display:inline-flex;align-items:center;min-height:44px}
-.hero{padding:40px 0 8px;text-align:center}
-h1{font-size:clamp(28px,7vw,40px);line-height:1.15;letter-spacing:-.02em;margin:0 0 8px}
+.hero{padding:32px 0 8px;text-align:center}
+h1{font-size:clamp(26px,6.4vw,40px);line-height:1.15;letter-spacing:-.02em;margin:0 0 8px;text-wrap:balance}
 .sub{color:var(--mut);margin:0 auto;max-width:30em}
-form{display:flex;gap:8px;margin:24px 0 0}
-#u{flex:1;min-width:0;height:50px;padding:0 14px;border:1px solid var(--line);border-radius:var(--r);background:var(--soft);color:var(--ink);font:16px var(--sans)}
+form{display:flex;flex-direction:column;gap:8px;margin:24px 0 0}
+#u{flex:none;width:100%;min-width:0;height:50px;padding:0 14px;border:1px solid var(--line);border-radius:var(--r);background:var(--soft);color:var(--ink);font:16px var(--sans)}
 #u:focus{outline:none;border-color:var(--ink);background:var(--bg)}
-.go{height:50px;padding:0 20px;border:0;border-radius:var(--r);background:var(--acc);color:var(--bg);font-weight:600;white-space:nowrap}
+.go{height:50px;padding:0 20px;border:0;border-radius:var(--r);background:var(--acc);color:var(--bg);font-weight:600;white-space:nowrap;width:100%}
 .go[disabled]{opacity:.65;cursor:progress}
 .tries{margin-top:14px;font-size:14px;color:var(--mut);text-align:center;line-height:2}
-.tries a{display:inline-block;margin:0 6px;color:var(--ink);padding:4px 0}
-.err{margin-top:18px;padding:12px 14px;border-radius:var(--r);background:color-mix(in srgb,var(--bad) 10%,var(--bg));color:var(--bad);font-size:15px}
+.tries a{display:inline-flex;align-items:center;min-height:44px;margin:0 6px;color:var(--ink)}
+.err{margin-top:18px;padding:12px 14px;border-radius:var(--r);background:rgba(204,36,24,.08);background:color-mix(in srgb,var(--bad) 10%,var(--bg));color:var(--bad);font-size:15px}
 
 #result{margin-top:28px}
 .card{border:1px solid var(--line);border-radius:var(--r);padding:18px;margin-top:14px}
@@ -52,7 +64,8 @@ form{display:flex;gap:8px;margin:24px 0 0}
 .was{color:var(--mut);text-decoration:line-through}
 .claim{font-size:14px;font-weight:600;padding:2px 8px;border-radius:99px;background:var(--soft)}
 #psrc{margin-top:8px}
-.manual{display:grid;grid-template-columns:1fr 1fr 90px;gap:8px;margin-top:10px}
+.manual{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.manual label:last-child{grid-column:1/-1}
 .manual label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mut)}
 .manual input,.manual select{height:44px;padding:0 10px;border:1px solid var(--line);border-radius:10px;background:var(--soft);color:var(--ink);font:16px var(--sans);width:100%}
 .btn2{width:100%;height:46px;margin-top:10px;border:1px solid var(--line);border-radius:var(--r);background:var(--bg);font-weight:600}
@@ -65,9 +78,9 @@ form{display:flex;gap:8px;margin:24px 0 0}
 .vbody{margin:6px 0 0}
 .flag{margin-top:12px;padding:10px 12px;border-radius:10px;background:color-mix(in srgb,var(--bad) 9%,var(--bg));color:var(--bad);font-size:14px;font-weight:600}
 .flag.ok{background:color-mix(in srgb,var(--good) 9%,var(--bg));color:var(--good)}
-.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:14px}
 .stat{background:var(--soft);border-radius:10px;padding:10px;display:flex;flex-direction:column-reverse}
-.stat b{font-size:17px}
+.stat b{font-size:clamp(14px,4vw,17px);overflow-wrap:anywhere}
 
 .charthead{display:flex;justify-content:space-between;align-items:baseline}
 h3{font-size:16px;margin:0}
@@ -94,9 +107,12 @@ details[open] summary::after{content:"−"}
 table{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}
 td,th{padding:7px 4px 7px 0;border-bottom:1px solid var(--line);text-align:left}
 th{font-size:12px;font-weight:500;color:var(--mut)}
-.actions{display:flex;gap:8px;margin-top:14px}
-.actions button{flex:1;height:46px;border:1px solid var(--line);border-radius:var(--r);background:var(--bg);font-weight:600}
+.actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px;margin-top:14px}
+.actions button{height:46px;border:1px solid var(--line);border-radius:var(--r);background:var(--bg);font-weight:600}
 footer{margin-top:40px;padding-top:14px;border-top:1px solid var(--line);font-size:13px;color:var(--mut);text-align:center}
+.flinks{display:flex;flex-wrap:wrap;justify-content:center;column-gap:4px}
+.flinks a{display:inline-flex;align-items:center;min-height:44px;padding:0 4px;color:var(--ink)}
+#counter{margin:4px 0 8px}#counter b{color:var(--bad)}
 .spin{display:inline-block;width:14px;height:14px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:sp .8s linear infinite;vertical-align:-2px;margin-right:8px}
 @keyframes sp{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.spin{animation-duration:2.4s}.prog i{transition:none}}
@@ -106,8 +122,10 @@ footer{margin-top:40px;padding-top:14px;border-top:1px solid var(--line);font-si
 .unsup{margin-top:12px;padding:12px 14px;border-radius:10px;background:var(--soft);font-size:15px}
 .unsup b{display:block;margin-bottom:6px}
 .unsup .btn2{margin-top:8px}
-dialog{border:0;border-radius:16px;padding:0;width:min(520px,calc(100vw - 24px));max-height:calc(100dvh - 24px);background:var(--bg);color:var(--ink);box-shadow:0 10px 40px rgba(0,0,0,.25)}
+dialog{border:0;border-radius:16px;padding:0;width:min(520px,calc(100vw - 24px));max-height:calc(100vh - 24px);max-height:calc(100dvh - 24px);overflow:auto;overscroll-behavior:contain;background:var(--bg);color:var(--ink);box-shadow:0 10px 40px rgba(0,0,0,.25)}
 dialog::backdrop{background:rgba(0,0,0,.45)}
+dialog:not([open]){display:none}
+dialog.dlg-fb[open]{display:block;position:fixed;z-index:20;left:12px;right:12px;top:12px;margin:0 auto}
 .dlg{padding:20px}
 .dlg h2{font-size:20px;margin:0 0 8px}
 .dlghead{display:flex;justify-content:space-between;align-items:center;gap:8px}
@@ -124,24 +142,126 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 .formrow .sec{border:1px solid var(--line);background:var(--bg)}
 .fmsg{margin-top:10px;font-size:14px;min-height:20px}
 .fmsg.ok{color:var(--good)}.fmsg.bad{color:var(--bad)}
-@media (max-width:420px){form{flex-direction:column}.go{width:100%}.manual{grid-template-columns:1fr 1fr}.manual label:last-child{grid-column:1/-1}}
+/* new features */
+.reveal{animation:rv .55s cubic-bezier(.2,.9,.3,1.2) both}
+.reveal .big{animation:rvb .7s ease-out both}
+@keyframes rv{from{opacity:0;transform:translateY(8px) scale(.97)}to{opacity:1;transform:none}}
+@keyframes rvb{0%{letter-spacing:.06em;opacity:0}100%{letter-spacing:-.02em;opacity:1}}
+@media (prefers-reduced-motion:reduce){.reveal,.reveal .big{animation:none}}
+.best{margin-top:12px;padding:10px 12px;border-radius:10px;background:var(--soft);font-size:14px}
+.olist{list-style:none;padding:0;margin:8px 0 0}
+.olist li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);font-size:15px}
+.olist li>span{min-width:0;overflow-wrap:anywhere}
+.olist a{display:inline-flex;align-items:center;min-height:44px}
+.chip{display:inline-block;font-size:12px;font-weight:600;padding:1px 8px;border-radius:99px;background:var(--soft);white-space:nowrap}
+.chip.good{color:var(--good)}.chip.bad{color:var(--bad)}.chip.meh{color:var(--meh)}
+.tabs{display:flex;gap:4px;margin:4px 0 8px;border-bottom:1px solid var(--line)}
+.tabs button{background:none;border:0;border-bottom:2px solid transparent;padding:0 10px;font-weight:600;color:var(--mut)}
+.tabs button[aria-selected=true]{color:var(--ink);border-color:var(--ink)}
+.badges{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}
+.badge{border:1px solid var(--line);border-radius:10px;padding:10px;font-size:14px;opacity:.45}
+.badge.on{opacity:1;border-color:var(--ink)}
+.badge b{display:block}
+.statrow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.sharelist{display:grid;gap:8px;margin-top:8px}
+.sharelist button,.sharelist a{display:flex;align-items:center;justify-content:center;min-height:48px;border:1px solid var(--line);border-radius:var(--r);background:var(--bg);font-weight:600;text-decoration:none}
+.sharelist .wa{background:#1fa855;border-color:#1fa855;color:#fff}
+.bm{display:inline-flex;align-items:center;min-height:48px;padding:0 18px;border-radius:99px;background:var(--acc);color:var(--bg);font-weight:700;text-decoration:none;cursor:grab}
+.code{display:block;width:100%;min-height:44px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--soft);color:var(--ink);font:12px ui-monospace,Menlo,monospace;overflow-wrap:anywhere}
+.page{padding:24px 0 0}
+.page h1{font-size:clamp(24px,6vw,34px);text-align:left}
+.page h2{font-size:18px;margin:24px 0 6px}
+.page p,.page li{font-size:15px}
+.wall li{flex-direction:column;align-items:flex-start;gap:2px}
+.tbl{width:100%;overflow-x:auto}
+@media (min-width:480px){
+  form{flex-direction:row}#u{flex:1;width:auto}.go{width:auto}
+  .manual{grid-template-columns:1fr 1fr 90px}.manual label:last-child{grid-column:auto}
+  .badges{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .sharelist{grid-template-columns:1fr 1fr}
+}
+@media (min-width:768px){.hero{padding-top:56px}main{max-width:720px}}
+@media (min-width:1280px){main{max-width:760px}}
+@media (max-height:480px) and (orientation:landscape){.hero{padding-top:16px}}
+
+/* ---------- brand layer: price tag and till slip ---------- */
+:root{--bg:#fbfaf6;--ink:#141414;--mut:#5b5750;--line:#d9d5cb;--soft:#f1eee6;--acc:#ffc21a;--acc-ink:#141414;--good:#0b7a3e;--bad:#cc2418;--meh:#8a5a00;--r:4px;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;--disp:"DoD Display","DoD Fallback",-apple-system,"Segoe UI",Arial,sans-serif;--mono:"DoD Mono",ui-monospace,Menlo,Consolas,monospace}
+@media (prefers-color-scheme:dark){:root{--bg:#0a0a0a;--card:#151514;--ink:#f5f2ea;--mut:#b3ada1;--line:#3a3833;--soft:#1a1a19;--acc:#ffc21a;--acc-ink:#141414;--good:#4fd487;--bad:#ff6f61;--meh:#f0b84a}}
+body{font-feature-settings:"kern"}
+.num,.now,.was,.stat b,#chart svg text,td,.cnt{font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.top{border-bottom:2px solid var(--ink)}
+.brand{font-family:var(--disp);font-size:19px;gap:10px;letter-spacing:-.02em}
+.brand::before{content:"";width:26px;height:18px;background:var(--acc);border:2px solid var(--ink);clip-path:polygon(28% 0,100% 0,100% 100%,28% 100%,0 50%);flex:none}
+h1,h2,h3,.dlg h2{font-family:var(--disp);font-weight:800;letter-spacing:-.025em}
+h1{font-size:clamp(32px,8.6vw,56px);line-height:1.02;letter-spacing:-.035em}
+h1 mark{background:var(--acc);color:#0a0a0a;padding:0 .12em;margin:0 -.02em;-webkit-box-decoration-break:clone;box-decoration-break:clone;border-radius:2px}
+.sub{font-size:16px}
+#u{border:2px solid var(--ink);border-radius:var(--r);background:var(--bg)}
+#u:focus{box-shadow:0 0 0 3px var(--acc)}
+.go{background:var(--acc);color:var(--acc-ink);border:2px solid var(--ink);border-radius:var(--r);box-shadow:3px 3px 0 var(--ink);font-weight:700;transition:transform .08s,box-shadow .08s}
+.go:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--ink)}
+.formrow .go{border:2px solid var(--ink)}
+.tries a{text-decoration-color:var(--acc);text-decoration-thickness:3px}
+.card{border:2px solid var(--ink);border-radius:var(--r);background:var(--card,var(--bg))}
+dialog{background:var(--card,var(--bg))}
+.prod img{border-radius:2px;border:1px solid var(--line)}
+.prices{border-top:2px dashed var(--line);padding-top:14px}
+.now{font-size:clamp(30px,8vw,38px);font-weight:600;letter-spacing:-.04em}
+.claim{font-family:var(--mono);font-size:12px;text-transform:uppercase;letter-spacing:.02em;background:var(--acc);color:var(--acc-ink);border-radius:0;padding:4px 10px 4px 16px;clip-path:polygon(10px 0,100% 0,100% 100%,10px 100%,0 50%)}
+.verdict{border-left:2px solid var(--ink)}
+.verdict .big{font-family:var(--disp);color:var(--ink)}
+.verdict:not(.unk) .big{display:inline-block;font-family:var(--mono);font-weight:600;font-size:clamp(22px,6.4vw,30px);text-transform:uppercase;letter-spacing:.02em;color:var(--v);border:3px solid var(--v);border-radius:3px;padding:4px 12px 2px;transform:rotate(-2.5deg);margin:4px 0 6px;box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--v) 18%,transparent)}
+.reveal .big{animation:stamp .5s cubic-bezier(.2,.9,.25,1.25) both}
+.verdict.unk.reveal .big{animation:none}
+@keyframes stamp{0%{opacity:0;transform:scale(1.9) rotate(-9deg)}60%{opacity:1;transform:scale(.94) rotate(-2.5deg)}100%{transform:scale(1) rotate(-2.5deg)}}
+@media (prefers-reduced-motion:reduce){.reveal .big{animation:none}}
+.flag{background:none;border-left:4px solid var(--bad);border-radius:0;padding:6px 0 6px 12px;color:var(--ink);font-weight:600}
+.flag.ok{border-color:var(--good);color:var(--ink)}
+.stat{background:none;border:1.5px dashed var(--line);border-radius:2px}
+.best{background:none;border-top:2px dashed var(--line);border-radius:0;padding:12px 0 0}
+.best b{font-family:var(--mono);background:var(--acc);color:var(--acc-ink);padding:0 4px}
+.c-ln{stroke-width:2.25}.c-now{fill:var(--acc);stroke:var(--ink);stroke-width:2}.c-ring{stroke:var(--ink)}
+.actions button,.btn2,.formrow .sec,.sharelist button,.sharelist a{border:2px solid var(--ink)!important;border-radius:var(--r)}
+.actions button:hover,.btn2:hover,.formrow .sec:hover,.sharelist button:hover{background:var(--acc);color:var(--acc-ink)}
+.sharelist .wa{background:#1fa855;color:#fff}
+dialog{border:2px solid var(--ink);border-radius:6px;box-shadow:6px 6px 0 rgba(0,0,0,.35)}
+.field input,.manual input,.manual select,.code{border:2px solid var(--line);border-radius:var(--r);background:var(--bg)}
+.field input:focus{border-color:var(--ink);box-shadow:0 0 0 3px var(--acc)}
+.unsup{background:none;border:2px dashed var(--ink);border-radius:var(--r)}
+.chip{border-radius:2px;background:none;border:1.5px solid currentColor;font-family:var(--mono);text-transform:uppercase;font-size:11px;letter-spacing:.02em}
+.badge{border:2px dashed var(--line);border-radius:var(--r)}
+.badge.on{border:2px solid var(--ink);background:var(--acc);color:var(--acc-ink)}
+.badge.on .small{color:var(--acc-ink)}
+.tabs{border-bottom:2px solid var(--ink)}.tabs button[aria-selected=true]{border-bottom:4px solid var(--acc);color:var(--ink)}
+.cnt{background:var(--acc);color:var(--acc-ink);border-radius:2px}
+footer{border-top:2px dashed var(--ink)}
+#counter b{font-family:var(--mono);background:var(--bad);color:#fff;padding:1px 6px}
+.toast{border-radius:var(--r);border:2px solid var(--acc)}
+.bm{border-radius:var(--r);background:var(--acc);color:var(--acc-ink);border:2px solid var(--ink);box-shadow:3px 3px 0 var(--ink)}
+.prog i{background:var(--acc)}
+.err{border-radius:var(--r);border-left:4px solid var(--bad)}
+:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+.stats .lab,#tip{font-family:var(--sans)}
+#tip b{font-family:var(--mono)}
 </style>
 </head>
 <body>
 <main>
-  <header class="top"><a class="brand" href="/">Deal or Dud?</a></header>
+  <header class="top"><a class="brand" href="/">Deal or Dud?</a><nav class="topnav" aria-label="Your things"><button type="button" class="linkbtn" id="savedBtn" aria-haspopup="dialog">Saved<span class="cnt hidden" id="savedN"></span></button></nav></header>
 
   <section class="hero">
-    <h1>Is that deal real?</h1>
+    <h1>You think you found a <mark>good deal</mark>? Let's find out!</h1>
     <p class="sub">Paste a product link. We compare today's price with 12 months of that shop's prices.</p>
-    <form id="f" autocomplete="off" novalidate>
+    <form id="f" action="/" method="get" autocomplete="off" novalidate>
       <label for="u" class="hidden">Product link</label>
-      <input id="u" type="url" inputmode="url" placeholder="Paste a product link" aria-label="Product link" enterkeyhint="go">
+      <input id="u" name="u" type="url" inputmode="url" placeholder="Paste a product link" aria-label="Product link" enterkeyhint="go">
       <button class="go" id="go" type="submit">Check price</button>
     </form>
     <div class="tries" id="tries">Try: <span id="chips"></span></div>
   </section>
 
+  <!--NOSCRIPT-->
   <div id="error" class="err hidden" role="alert"></div>
 
   <section id="result" class="hidden" aria-live="polite">
@@ -170,6 +290,12 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 
     <section class="card verdict unk" id="verdict"></section>
 
+    <section class="card hidden" id="others" aria-labelledby="othersTitle">
+      <h3 id="othersTitle">Other shops</h3>
+      <ul class="olist" id="otherList"></ul>
+      <p class="note">Same barcode or model number. Prices come from the shop's own data. Check the shop before you buy.</p>
+    </section>
+
     <div class="card">
       <div class="charthead"><h3>12 months of prices</h3><span class="small num" id="cnt"></span></div>
       <div class="prog" id="prog"><i></i></div>
@@ -189,13 +315,52 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 
     <div class="actions">
       <button type="button" id="share">Share</button>
+      <button type="button" id="save" aria-pressed="false">Save</button>
+      <button type="button" id="alertBtn" class="hidden">Alert me</button>
       <button type="button" id="again">Check again</button>
     </div>
   </section>
 
+  <section id="wallView" class="page hidden" aria-labelledby="wallTitle">
+    <h1 id="wallTitle">Fake discount wall</h1>
+    <p class="sub" style="margin:0">The biggest fake discounts we found. A fake discount is a "was" price that is higher than any price in the last 90 days, while today's price is the usual price.</p>
+    <p class="note" id="wallCount"></p>
+    <h2>Worst fake discounts</h2>
+    <ul class="olist wall" id="wallList"><li>Loading…</li></ul>
+    <h2>Shop scores</h2>
+    <p class="note" style="margin-top:0" id="scoreNote"></p>
+    <div class="tbl" id="scoreTable"></div>
+  </section>
+
+  <section id="privacyView" class="page hidden" aria-labelledby="privTitle">
+    <h1 id="privTitle">Privacy</h1>
+    <h2>What we keep</h2>
+    <ul>
+      <li>The product links that people check, and the prices we read. We use them to show price history.</li>
+      <li>Shop requests: the shop name, the product link, and your email if you give it. We use your email only to reply about that shop.</li>
+      <li>Price alerts (when they are on): your email and your price. Each alert email has a stop link. An alert ends after about six months.</li>
+      <li>A scrambled form of your internet address, to stop spam. We do not keep the address itself.</li>
+    </ul>
+    <h2>What stays on your device</h2>
+    <p>Your saved products, stats and badges stay in your browser. We do not receive this list. To remove it, clear your browser data for this site.</p>
+    <h2>Other services</h2>
+    <p>We do not use ads or advertising cookies, and we do not sell your data. The site runs on Cloudflare. Cloudflare counts page visits without cookies (Cloudflare Web Analytics). When a form has a person check, Cloudflare Turnstile runs it. See <a href="https://www.cloudflare.com/privacypolicy/" target="_blank" rel="noopener">Cloudflare's privacy policy</a>.</p>
+    <h2>Your rights</h2>
+    <p>To ask for access to your data, or to correct or remove it, contact us with the <button type="button" class="linkbtn" id="privAsk" style="font-size:inherit;padding:0">contact form</button>.</p>
+    <p>You can also complain to the <a href="https://inforegulator.org.za" target="_blank" rel="noopener">Information Regulator (South Africa)</a>.</p>
+  </section>
+
   <footer>
-    <div><button type="button" class="linkbtn" id="shopsBtn">Shops we check</button> · <button type="button" class="linkbtn" id="askBtn">Ask us to add a shop</button></div>
+    <p id="counter" class="hidden"><a href="/wall"><b id="counterN"></b> fake discounts caught so far</a></p>
+    <nav class="flinks" aria-label="More">
+      <button type="button" class="linkbtn" id="shopsBtn">Shops we check</button>
+      <a href="/wall">Fake discount wall</a>
+      <button type="button" class="linkbtn" id="bmBtn">Bookmark button</button>
+      <button type="button" class="linkbtn" id="askBtn">Ask us to add a shop</button>
+      <a href="/privacy">Privacy</a>
+    </nav>
     Prices come from the shop's page and the <a href="https://web.archive.org" target="_blank" rel="noopener">Internet Archive</a>. We never guess a price. Check the shop before you buy.
+    <p class="small" id="madeby" style="margin:10px 0 0">Made by Taity</p>
   </footer>
 </main>
 
@@ -216,8 +381,71 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
     <label class="field">Product link (optional)<input id="rUrl" type="url" inputmode="url" maxlength="2048" autocomplete="off" placeholder="https://"></label>
     <label class="field">Your email, if you want an update (optional)<input id="rEmail" type="email" inputmode="email" maxlength="254" autocomplete="email" placeholder="you@example.com"></label>
     <div class="hp" aria-hidden="true"><label>Website<input id="rWeb" tabindex="-1" autocomplete="off"></label></div>
+    <div id="rTs"></div>
     <div class="fmsg" id="rMsg" role="status"></div>
     <div class="formrow"><button type="button" class="sec" data-close>Cancel</button><button type="submit" class="go" id="rSend">Send request</button></div>
+  </form>
+</dialog>
+<dialog id="shareDlg" aria-labelledby="shareTitle">
+  <div class="dlg">
+    <div class="dlghead"><h2 id="shareTitle">Share</h2><button type="button" class="x" data-close aria-label="Close">×</button></div>
+    <p class="note" id="shareText" style="margin-top:0"></p>
+    <div class="sharelist">
+      <a class="wa" id="shareWa" href="#" target="_blank" rel="noopener">Share to WhatsApp</a>
+      <button type="button" id="shareCopy">Copy link</button>
+      <button type="button" id="shareMore" class="hidden">More apps</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="savedDlg" aria-labelledby="savedTitle">
+  <div class="dlg">
+    <div class="dlghead"><h2 id="savedTitle">Saved</h2><button type="button" class="x" data-close aria-label="Close">×</button></div>
+    <div class="tabs" role="tablist">
+      <button type="button" role="tab" id="tabSaved" aria-selected="true" aria-controls="paneSaved">Saved</button>
+      <button type="button" role="tab" id="tabStats" aria-selected="false" aria-controls="paneStats">Your stats</button>
+    </div>
+    <div id="paneSaved" role="tabpanel">
+      <ul class="olist" id="savedList"></ul>
+      <p class="note" id="savedNote"></p>
+    </div>
+    <div id="paneStats" role="tabpanel" class="hidden">
+      <div class="statrow stats num" id="myStats"></div>
+      <div class="badges" id="badges"></div>
+      <p class="note">Your stats stay on this device only.</p>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="bmDlg" aria-labelledby="bmTitle">
+  <div class="dlg">
+    <div class="dlghead"><h2 id="bmTitle">Bookmark button</h2><button type="button" class="x" data-close aria-label="Close">×</button></div>
+    <p class="note" style="margin-top:0">Add a button to your browser. On a shop's product page, tap it to check the price here.</p>
+    <h3 style="margin-top:14px">Computer</h3>
+    <p class="note">Show your bookmarks bar. Then drag this button to the bar:</p>
+    <p style="margin:12px 0"><a class="bm" id="bmLink" href="#" title="Drag me to your bookmarks bar">Deal or Dud?</a></p>
+    <h3 style="margin-top:14px">Phone</h3>
+    <ol class="note" style="padding-left:18px">
+      <li>Copy the code below.</li>
+      <li>Bookmark any page, then edit the bookmark.</li>
+      <li>Change the name to "Deal or Dud?" and paste the code as the address.</li>
+      <li>On a product page, open your bookmarks and tap "Deal or Dud?".</li>
+    </ol>
+    <textarea class="code" id="bmCode" rows="3" readonly aria-label="Bookmark code"></textarea>
+    <div class="formrow"><button type="button" class="go" id="bmCopy">Copy the code</button></div>
+  </div>
+</dialog>
+
+<dialog id="alertDlg" aria-labelledby="alertTitle">
+  <form class="dlg" id="alertForm" novalidate>
+    <div class="dlghead"><h2 id="alertTitle">Price alert</h2><button type="button" class="x" data-close aria-label="Close">×</button></div>
+    <p class="note" style="margin-top:0">We check the price every day. We send one email when the price is at your price or lower.</p>
+    <label class="field">Your price<input id="aTarget" inputmode="decimal" autocomplete="off" required></label>
+    <label class="field">Your email<input id="aEmail" type="email" inputmode="email" autocomplete="email" maxlength="254" required placeholder="you@example.com"></label>
+    <div class="hp" aria-hidden="true"><label>Website<input id="aWeb" tabindex="-1" autocomplete="off"></label></div>
+    <div id="aTs"></div>
+    <div class="fmsg" id="aMsg" role="status"></div>
+    <div class="formrow"><button type="button" class="sec" data-close>Cancel</button><button type="submit" class="go" id="aSend">Start alert</button></div>
   </form>
 </dialog>
 <div class="toast" id="toast" role="status"></div>
@@ -225,9 +453,21 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 <script>
 (() => {
 const $ = (id) => document.getElementById(id);
+// Older browsers (before Safari 15.4) have no <dialog>: give it the few methods we use.
+if (typeof HTMLDialogElement !== "function") document.querySelectorAll("dialog").forEach((d) => {
+  Object.defineProperty(d, "open", { get() { return this.hasAttribute("open"); } });
+  d.showModal = function () { this.setAttribute("open", ""); this.classList.add("dlg-fb"); };
+  d.close = function () { this.removeAttribute("open"); };
+});
 const EXAMPLES = /*EXAMPLES*/[];
 const LOC = { ZAR: "en-ZA", GBP: "en-GB", EUR: "en-IE", USD: "en-US" };
 const DAY = 864e5;
+// Links use the address this page came from, so they always match the live site.
+const SITE = location.origin;
+const store = {
+  get(k, d) { try { const v = JSON.parse(localStorage.getItem("dod:" + k)); return v == null ? d : v; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem("dod:" + k, JSON.stringify(v)); } catch {} },
+};
 let state = null, runId = 0;
 
 function money(v, cur) {
@@ -260,12 +500,31 @@ $("f").addEventListener("submit", (e) => {
 });
 $("retryArchBtn").addEventListener("click", () => state && loadSnaps(runId));
 $("again").addEventListener("click", () => state && run(state.url, true));
-$("share").addEventListener("click", async () => {
+function shareInfo() {
+  const link = SITE + "/?u=" + encodeURIComponent(state.url);
+  const v = state.v || {}, t = state.title || "this deal";
+  let text;
+  if (v.big === "Fake discount" && v.W) text = `Caught a fake discount! ${t}: the shop says it was ${money(v.W, v.C)}, but it has not cost that in 90 days. Do not fall for it.`;
+  else if (v.big === "Real deal") text = `Real deal! ${t} is at its lowest price in 12 months: ${money(v.P, v.C)}.`;
+  else if (state.verdictText) text = `${state.verdictText}: ${t}`;
+  else text = `Is this deal real? ${t}`;
+  return { link, text };
+}
+$("share").addEventListener("click", () => {
   if (!state) return;
-  const link = location.origin + "/?u=" + encodeURIComponent(state.url);
-  const text = state.verdictText ? `${state.verdictText}: ${state.title || "this deal"}` : "Is this deal real?";
-  if (navigator.share) { try { await navigator.share({ title: "Deal or Dud?", text, url: link }); return; } catch (e) { if (e && e.name === "AbortError") return; } }
+  const { link, text } = shareInfo();
+  $("shareText").textContent = text;
+  $("shareWa").href = "https://wa.me/?text=" + encodeURIComponent(text + " " + link);
+  $("shareMore").classList.toggle("hidden", !navigator.share);
+  $("shareDlg").showModal();
+});
+$("shareCopy").addEventListener("click", async () => {
+  const { link } = shareInfo();
   try { await navigator.clipboard.writeText(link); toast("Link copied"); } catch { prompt("Copy this link:", link); }
+});
+$("shareMore").addEventListener("click", async () => {
+  const { link, text } = shareInfo();
+  try { await navigator.share({ title: "Deal or Dud?", text, url: link }); } catch {}
 });
 $("mapply").addEventListener("click", () => {
   if (!state) return;
@@ -296,10 +555,13 @@ async function run(url, fresh) {
     $("result").classList.remove("hidden");
     $("tip").textContent = "Tap a point to see its date and price."; $("pts").open = false;
     $("plink").href = d.url;
-    renderHead(); renderPrices(); renderSupport(); renderAll();
+    $("others").classList.add("hidden"); state.revealed = null;
+    renderHead(); renderPrices(); renderSupport(); renderAll(); renderSaveBtn();
     $("result").scrollIntoView({ behavior: "smooth", block: "start" });
-    if (d.tracked) loadSnaps(my);
+    countCheck();
+    if (d.tracked) loadSnaps(my).then(() => finalize(my));
     else {
+      finalize(my);
       $("prog").classList.add("hidden"); $("retryArch").classList.add("hidden");
       $("progtxt").textContent = "Tracking is full. Daily checks and archive lookups are unavailable for this product.";
     }
@@ -418,6 +680,17 @@ function setVerdict(cls, big, html) {
   const el = $("verdict");
   el.className = "card verdict " + cls;
   el.innerHTML = `<div class="big">${esc(big)}</div>${html}`;
+  if (cls !== "unk" && state.revealed !== big) { state.revealed = big; void el.offsetWidth; el.classList.add("reveal"); }
+  el.dataset.revealed = state.revealed || "";
+  if (cls === "unk") state.v = null;
+}
+// One line from real chart data: the lowest price in 12 months and when.
+function bestLine(P, C) {
+  const { pts, ccy } = points();
+  if (ccy !== C || pts.length < 3) return "";
+  const low = pts.reduce((m, x) => (x.price < m.price ? x : m));
+  if (P != null && P <= low.price) return `<p class="best">Today's price is the lowest in the last 12 months.</p>`;
+  return `<p class="best">Lowest in the last 12 months: <b>${esc(money(low.price, C))}</b> in ${esc(new Date(low.t).toLocaleDateString("en-GB", { month: "long", year: "numeric" }))}.</p>`;
 }
 
 function renderVerdict() {
@@ -464,10 +737,11 @@ function renderVerdict() {
   const bfLo = Date.UTC(2025, 10, 24), bfHi = Date.UTC(2025, 11, 2);
   const bfPts = hist.filter((x) => x.t >= bfLo && x.t < bfHi);
   const bfLine = bfPts.length ? (() => { const b = bfPts.reduce((m, x) => (x.price < m.price ? x : m)); return `<p class="note">Last Black Friday (late Nov 2025): ${esc(money(b.price, C))} on ${esc(fmtDate(b.t))}${P < b.price ? ", so today is cheaper." : P > b.price ? `, so today is ${esc(pct((P - b.price) / b.price))} higher.` : ", the same as today."}</p>`; })() : "";
+  state.v = { big, P, W, C, high90, med, low };
   const claimed = W ? `<p class="note">The shop claims ${Math.round((W - P) / W * 100)}% off ${esc(money(W, C))}. Real saving against the usual price: ${esc(money(Math.max(0, med - P), C))}.</p>` : "";
   setVerdict(cls, big, `<p class="vbody">${esc(body)}</p>${flags}
     <div class="stats num"><div class="stat"><b>${esc(money(low, C))}</b><span class="lab">12-month low</span></div><div class="stat"><b>${esc(money(med, C))}</b><span class="lab">Usual price</span></div><div class="stat"><b>${esc(money(high, C))}</b><span class="lab">12-month high</span></div></div>
-    ${bfLine}${claimed}
+    ${bestLine(P, C)}${bfLine}${claimed}
     ${archivedAt ? `<p class="note">Compared using the latest archived price (${esc(fmtDate(archivedAt))}).</p>` : ""}<p class="note">Based on ${pr.length} older price${pr.length === 1 ? "" : "s"}${cur.manual ? " and the price you entered" : ""}.${other ? ` ${other} point(s) with a different or unknown currency were left out.` : ""}</p>`);
   state.verdictText = big;
 }
@@ -549,12 +823,13 @@ function openRequest(host, url) {
   if ($("shopsDlg").open) $("shopsDlg").close();
   $("rShop").value = host || ""; $("rUrl").value = url || ""; $("rMsg").textContent = ""; $("rMsg").className = "fmsg";
   $("rSend").disabled = false; $("rSend").textContent = "Send request";
-  $("reqDlg").showModal(); (host ? $("rEmail") : $("rShop")).focus();
+  $("reqDlg").showModal(); (host ? $("rEmail") : $("rShop")).focus(); tsPrepare("rTs");
 }
 $("shopsBtn").addEventListener("click", openShops);
 ["rShop", "rUrl", "rEmail"].forEach((id) => $(id).addEventListener("input", () => { $("rMsg").textContent = ""; $("rMsg").className = "fmsg"; }));
 $("askBtn").addEventListener("click", () => openRequest(state && !state.shop ? state.host : "", state && !state.shop ? state.url : ""));
 $("shopsAsk").addEventListener("click", () => openRequest("", ""));
+if ($("privAsk")) $("privAsk").addEventListener("click", () => openRequest("", ""));
 $("reqForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const msg = $("rMsg"), btn = $("rSend");
@@ -565,7 +840,7 @@ $("reqForm").addEventListener("submit", async (e) => {
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) { bad("Check the email address."); $("rEmail").focus(); return; }
   btn.disabled = true; btn.innerHTML = '<span class="spin"></span>Sending…'; msg.textContent = ""; msg.className = "fmsg";
   try {
-    const r = await fetch("/api/request", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ shop, product_url: url, email, website: $("rWeb").value }) });
+    const r = await fetch("/api/request", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ shop, product_url: url, email, website: $("rWeb").value, ts: await tsToken("rTs") }) });
     const d = await r.json().catch(() => ({}));
     if (!r.ok || !d.ok) { bad(d.error || "We could not send the request. Try again."); btn.disabled = false; btn.textContent = "Send request"; return; }
     msg.textContent = "Thank you. We received your request."; msg.className = "fmsg ok";
@@ -585,8 +860,197 @@ function renderSupport() {
 }
 
 let rz; addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => state && renderChart(), 150); });
-const qs = new URLSearchParams(location.search).get("u");
-if (qs) { $("u").value = qs; run(qs); }
+// ---------- after a check: server verdict, stats, other shops ----------
+function finalize(my) {
+  if (my !== runId || !state) return;
+  fetch("/api/verdict?url=" + encodeURIComponent(state.canonical)).catch(() => {});
+  countVerdict(state.verdictText, state.canonical);
+  updateSaved(state);
+  loadOthers(my);
+}
+async function loadOthers(my) {
+  if (!state.tracked || !state.current || state.current.status !== "ok") return;
+  try {
+    const d = await (await fetch("/api/others?url=" + encodeURIComponent(state.canonical))).json();
+    if (my !== runId || !d.matches || !d.matches.length) return;
+    $("otherList").innerHTML = d.matches.map((m) => `<li><span><b>${esc(m.shop)}</b> · ${esc(m.title)}<br><span class="small">Same ${esc(m.match)}</span></span><span style="text-align:right"><b class="num">${esc(money(m.price, m.currency))}</b><br><a href="${esc(m.url)}" target="_blank" rel="noopener">Open ↗</a></span></li>`).join("");
+    $("others").classList.remove("hidden");
+  } catch {}
+}
+
+// ---------- saved products (this device only) ----------
+const MAX_SAVED = 30;
+const getSaved = () => store.get("saved", []);
+function renderSavedCount() { const n = getSaved().length; $("savedN").textContent = n; $("savedN").classList.toggle("hidden", !n); }
+function renderSaveBtn() { const on = !!state && getSaved().some((x) => x.canon === state.canonical); $("save").textContent = on ? "Saved ✓" : "Save"; $("save").setAttribute("aria-pressed", on); }
+function itemFrom(st) { const p = curPrice(); return { url: st.url, canon: st.canonical, title: st.title || st.host, host: st.host, price: p ? p.price : null, currency: p ? p.currency : null, verdict: st.verdictText || null, t: Date.now() }; }
+function updateSaved(st) { const list = getSaved(), i = list.findIndex((x) => x.canon === st.canonical); if (i >= 0) { list[i] = itemFrom(st); store.set("saved", list); } }
+$("save").addEventListener("click", () => {
+  if (!state) return;
+  let list = getSaved();
+  if (list.some((x) => x.canon === state.canonical)) { list = list.filter((x) => x.canon !== state.canonical); toast("Removed from Saved"); }
+  else { list.unshift(itemFrom(state)); list = list.slice(0, MAX_SAVED); toast("Saved on this device"); }
+  store.set("saved", list); renderSaveBtn(); renderSavedCount(); checkBadges();
+});
+const vcls = (v) => ({ "Real deal": "good", "Decent deal": "good", "Fake discount": "bad", "Pricier than usual": "bad", "Same old price": "meh" }[v] || "");
+function renderSavedList() {
+  const list = getSaved();
+  if (!list.length) { $("savedList").innerHTML = `<li><span class="small">Nothing saved yet. Check a product and tap Save.</span></li>`; return; }
+  $("savedList").innerHTML = list.map((x, i) => `<li><span><a href="/?u=${encodeURIComponent(x.url)}">${esc(x.title)}</a><br><span class="small">${esc(x.host)} · <span class="num">${x.price ? esc(money(x.price, x.currency)) : "No price"}</span></span> ${x.verdict ? `<span class="chip ${vcls(x.verdict)}">${esc(x.verdict)}</span>` : ""}</span><button type="button" class="linkbtn" data-rm="${i}" aria-label="Remove ${esc(x.title)}">Remove</button></li>`).join("");
+  $("savedList").querySelectorAll("[data-rm]").forEach((b) => b.addEventListener("click", () => { const l = getSaved(); l.splice(+b.dataset.rm, 1); store.set("saved", l); renderSavedList(); renderSavedCount(); if (state) renderSaveBtn(); }));
+}
+let recheckOn = false;
+async function recheckSaved() {
+  if (recheckOn) return; recheckOn = true;
+  const note = $("savedNote");
+  const todo = getSaved().filter((x) => Date.now() - (x.t || 0) > 30 * 60e3).slice(0, 10);
+  let done = 0;
+  for (const it of todo) {
+    if (!$("savedDlg").open) break;
+    note.innerHTML = `<span class="spin"></span>Checking for new prices… ${done}/${todo.length}`;
+    try {
+      const r = await fetch("/api/check?url=" + encodeURIComponent(it.url));
+      if (r.status === 429) { note.textContent = "We stopped for now: too many checks in a minute. Open this list again soon."; recheckOn = false; return; }
+      const d = await r.json();
+      if (r.ok && d.current) {
+        const l = getSaved(), i = l.findIndex((x) => x.canon === it.canon);
+        if (i >= 0) { const c = d.current; l[i] = { ...l[i], price: c.status === "ok" ? c.price : l[i].price, currency: c.status === "ok" ? c.currency : l[i].currency, verdict: d.verdict ? d.verdict.verdict : l[i].verdict, t: Date.now() }; store.set("saved", l); renderSavedList(); }
+      }
+    } catch { note.textContent = "We could not reach the checker. Check your connection."; recheckOn = false; return; }
+    done++;
+  }
+  note.textContent = todo.length ? `Updated ${new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}.` : "";
+  recheckOn = false;
+}
+function showTab(which) {
+  const s = which === "stats";
+  $("tabSaved").setAttribute("aria-selected", !s); $("tabStats").setAttribute("aria-selected", s);
+  $("paneSaved").classList.toggle("hidden", s); $("paneStats").classList.toggle("hidden", !s);
+  if (s) renderStats();
+}
+$("tabSaved").addEventListener("click", () => showTab("saved"));
+$("tabStats").addEventListener("click", () => showTab("stats"));
+$("savedBtn").addEventListener("click", () => { showTab("saved"); renderSavedList(); $("savedNote").textContent = ""; $("savedDlg").showModal(); recheckSaved(); });
+
+// ---------- your stats and badges (this device only) ----------
+const today = () => new Date().toISOString().slice(0, 10);
+function countCheck() {
+  const st = store.get("stats", { checks: 0, days: [], fakes: [], deals: [] });
+  st.checks++; if (!st.days.includes(today())) st.days = st.days.concat(today()).slice(-60);
+  store.set("stats", st); checkBadges();
+}
+function countVerdict(v, canon) {
+  if (!v) return;
+  const st = store.get("stats", { checks: 0, days: [], fakes: [], deals: [] });
+  if (v === "Fake discount" && !st.fakes.includes(canon)) st.fakes = st.fakes.concat(canon).slice(-200);
+  if ((v === "Real deal" || v === "Decent deal") && !st.deals.includes(canon)) st.deals = st.deals.concat(canon).slice(-200);
+  store.set("stats", st); checkBadges();
+}
+function streak(days) {
+  const set = new Set(days); let n = 0; const d = new Date();
+  if (!set.has(d.toISOString().slice(0, 10))) d.setUTCDate(d.getUTCDate() - 1);
+  while (set.has(d.toISOString().slice(0, 10))) { n++; d.setUTCDate(d.getUTCDate() - 1); }
+  return n;
+}
+const BADGES = [
+  { id: "first", name: "First check", how: "Check one product.", ok: (s) => s.checks >= 1 },
+  { id: "spot1", name: "Fake spotter", how: "Catch 1 fake discount.", ok: (s) => s.fakes.length >= 1 },
+  { id: "spot5", name: "Fake hunter", how: "Catch 5 fake discounts.", ok: (s) => s.fakes.length >= 5 },
+  { id: "spot10", name: "Fake buster", how: "Catch 10 fake discounts.", ok: (s) => s.fakes.length >= 10 },
+  { id: "deal", name: "Deal hunter", how: "Find a real or decent deal.", ok: (s) => s.deals.length >= 1 },
+  { id: "streak3", name: "3-day streak", how: "Check prices 3 days in a row.", ok: (s) => streak(s.days) >= 3 },
+];
+function checkBadges() {
+  const st = store.get("stats", { checks: 0, days: [], fakes: [], deals: [] });
+  const had = store.get("badges", []), now = BADGES.filter((b) => b.ok(st)).map((b) => b.id);
+  const fresh = now.filter((id) => !had.includes(id));
+  if (fresh.length) { store.set("badges", now); const b = BADGES.find((x) => x.id === fresh[fresh.length - 1]); setTimeout(() => toast("New badge: " + b.name), 600); }
+}
+function renderStats() {
+  const st = store.get("stats", { checks: 0, days: [], fakes: [], deals: [] });
+  $("myStats").innerHTML = `<div class="stat"><b>${st.checks}</b><span class="lab">Checks</span></div><div class="stat"><b>${st.fakes.length}</b><span class="lab">Fakes caught</span></div><div class="stat"><b>${streak(st.days)}</b><span class="lab">Day streak</span></div>`;
+  $("badges").innerHTML = BADGES.map((b) => `<div class="badge${b.ok(st) ? " on" : ""}"><b>${b.ok(st) ? "★ " : ""}${esc(b.name)}</b><span class="small">${esc(b.how)}</span></div>`).join("");
+}
+
+// ---------- bookmark button ----------
+const BM = `javascript:(function(){location.href='${SITE}/?url='+encodeURIComponent(location.href)})();`;
+$("bmLink").href = BM; $("bmCode").value = BM;
+$("bmLink").addEventListener("click", (e) => { e.preventDefault(); toast("Drag this button to your bookmarks bar"); });
+$("bmBtn").addEventListener("click", () => $("bmDlg").showModal());
+$("bmCopy").addEventListener("click", async () => {
+  const done = (t) => { toast(t); $("bmCopy").textContent = "Copied ✓"; setTimeout(() => { $("bmCopy").textContent = "Copy the code"; }, 2000); };
+  try { await navigator.clipboard.writeText(BM); done("Code copied"); }
+  catch { $("bmCode").focus(); $("bmCode").select(); try { document.execCommand("copy"); done("Code copied"); } catch { toast("Select the code and copy it."); } }
+});
+
+// ---------- bot check (Cloudflare Turnstile, only when it is set up) ----------
+let cfg = { alerts: false, turnstile: null };
+const cfgReady = fetch("/api/config").then((r) => r.json()).then((c) => { cfg = c || cfg; $("alertBtn").classList.toggle("hidden", !cfg.alerts); }).catch(() => {});
+let tsLoad = null; const tsTok = {}, tsWid = {};
+function tsScript() {
+  if (tsLoad) return tsLoad;
+  return (tsLoad = new Promise((ok, no) => { const sc = document.createElement("script"); sc.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"; sc.async = true; sc.onload = ok; sc.onerror = no; document.head.appendChild(sc); }));
+}
+async function tsPrepare(box) {
+  await cfgReady;
+  if (!cfg.turnstile) return;
+  try {
+    await tsScript();
+    if (tsWid[box] != null) { window.turnstile.reset(tsWid[box]); tsTok[box] = null; return; }
+    tsWid[box] = window.turnstile.render("#" + box, { sitekey: cfg.turnstile, size: "flexible", appearance: "interaction-only", callback: (t) => { tsTok[box] = t; }, "expired-callback": () => { tsTok[box] = null; } });
+  } catch {}
+}
+async function tsToken(box) {
+  if (!cfg.turnstile) return null;
+  for (let i = 0; i < 50 && !tsTok[box]; i++) await new Promise((r) => setTimeout(r, 100));
+  return tsTok[box] || null;
+}
+$("alertBtn").addEventListener("click", () => {
+  if (!state) return;
+  const p = curPrice();
+  $("aTarget").value = p ? String(Math.floor(p.price * 0.9)) : ""; $("aMsg").textContent = ""; $("aMsg").className = "fmsg";
+  $("aSend").disabled = false; $("aSend").textContent = "Start alert";
+  $("alertDlg").showModal(); $("aEmail").focus(); tsPrepare("aTs");
+});
+$("alertForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const msg = $("aMsg"), btn = $("aSend"), bad = (t) => { msg.textContent = t; msg.className = "fmsg bad"; };
+  const target = parseNum($("aTarget").value), email = $("aEmail").value.trim();
+  if (!target) { bad("Type the price you want to pay."); return; }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) { bad("Check the email address."); return; }
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span>Sending…';
+  try {
+    const r = await fetch("/api/alert", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url: state.canonical, email, target, website: $("aWeb").value, ts: await tsToken("aTs") }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) { bad(d.error || "We could not start the alert."); btn.disabled = false; btn.textContent = "Start alert"; return; }
+    msg.textContent = "Check your email and click the link to start the alert."; msg.className = "fmsg ok"; btn.textContent = "Sent";
+  } catch { bad("We could not reach the checker. Try again."); btn.disabled = false; btn.textContent = "Start alert"; }
+});
+
+// ---------- fake discount counter ----------
+fetch("/api/stats").then((r) => r.json()).then((d) => { if (d && d.fake_total > 0) { $("counterN").textContent = d.fake_total.toLocaleString("en-GB"); $("counter").classList.remove("hidden"); } }).catch(() => {});
+
+// ---------- pages: /wall and /privacy ----------
+async function showWall() {
+  try {
+    const d = await (await fetch("/api/wall")).json();
+    $("wallCount").textContent = d.fake_total ? `${d.fake_total} fake discount${d.fake_total === 1 ? "" : "s"} caught so far.` : "";
+    $("wallList").innerHTML = d.fakes.length ? d.fakes.map((f) => `<li><span><a href="/?u=${encodeURIComponent(f.url)}">${esc(f.title || f.url)}</a></span><span class="small"><b>${esc(f.shop)}</b> · says it was <s>${esc(money(f.was, f.currency))}</s> · highest in 90 days ${esc(money(f.high90, f.currency))} · now ${esc(money(f.price, f.currency))}</span><span class="chip bad">"Was" price ${Math.round(f.gap * 100)}% too high</span></li>`).join("")
+      : `<li><span class="small">No fake discounts yet. Each check helps. <a href="/">Check a product</a>.</span></li>`;
+    $("scoreNote").textContent = `We show a score when we have judged at least ${d.min_judged} products from a shop.`;
+    $("scoreTable").innerHTML = d.shops.length ? `<table><tr><th>Shop</th><th>Checks</th><th>Fake discounts</th></tr>${d.shops.map((x) => `<tr><td>${esc(x.shop)}</td><td class="num">${x.checks}</td><td>${x.pct == null ? '<span class="small">Not enough checks yet</span>' : `<b class="num">${x.pct}%</b> <span class="small">of ${x.judged}</span>`}</td></tr>`).join("")}</table>` : `<p class="small">No shops yet.</p>`;
+  } catch { $("wallList").innerHTML = `<li><span class="small">We could not load the wall. Try again soon.</span></li>`; }
+}
+const path = location.pathname.replace(/\/+$/, "") || "/";
+if (path === "/wall" || path === "/privacy") {
+  document.querySelector(".hero").classList.add("hidden");
+  $(path === "/wall" ? "wallView" : "privacyView").classList.remove("hidden");
+  document.title = (path === "/wall" ? "Fake discount wall" : "Privacy") + " · Deal or Dud?";
+  if (path === "/wall") showWall();
+}
+renderSavedCount();
+const sp = new URLSearchParams(location.search), qs = sp.get("u") || sp.get("url");
+if (qs && path === "/") { $("u").value = qs; run(qs); }
 })();
 </script>
 </body>

@@ -2,6 +2,7 @@ name = "bf-price-check"
 main = "dist/worker.js"
 compatibility_date = "2026-11-01"
 workers_dev = true
+routes = [{ pattern = "eish.veldwire.com", custom_domain = true }]
 preview_urls = false
 
 [build]
@@ -14,3 +15,13 @@ crons = ["15 * * * *"]
 binding = "DB"
 database_name = "bf-price-check-db"
 database_id = "65e86f16-42db-4c07-bbd7-20ba0308d47e"
+
+# Email: sends from an address on the Cloudflare zone that has Email Routing on.
+# The owner address is a secret (OWNER_EMAIL), never in this file.
+[[send_email]]
+name = "EMAIL"
+
+[vars]
+SITE_URL = "https://bf-price-check.tm-deal-lab.workers.dev"
+MAIL_FROM = "no-reply@veldwire.com"
+ALERTS = "off"

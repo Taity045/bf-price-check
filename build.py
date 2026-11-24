@@ -5,7 +5,32 @@ root = pathlib.Path(__file__).parent
 html = (root / "public/index.html").read_text()
 examples = json.loads((root / "examples.json").read_text()) if (root / "examples.json").exists() else []
 html = html.replace("/*EXAMPLES*/[]", json.dumps(examples))
-worker = (root / "src/worker.js").read_text() + "\nconst HTML = " + json.dumps(html) + ";\n"
+import base64, hashlib, re, subprocess
+TARGETS = "--target=chrome70,safari12,firefox68,edge79"
+def esbuild(code, loader):
+    """Minify and lower modern syntax for older browsers. Falls back to the source if esbuild is not available."""
+    try:
+        r = subprocess.run(["npx", "--yes", "esbuild@0.24.0", f"--loader={loader}", "--minify", TARGETS, "--log-level=error"], input=code, capture_output=True, text=True, timeout=120)
+        if r.returncode == 0 and r.stdout.strip():
+            return r.stdout.strip()
+        print("esbuild failed:", r.stderr[:300])
+    except Exception as e:
+        print("esbuild not available:", e)
+    return code
+m = re.search(r"<script>([\s\S]*)</script>", html)
+APP_JS = esbuild(m.group(1), "js")
+app_name = "app." + hashlib.sha1(APP_JS.encode()).hexdigest()[:10] + ".js"
+html = html[:m.start()] + f'<script src="/{app_name}" defer></script>' + html[m.end():]
+m = re.search(r"<style>([\s\S]*?)</style>", html)
+html = html[:m.start(1)] + esbuild(m.group(1), "css") + html[m.end(1):]
+fonts = {}
+for f in sorted((root / "public/fonts").glob("*.woff2")):
+    data = f.read_bytes(); h = hashlib.sha1(data).hexdigest()[:10]
+    hashed = f"{f.stem}.{h}.woff2"
+    fonts[hashed] = base64.b64encode(data).decode()
+    html = html.replace(f"/fonts/{f.name}", f"/fonts/{hashed}")
+font = (root / "src/og_font.js").read_text().replace("export const OG_FONT", "const OG_FONT")
+worker = "const FONTS = " + json.dumps(fonts) + ";\nconst APP = " + json.dumps({"name": app_name, "js": APP_JS}) + ";\n" + (root / "src/worker.js").read_text() + "\n" + (root / "src/features.js").read_text() + "\n" + (root / "src/og.js").read_text() + "\n" + font + "\nconst HTML = " + json.dumps(html) + ";\n"
 (root / "dist").mkdir(exist_ok=True)
 (root / "dist/worker.js").write_text(worker)
 schema = (root / "schema.sql").read_text()
@@ -29,4 +54,4 @@ exec_js = f"""async () => {{
 }}
 """
 (root / "deploy_exec.js").write_text(exec_js)
-print("worker bytes", len(worker))
+print("html bytes", len(html)); print("worker bytes", len(worker))
