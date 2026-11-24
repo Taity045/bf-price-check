@@ -203,6 +203,29 @@ for (const [n, o] of [["1440", wide(1440)], ["1280", wide(1280)], ["390", phone(
   await p.context().close();
 }
 // 4. bookmark button and ?url=
+for (const base of [...new Set([BASE, "https://eish.veldwire.com", "https://bf-price-check.tm-deal-lab.workers.dev"])]) {
+  const html = await (await fetch(base + "/", { headers: { "user-agent": UA } })).text();
+  const want = `href="javascript:void(location.href='${base}/?url='+encodeURIComponent(location.href))"`;
+  ok(`${base}: bookmark link is in the HTML without JS`, html.includes(want), (html.match(/id="bmLink"[^>]*/) || [""])[0].slice(0, 160));
+  const p = await page(wide(1280));
+  await p.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: base });
+  await p.goto(base + "/"); await p.click("#bmBtn"); await p.waitForSelector("#bmDlg[open]");
+  const href = await p.getAttribute("#bmLink", "href");
+  ok(`${base}: dialog link is the javascript: code`, href === `javascript:void(location.href='${base}/?url='+encodeURIComponent(location.href))`, href);
+  ok(`${base}: code box has the same code`, (await p.inputValue("#bmCode")) === href);
+  await p.click("#bmCopy"); await p.waitForTimeout(300);
+  ok(`${base}: copy works`, (await p.evaluate(() => navigator.clipboard.readText().catch(() => ""))) === href && /Copied/.test(await p.textContent("#bmCopy")));
+  await p.screenshot({ path: `${OUT}/bookmark-dialog-${new URL(base).hostname.split(".")[0]}.png` });
+  await p.goto(PC, { waitUntil: "domcontentloaded", timeout: 45000 }).catch(() => {});
+  await Promise.all([p.waitForURL((u) => u.href.startsWith(base + "/?url="), { timeout: 30000 }).catch(() => {}), p.evaluate(href.replace(/^javascript:/, "")).catch(() => {})]);
+  ok(`${base}: bookmarklet on Evetech lands on the site with ?url=`, p.url().startsWith(base + "/?url=" + encodeURIComponent(PC).slice(0, 20)), p.url().slice(0, 120));
+  await p.waitForSelector("#result:not(.hidden)", { timeout: 60000 }).catch(() => {});
+  await p.waitForFunction(() => /R\s?\d/.test(document.getElementById("prices").textContent), null, { timeout: 60000 }).catch(() => {});
+  ok(`${base}: bookmarklet runs a check with a price`, /R\s?\d/.test(await p.textContent("#prices")));
+  await p.waitForTimeout(800); await p.screenshot({ path: `${OUT}/bookmark-run-${new URL(base).hostname.split(".")[0]}.png` });
+  await p.context().close();
+}
+
 {
   const p = await page(wide(1280));
   await p.goto(BASE + "/"); await p.click("#bmBtn");
@@ -272,11 +295,10 @@ for (const [n, o] of [["1440", wide(1440)], ["1280", wide(1280)], ["390", phone(
   const txt = await p.textContent("#privacyView");
   ok("privacy page mentions Turnstile", /Turnstile/.test(txt));
   ok("privacy page has no remove-your-data promise", !/Remove your data|instant|within \d+ (days|hours)/i.test(txt));
-  ok("privacy page has the Information Regulator line", /Information Regulator/.test(txt));
-  await p.click("#privAsk"); ok("privacy contact opens the form", await p.isVisible("#reqDlg")); await p.click("#reqDlg .x");
+  ok("privacy page has no Your rights section", !/Your rights|Information Regulator/.test(txt) && !(await p.$("#privAsk")));
   const all = await p.content();
   ok("no full name or email on the page", !/Tatenda|Magondo|gmail|hello@/i.test(all));
-  ok("footer says Made by Taity", (await p.textContent("#madeby")).trim() === "Made by Taity");
+  ok("no Made by text and no name in the page", !(await p.$("#madeby")) && !/Taity|Made by/i.test(await p.content()));
   ok("pages no JS errors", p._errs.length === 0, p._errs.join(" | "));
   await p.context().close();
 }

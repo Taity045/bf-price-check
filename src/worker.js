@@ -867,6 +867,8 @@ async function cron(env, scheduledTime) {
 async function pageHtml(req, env) {
   const origin = new URL(req.url).origin;
   let html = HTML.replace('content="/og.png"', `content="${origin}/og.png"`).replace("<!--CANONICAL-->", `<link rel="canonical" href="${origin}/">`);
+  const bm = `javascript:void(location.href='${origin}/?url='+encodeURIComponent(location.href))`;
+  html = html.split("__BM__").join(bm);
   if (new URL(req.url).pathname === "/") { try { html = await homeWithMeta(req, env, html); } catch {} }
   return html.replace("<!--NOSCRIPT-->", '<noscript><p class="note" style="text-align:center">Turn on JavaScript to see price history. You can still paste a link and press Check price.</p></noscript>');
 }
