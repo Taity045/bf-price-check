@@ -17,6 +17,9 @@ const mobile = { viewport: { width: 360, height: 740 }, deviceScaleFactor: 2, is
 const PRODUCT = "https://www.takealot.com/test-kettle/PLID00000001";
 const SHOP_PAGE = "https://shop.example.co.za/product/123";
 const DAY = 864e5;
+// With E2E_KEY (same value as the worker's), form requests skip the rate limit and Turnstile and are marked as tests.
+const KEY = process.env.E2E_KEY || "";
+const SHOP_PREFIX = KEY ? "e2e-test-" : "";
 const checkAnswer = () => ({
   url: PRODUCT, canonical: PRODUCT, host: "takealot.com", tld_currency: "ZAR", cached: false, tracked: true,
   current: { status: "ok", checked_at: Date.now(), price: 999, was: 1499, currency: "ZAR", title: "CI Test Kettle 1.7L", source: "takealot-api" },
@@ -32,7 +35,7 @@ async function fakeChecks(p) {
 
 const browser = await chromium.launch({ executablePath: process.env.CHROME || "/usr/bin/google-chrome", args: ["--no-sandbox"] });
 async function open(opts, { fake = true } = {}) {
-  const ctx = await browser.newContext(opts);
+  const ctx = await browser.newContext({ ...opts, extraHTTPHeaders: KEY ? { "x-e2e-key": KEY } : {} });
   const p = await ctx.newPage();
   p._errs = [];
   p.on("pageerror", (e) => p._errs.push(String(e)));
@@ -51,10 +54,12 @@ async function step(name, fn) {
 // 1. home page on desktop and phone, plus page weight
 for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`home ${name}`, async () => {
   const p = await open(o, { fake: false });
-  let bytes = 0;
-  p.on("response", async (r) => { try { if (r.url().startsWith(BASE)) bytes += (await r.body()).length; } catch {} });
-  const res = await p.goto(BASE + "/", { waitUntil: "load" });
+  const res = await p.goto(BASE + "/", { waitUntil: "networkidle" });
+  await p.evaluate(() => document.fonts.ready);
   await p.waitForTimeout(300);
+  // uncompressed size of everything the page loaded from the site
+  const bytes = await p.evaluate(() => [...performance.getEntriesByType("navigation"), ...performance.getEntriesByType("resource")]
+    .filter((e) => e.name.startsWith(location.origin)).reduce((n, e) => n + (e.decodedBodySize || 0), 0));
   ok(`home ${name}: HTTP 200`, res.status() === 200, res.status());
   ok(`home ${name}: title`, (await p.title()).includes("Deal or Dud"), await p.title());
   ok(`home ${name}: heading`, (await p.textContent("h1")).trim().length > 10);
@@ -104,7 +109,7 @@ for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`s
   ok(`shop request ${name}: send button fits on screen`, await inView(p, "#rSend"));
   await p.fill("#rShop", "x"); await p.click("#rSend");
   ok(`shop request ${name}: too-short name is refused`, /shop name/.test(await p.textContent("#rMsg")), await p.textContent("#rMsg"));
-  await p.fill("#rShop", `ci-${name}.example.co.za`); await p.fill("#rEmail", "not-an-email"); await p.click("#rSend");
+  await p.fill("#rShop", `${SHOP_PREFIX}ci-${name}.example.co.za`); await p.fill("#rEmail", "not-an-email"); await p.click("#rSend");
   ok(`shop request ${name}: bad email is refused`, /email/.test(await p.textContent("#rMsg")), await p.textContent("#rMsg"));
   await p.fill("#rEmail", "");
   const [resp] = await Promise.all([p.waitForResponse((r) => r.url().endsWith("/api/request")), p.click("#rSend")]);

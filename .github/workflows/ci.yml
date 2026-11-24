@@ -41,6 +41,9 @@ jobs:
         run: npm test
       - name: Start the worker locally (wrangler dev, local D1)
         run: |
+          # A throwaway test key so the browser tests are not rate limited (local worker only).
+          key=$(openssl rand -hex 16); echo "::add-mask::$key"
+          echo "E2E_KEY=$key" > .dev.vars; echo "E2E_KEY=$key" >> "$GITHUB_ENV"
           npx wrangler d1 execute bf-price-check-db --local --file schema.sql > /dev/null
           nohup npx wrangler dev --port 8787 --ip 127.0.0.1 --show-interactive-dev-session=false > wrangler-dev.log 2>&1 &
           for i in $(seq 1 90); do

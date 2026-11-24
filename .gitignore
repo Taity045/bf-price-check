@@ -4,3 +4,4 @@ node_modules/
 .wrangler/
 tests/.tmp/
 e2e-artifacts/
+.dev.vars

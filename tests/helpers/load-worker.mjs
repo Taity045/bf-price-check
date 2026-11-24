@@ -1,7 +1,8 @@
 // Loads the worker the same way build.py assembles it (shops.js + worker.js + features.js + og.js +
 // og_font.js), with small stand-ins for the build-time constants, and adds named exports so unit
 // tests can call the pure functions. Nothing here touches the network.
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = new URL("../../", import.meta.url);
@@ -33,8 +34,13 @@ const source = [
 
 const dir = new URL("tests/.tmp/", root);
 mkdirSync(dir, { recursive: true });
-const file = new URL("worker.unit.mjs", dir);
-writeFileSync(file, source);
+// Test files run in parallel processes: name the file by its content and write it atomically.
+const file = new URL(`worker.${createHash("sha1").update(source).digest("hex").slice(0, 12)}.mjs`, dir);
+if (!existsSync(file)) {
+  const tmp = new URL(`worker.${process.pid}.${Date.now()}.tmp`, dir);
+  writeFileSync(tmp, source);
+  renameSync(tmp, file);
+}
 const mod = await import(pathToFileURL(fileURLToPath(file)).href);
 export const worker = mod.default;
 export const W = mod;
