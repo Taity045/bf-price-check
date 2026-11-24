@@ -1,8 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import worker from '../src/worker.js';
-import { localDatabase, schema } from './local-db.mjs';
+import { worker } from './helpers/load-worker.mjs';
+import { testDb, schema } from './helpers/db.mjs';
 
+// Integration tests: the whole worker against an in-memory D1 and a fake network.
+const localDatabase = () => testDb();
+
+// DNS-over-HTTPS resolvers used by resolvesPublic().
+const DOH = new Set(['1.1.1.1', 'dns.google', 'cloudflare-dns.com']);
 const product = 'https://shop.example/product?variant=large';
 const ts = new Date(Date.now() - 8 * 86400000).toISOString().replace(/\D/g, '').slice(0, 14);
 
@@ -15,12 +20,12 @@ function fixture(t, remote, dns = publicDns) {
   t.after(() => db.close());
   t.mock.method(globalThis, 'fetch', (raw, init) => {
     const url = new URL(raw);
-    return url.hostname === 'cloudflare-dns.com' ? dns(url) : remote(url, init);
+    return DOH.has(url.hostname) ? dns(url) : remote(url, init);
   });
   return {
     db,
     async api(path, args = { url: product }) {
-      const r = await worker.fetch(new Request('https://checker.example/api/' + path + '?' + new URLSearchParams(args)), env, {});
+      const r = await worker.fetch(new Request('https://checker.example/api/' + path + '?' + new URLSearchParams(args), { headers: { 'user-agent': 'Mozilla/5.0 (regression test)' } }), env, { waitUntil() {} });
       return { status: r.status, body: await r.json() };
     },
     async tick(time) {
@@ -64,7 +69,8 @@ test('redirects are checked before download and cron revalidates DNS', async (t)
     return page();
   }, url => {
     lookups.push(url.searchParams.get('name'));
-    return available ? publicDns(url) : Response.json({ Status: 2 });
+    // Later the redirect target starts pointing at a private address (DNS rebinding).
+    return available ? publicDns(url) : Response.json({ Status: 0, Answer: url.searchParams.get('type') === 'A' ? [{ type: 1, data: '127.0.0.1' }] : [] });
   });
   assert.equal((await api('check')).body.current.price, 19.99);
   assert.deepEqual(visits, ['shop.example', 'prices.example']);
@@ -77,12 +83,13 @@ test('redirects are checked before download and cron revalidates DNS', async (t)
   assert.equal(visits.length, 2);
 });
 
-test('an unverified redirect destination is never downloaded', async (t) => {
+test('a redirect destination that resolves to a private address is never downloaded', async (t) => {
+  // An empty or failed DNS answer is allowed on purpose (fail open, see resolvesPublic); a private answer is not.
   const visits = [];
   const { api } = fixture(t, url => {
     visits.push(url.hostname);
     return Response.redirect('https://unresolved.example/item');
-  }, url => url.searchParams.get('name') === 'shop.example' ? publicDns(url) : Response.json({ Status: 0, Answer: [] }));
+  }, url => url.searchParams.get('name') === 'shop.example' ? publicDns(url) : Response.json({ Status: 0, Answer: url.searchParams.get('type') === 'A' ? [{ type: 1, data: '10.0.0.7' }] : [] }));
   assert.equal((await api('check')).body.current.status, 'error');
   assert.deepEqual(visits, ['shop.example']);
 });
@@ -141,7 +148,7 @@ test('tracking parameters do not split a product', async (t) => {
   const az = (await api('check', { url: 'https://www.amazon.co.uk/dp/B0ABCDEFGH?_encoding=UTF8&smid=A3P5ROKL5A1OLE&language=en_GB' })).body;
   assert.equal(az.canonical, 'https://www.amazon.co.uk/dp/B0ABCDEFGH');
   await api('archive', { url: az.canonical, orig: az.url });
-  assert.deepEqual(cdx[0], ['amazon.co.uk/dp/B0ABCDEFGH', 'prefix']);
+  assert.deepEqual(cdx[0], ['amazon.co.uk/dp/B0ABCDEFGH', null], 'exact CDX query, no prefix match');
   const shop = (await api('check', { url: 'https://shop.example/p/123?ref=homepage&cmp=email&utm_source=x' })).body;
   assert.equal(shop.canonical, 'https://shop.example/p/123');
 });
@@ -191,7 +198,7 @@ test('a takealot link with extra parameters still uses the takealot API', async 
 test('a product that throws during a scheduled check does not block the queue', async (t) => {
   const { db, env } = localDatabase();
   t.after(() => db.close());
-  t.mock.method(globalThis, 'fetch', (raw) => new URL(raw).hostname === 'cloudflare-dns.com' ? publicDns(new URL(raw)) : page());
+  t.mock.method(globalThis, 'fetch', (raw) => DOH.has(new URL(raw).hostname) ? publicDns(new URL(raw)) : page());
   db.prepare('INSERT INTO tracked (url, last_checked, last_viewed) VALUES (?, 0, ?)').run(product, Date.now());
   const failing = { DB: { prepare(sql) { if (sql.startsWith('INSERT INTO checks')) throw new Error('D1 down'); return env.DB.prepare(sql); } } };
   let job;

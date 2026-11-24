@@ -1,0 +1,40 @@
+{
+ "title": "An Universal System of Natural History: Including the Natural History of Man",
+ "core": {
+  "title": "An Universal System of Natural History: Including the Natural History of Man",
+  "brand": "Wentworth Press"
+ },
+ "buybox": {
+  "items": [
+   {
+    "price": 1189,
+    "listing_price": 1216,
+    "is_selected": true
+   },
+   {
+    "price": 835,
+    "listing_price": 1153,
+    "is_selected": false
+   }
+  ]
+ },
+ "gallery": {
+  "images": [
+   "https://media.takealot.com/covers_images/5e093fde8c294eb9b775e5a290262d29/s-{size}.file"
+  ]
+ },
+ "product_information": {
+  "items": [
+   {
+    "display_name": "Pages",
+    "item_type": "text",
+    "displayable_text": "326"
+   },
+   {
+    "display_name": "Barcode",
+    "item_type": "barcode",
+    "displayable_text": "9781022725812"
+   }
+  ]
+ }
+}
