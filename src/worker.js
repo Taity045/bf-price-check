@@ -551,6 +551,12 @@ async function getCurrent(canonInfo, origUrl, verifiedHost) {
 }
 
 // ---------- Wayback ----------
+// Black Friday is the day after the fourth Thursday of November. Use this year's once its week is over.
+function lastBlackFriday() {
+  const bfOf = (y) => { const wd = new Date(Date.UTC(y, 10, 1)).getUTCDay(); return Date.UTC(y, 10, 1 + ((4 - wd + 7) % 7) + 22); };
+  const y = new Date(now()).getUTCFullYear();
+  return now() >= bfOf(y) + 4 * 864e5 ? bfOf(y) : bfOf(y - 1);
+}
 // http/https and a trailing slash on the path don't make a different product page.
 const sameKey = (s) => s.replace(/^http:/, "https:").replace(/\/+(?=\?|$)/, "");
 function sameProduct(raw, canon) {
@@ -628,8 +634,8 @@ async function getSnapshots(env, canonInfo, origUrl) {
     if (last - t >= SNAP_SPACING_DAYS * 864e5 - 36e5) { picked.push({ ts: rows[i][0], orig: rows[i][1] }); last = t; }
   }
   picked.reverse();
-  // Always keep the capture closest to last Black Friday (28 Nov 2025), if there is one within 3 days.
-  const bf = Date.UTC(2025, 10, 28);
+  // Always keep the capture closest to last Black Friday, if there is one within 3 days.
+  const bf = lastBlackFriday();
   let bfRow = null;
   for (const r of rows) { const d = Math.abs(tsToMs(r[0]) - bf); if (d <= 3 * 864e5 && (!bfRow || d < Math.abs(tsToMs(bfRow[0]) - bf))) bfRow = r; }
   if (bfRow && !picked.some((x) => x.ts === bfRow[0])) { picked.push({ ts: bfRow[0], orig: bfRow[1] }); picked.sort((a, b) => a.ts.localeCompare(b.ts)); }
