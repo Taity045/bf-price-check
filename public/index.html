@@ -3,237 +3,174 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Deal or Dud? · Price history check</title>
-<meta name="description" content="Paste a product link. See the shop's own prices over the last 12 months and find out if the 'was' price is real.">
-<meta property="og:title" content="Deal or Dud? · Price history check">
-<meta property="og:description" content="Is that deal real? Paste a product link and see 12 months of price history.">
-<meta name="theme-color" content="#f3efe6" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#15140f" media="(prefers-color-scheme: dark)">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%2317150f'/><text x='16' y='24' font-family='Georgia,serif' font-weight='700' font-size='22' fill='%23f3efe6' text-anchor='middle'>D?</text></svg>">
+<title>Deal or Dud? · Is that deal real?</title>
+<meta name="description" content="Paste a product link. See 12 months of that shop's prices and find out if the deal is real.">
+<meta property="og:title" content="Deal or Dud?">
+<meta property="og:description" content="Paste a product link. See 12 months of prices and find out if the deal is real.">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111214" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23111214'/><path d='M8 20l5-5 4 4 7-8' fill='none' stroke='%23fff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/></svg>">
 <style>
-:root{
-  --bg:#f3efe6;--field:#fbf9f4;--ink:#17150f;--mut:#6b665b;--rule:#d6cfbf;--soft:#e8e2d4;
-  --good:#1d6b3c;--bad:#b0261c;--meh:#7a5a00;
-  --serif:"Iowan Old Style","Charter","Bitstream Charter","Palatino Linotype",Palatino,Georgia,serif;
-  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
-}
-@media (prefers-color-scheme: dark){
-  :root{--bg:#15140f;--field:#1c1b16;--ink:#ece6d6;--mut:#9b9483;--rule:#36332a;--soft:#25231c;--good:#74c690;--bad:#f07a6c;--meh:#dcb44e}
-}
+:root{--bg:#fff;--ink:#111214;--mut:#5f6368;--line:#e3e5e8;--soft:#f5f6f7;--acc:#111214;--good:#137333;--bad:#c5221f;--meh:#8a5a00;--r:12px;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
+@media (prefers-color-scheme:dark){:root{--bg:#111214;--ink:#eceef1;--mut:#a0a6ad;--line:#2a2d31;--soft:#1b1d20;--acc:#eceef1;--good:#5bd08a;--bad:#ff7a70;--meh:#e2b54c}}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 var(--sans)}
-body{min-height:100vh;min-height:100dvh;padding:env(safe-area-inset-top) 0 calc(env(safe-area-inset-bottom) + 24px)}
-main{max-width:640px;margin:0 auto;padding:20px 16px 40px}
-button{touch-action:manipulation;min-height:44px;min-width:44px;cursor:pointer;font:inherit;color:inherit;background:none;border:0;border-radius:2px;user-select:none;-webkit-user-select:none}
-button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible,summary:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+body{min-height:100dvh;padding-bottom:env(safe-area-inset-bottom)}
+main{max-width:680px;margin:0 auto;padding:0 16px 48px}
 a{color:inherit;text-underline-offset:3px}
-.num{font-variant-numeric:tabular-nums lining-nums}
-.lab{display:block;font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--mut)}
+button{font:inherit;color:inherit;cursor:pointer;touch-action:manipulation;min-height:44px}
+:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
 .hidden{display:none!important}
-
-/* masthead */
-.mast{border-top:4px solid var(--ink);padding-top:8px}
-.mast-top{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid var(--rule);padding-bottom:8px}
-h1{font-family:var(--serif);font-weight:700;font-size:clamp(46px,14vw,76px);line-height:.92;letter-spacing:-.025em;margin:22px 0 14px}
-.dek{font-family:var(--serif);font-size:19px;line-height:1.42;margin:0;max-width:32em}
-
-/* form */
-.check{margin-top:28px}
-.check .lab{margin-bottom:8px}
-.inrow{display:flex}
-input[type=url],input[type=text],select{min-width:0;height:52px;padding:0 14px;border:1.5px solid var(--ink);border-radius:2px;background:var(--field);color:var(--ink);font:16px var(--sans)}
-#u{flex:1;border-right:0;border-radius:2px 0 0 2px}
-input:focus,select:focus{outline:none;box-shadow:inset 0 0 0 1px var(--ink)}
-input::placeholder{color:var(--mut)}
-.paste{height:52px;padding:0 16px;border:1.5px solid var(--ink);border-radius:0 2px 2px 0;font-weight:600}
-.paste:active{background:var(--soft)}
-.go{margin-top:10px;width:100%;height:54px;background:var(--ink);color:var(--bg);font-weight:600;font-size:17px;letter-spacing:.01em}
-.go:active{transform:translateY(1px)}
-.go[disabled]{opacity:.7}
-.tries{margin-top:26px}
-.tries .lab{padding-bottom:6px;border-bottom:1px solid var(--ink)}
-.chip{display:flex;width:100%;align-items:center;justify-content:space-between;gap:12px;min-height:50px;padding:6px 0;border-bottom:1px solid var(--rule);text-align:left;border-radius:0}
-.chip b{font-weight:600}
-.chip .item{color:var(--mut)}
-.chip .cc{font-size:11px;font-weight:600;letter-spacing:.1em;color:var(--mut);display:flex;gap:10px;align-items:center}
-.chip .cc::after{content:"→";font-size:16px;letter-spacing:0;color:var(--ink)}
-.chip:active{background:var(--soft)}
-
-.err{margin-top:20px;border-left:3px solid var(--bad);padding:4px 0 4px 14px}
-
-/* result blocks */
-.block{border-top:1px solid var(--rule);padding:22px 0 4px;margin-top:22px}
-#result > .block:first-child{border-top:4px solid var(--ink);margin-top:34px}
-.prod{display:flex;gap:16px;align-items:flex-start;justify-content:space-between}
-.prod img{width:76px;height:76px;object-fit:contain;background:#fff;border:1px solid var(--rule);border-radius:2px;flex:0 0 auto}
-.prod h2{font-family:var(--serif);font-size:23px;line-height:1.2;font-weight:700;margin:6px 0 0;word-break:break-word}
-.prices{display:flex;flex-wrap:wrap;gap:8px 28px;margin-top:18px;align-items:flex-end}
-.pcol{display:flex;flex-direction:column;gap:2px}
-.now{font-family:var(--serif);font-size:46px;font-weight:700;line-height:1;letter-spacing:-.01em}
-.now.dim{font-size:28px}
-.now.none{font-size:22px;color:var(--mut);font-weight:400}
-.was{font-family:var(--serif);font-size:24px;color:var(--mut);text-decoration:line-through;text-decoration-thickness:1.5px;line-height:1.2}
-.claim{font-family:var(--serif);font-size:24px;line-height:1.2}
+.num{font-variant-numeric:tabular-nums}
 .small{font-size:13px;color:var(--mut)}
-#psrc{margin-top:10px}
-.note{font-size:14px;color:var(--mut);margin:12px 0 0}
-.manual{display:grid;grid-template-columns:1fr 1fr 96px;gap:8px;margin-top:12px}
-.manual label{display:flex;flex-direction:column;gap:6px}
-.manual input,.manual select{width:100%}
-.manual select{padding:0 8px;-webkit-appearance:none;appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--ink) 50%),linear-gradient(135deg,var(--ink) 50%,transparent 50%);background-position:calc(100% - 15px) 23px,calc(100% - 10px) 23px;background-size:5px 5px;background-repeat:no-repeat}
-.btn2{width:100%;height:48px;border:1.5px solid var(--ink);font-weight:600;margin-top:10px}
-.btn2:active{background:var(--soft)}
+.note{font-size:14px;color:var(--mut);margin:10px 0 0}
+.lab{display:block;font-size:12px;color:var(--mut)}
 
-/* verdict */
-.verdict{--v:var(--mut)}
-#result > .verdict{border-top:4px solid var(--v)}
-.verdict.good{--v:var(--good)} .verdict.bad{--v:var(--bad)} .verdict.meh{--v:var(--meh)}
-.verdict::before{content:"Our verdict";display:block;font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--mut)}
-.verdict .big{font-family:var(--serif);font-size:clamp(34px,10vw,46px);font-weight:700;line-height:1.02;letter-spacing:-.015em;color:var(--v);margin:8px 0 10px}
+.top{display:flex;align-items:center;height:56px;border-bottom:1px solid var(--line);margin:0 -16px;padding:0 16px}
+.brand{font-weight:700;text-decoration:none;letter-spacing:-.01em;display:inline-flex;align-items:center;min-height:44px}
+.hero{padding:40px 0 8px;text-align:center}
+h1{font-size:clamp(28px,7vw,40px);line-height:1.15;letter-spacing:-.02em;margin:0 0 8px}
+.sub{color:var(--mut);margin:0 auto;max-width:30em}
+form{display:flex;gap:8px;margin:24px 0 0}
+#u{flex:1;min-width:0;height:50px;padding:0 14px;border:1px solid var(--line);border-radius:var(--r);background:var(--soft);color:var(--ink);font:16px var(--sans)}
+#u:focus{outline:none;border-color:var(--ink);background:var(--bg)}
+.go{height:50px;padding:0 20px;border:0;border-radius:var(--r);background:var(--acc);color:var(--bg);font-weight:600;white-space:nowrap}
+.go[disabled]{opacity:.65;cursor:progress}
+.tries{margin-top:14px;font-size:14px;color:var(--mut);text-align:center;line-height:2}
+.tries a{display:inline-block;margin:0 6px;color:var(--ink);padding:4px 0}
+.err{margin-top:18px;padding:12px 14px;border-radius:var(--r);background:color-mix(in srgb,var(--bad) 10%,var(--bg));color:var(--bad);font-size:15px}
+
+#result{margin-top:28px}
+.card{border:1px solid var(--line);border-radius:var(--r);padding:18px;margin-top:14px}
+.prod{display:flex;gap:14px;align-items:flex-start}
+.prod img{width:64px;height:64px;object-fit:contain;background:#fff;border-radius:8px;flex:none;border:1px solid var(--line)}
+.prod h2{font-size:18px;line-height:1.3;margin:2px 0 4px;word-break:break-word}
+.prices{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px;margin-top:14px}
+.now{font-size:34px;font-weight:700;letter-spacing:-.02em;line-height:1.1}
+.now.dim{font-size:26px}.now.none{font-size:18px;color:var(--mut);font-weight:500}
+.was{color:var(--mut);text-decoration:line-through}
+.claim{font-size:14px;font-weight:600;padding:2px 8px;border-radius:99px;background:var(--soft)}
+#psrc{margin-top:8px}
+.manual{display:grid;grid-template-columns:1fr 1fr 90px;gap:8px;margin-top:10px}
+.manual label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mut)}
+.manual input,.manual select{height:44px;padding:0 10px;border:1px solid var(--line);border-radius:10px;background:var(--soft);color:var(--ink);font:16px var(--sans);width:100%}
+.btn2{width:100%;height:46px;margin-top:10px;border:1px solid var(--line);border-radius:var(--r);background:var(--bg);font-weight:600}
+.btn2:hover,.actions button:hover{background:var(--soft)}
+
+.verdict{--v:var(--mut);border-left:4px solid var(--v)}
+.verdict.good{--v:var(--good)}.verdict.bad{--v:var(--bad)}.verdict.meh{--v:var(--meh)}
+.verdict .big{font-size:28px;font-weight:700;letter-spacing:-.02em;color:var(--v);line-height:1.15}
 .verdict.unk .big{color:var(--ink)}
-.vbody{font-family:var(--serif);font-size:19px;line-height:1.42;margin:0}
-.flag{margin-top:16px;border-left:3px solid var(--bad);padding:2px 0 2px 12px;font-weight:600}
-.flag.ok{border-color:var(--good)}
-.stats{display:grid;grid-template-columns:repeat(3,1fr);margin-top:20px;border-top:1px solid var(--ink);border-bottom:1px solid var(--rule)}
-.stats.two{grid-template-columns:1fr 1fr;margin-top:0;border-top:0}
-.stat{padding:12px 0 12px 12px;border-left:1px solid var(--rule);display:flex;flex-direction:column-reverse;gap:2px}
-.stat:first-child{border-left:0;padding-left:0}
-.stat b{font-family:var(--serif);font-size:24px;font-weight:700;line-height:1.1}
-.pos{color:var(--good)} .neg{color:var(--bad)}
+.vbody{margin:6px 0 0}
+.flag{margin-top:12px;padding:10px 12px;border-radius:10px;background:color-mix(in srgb,var(--bad) 9%,var(--bg));color:var(--bad);font-size:14px;font-weight:600}
+.flag.ok{background:color-mix(in srgb,var(--good) 9%,var(--bg));color:var(--good)}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
+.stat{background:var(--soft);border-radius:10px;padding:10px;display:flex;flex-direction:column-reverse}
+.stat b{font-size:17px}
 
-/* chart */
-.charthead{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
-h3{font-family:var(--serif);font-size:23px;font-weight:700;margin:0;line-height:1.2}
-svg{display:block;width:100%;height:auto;touch-action:manipulation}
+.charthead{display:flex;justify-content:space-between;align-items:baseline}
+h3{font-size:16px;margin:0}
+svg{display:block;width:100%;height:auto}
+#chart{margin-top:10px}
 #chart svg text{font:12px var(--sans);font-variant-numeric:tabular-nums}
-.c-grid{stroke:var(--rule)} .c-base{stroke:var(--ink)}
-.c-ax{fill:var(--mut)}
-.c-was{stroke:var(--bad);stroke-width:1.5;stroke-dasharray:6 5} .c-wast{fill:var(--bad)}
-.c-ln{fill:none;stroke:var(--ink);stroke-width:2}
-.c-ln.gap{stroke-width:1.25;stroke-dasharray:2 5;opacity:.55}
-.c-arch{fill:var(--bg);stroke:var(--ink);stroke-width:2}
-.c-chk{fill:var(--ink)}
-.c-now{fill:var(--ink)} .c-ring{fill:none;stroke:var(--ink);stroke-width:1.5}
-.legend{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--mut);margin-top:10px}
-.legend span{display:inline-flex;align-items:center;gap:6px}
-.legend svg{width:auto;height:14px;display:inline-block}
-.tip{min-height:24px;font-size:15px;margin-top:10px}
-.prog{height:2px;background:var(--rule);margin-top:14px}
+.c-grid{stroke:var(--line)}.c-base{stroke:var(--line)}.c-ax{fill:var(--mut)}
+.c-was{stroke:var(--bad);stroke-width:1.25;stroke-dasharray:5 4}.c-wast{fill:var(--bad)}
+.c-ln{fill:none;stroke:var(--ink);stroke-width:2;stroke-linejoin:round}
+.c-ln.gap{stroke-width:1.25;stroke-dasharray:2 4;opacity:.5}
+.c-arch{fill:var(--bg);stroke:var(--ink);stroke-width:2}.c-chk{fill:var(--ink)}
+.c-now{fill:var(--good)}.c-ring{fill:none;stroke:var(--good);stroke-width:1.5}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--mut);margin-top:8px}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.legend svg{width:auto;height:12px}
+.tip{min-height:22px;font-size:14px;margin-top:8px}
+.prog{height:3px;background:var(--line);border-radius:3px;margin-top:10px;overflow:hidden}
 .prog i{display:block;height:100%;width:0;background:var(--ink);transition:width .3s}
-details{margin-top:8px;border-top:1px solid var(--rule)}
-summary{min-height:48px;display:flex;align-items:center;cursor:pointer;font-weight:600;touch-action:manipulation;list-style:none}
+details{margin-top:10px;border-top:1px solid var(--line)}
+summary{min-height:44px;display:flex;align-items:center;cursor:pointer;font-size:14px;font-weight:600;list-style:none}
 summary::-webkit-details-marker{display:none}
-summary::after{content:"+";margin-left:auto;font-size:20px;font-weight:400}
+summary::after{content:"+";margin-left:auto;font-size:18px;font-weight:400}
 details[open] summary::after{content:"−"}
 table{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}
-td,th{padding:8px 4px 8px 0;border-bottom:1px solid var(--rule);text-align:left}
-th{font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--mut)}
-
-.actions{display:flex;gap:8px;margin-top:22px}
-.actions button{flex:1;height:48px;border:1.5px solid var(--ink);font-weight:600}
-.actions button:active{background:var(--soft)}
-
-/* method */
-.method{margin-top:44px;border-top:4px solid var(--ink);padding-top:16px}
-.method ol{list-style:none;padding:0;margin:14px 0 0;counter-reset:m}
-.method li{counter-increment:m;position:relative;padding:10px 0 10px 30px;border-top:1px solid var(--rule);font-size:15px}
-.method li::before{content:counter(m);position:absolute;left:0;top:9px;font-family:var(--serif);font-weight:700;font-size:17px;line-height:1.35}
-footer{color:var(--mut);font-size:13px;margin-top:24px;padding-top:12px;border-top:1px solid var(--rule)}
-
-.spin{display:inline-block;width:14px;height:14px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:sp .8s linear infinite;vertical-align:-2px;margin-right:10px}
+td,th{padding:7px 4px 7px 0;border-bottom:1px solid var(--line);text-align:left}
+th{font-size:12px;font-weight:500;color:var(--mut)}
+.actions{display:flex;gap:8px;margin-top:14px}
+.actions button{flex:1;height:46px;border:1px solid var(--line);border-radius:var(--r);background:var(--bg);font-weight:600}
+footer{margin-top:40px;padding-top:14px;border-top:1px solid var(--line);font-size:13px;color:var(--mut);text-align:center}
+.spin{display:inline-block;width:14px;height:14px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:sp .8s linear infinite;vertical-align:-2px;margin-right:8px}
 @keyframes sp{to{transform:rotate(360deg)}}
-@media (prefers-reduced-motion: reduce){.spin{animation-duration:2.4s}.prog i{transition:none}}
-.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:var(--bg);font-weight:600;padding:10px 16px;border-radius:2px;z-index:5;pointer-events:none;opacity:0;transition:opacity .2s}
+@media (prefers-reduced-motion:reduce){.spin{animation-duration:2.4s}.prog i{transition:none}}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:var(--bg);font-size:14px;font-weight:600;padding:10px 16px;border-radius:99px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:9}
 .toast.on{opacity:1}
-@media (min-width:600px){
-  main{padding-top:36px}
-  .dek{font-size:21px}
-  .method ol{columns:2;column-gap:28px}
-  .method li{break-inside:avoid}
-}
+@media (max-width:420px){form{flex-direction:column}.go{width:100%}.manual{grid-template-columns:1fr 1fr}.manual label:last-child{grid-column:1/-1}}
 </style>
 </head>
 <body>
 <main>
-  <header class="mast">
-    <div class="mast-top"><span class="lab">Price history check</span><span class="lab">South Africa · UK</span></div>
-    <h1>Deal or Dud?</h1>
-    <p class="dek">Paste a link to a product. We put today's price next to twelve months of that shop's own prices, so a made-up "was" price has nowhere to hide.</p>
-  </header>
+  <header class="top"><a class="brand" href="/">Deal or Dud?</a></header>
 
-  <section class="check">
-    <form id="f" autocomplete="off">
-      <label class="lab" for="u">Product link</label>
-      <div class="inrow">
-        <input id="u" type="url" inputmode="url" placeholder="https://www.takealot.com/…" required>
-        <button type="button" class="paste" id="paste" aria-label="Paste link">Paste</button>
-      </div>
-      <button class="go" id="go" type="submit">Check the price</button>
+  <section class="hero">
+    <h1>Is that deal real?</h1>
+    <p class="sub">Paste a product link. We compare today's price with 12 months of that shop's prices.</p>
+    <form id="f" autocomplete="off" novalidate>
+      <label for="u" class="hidden">Product link</label>
+      <input id="u" type="url" inputmode="url" placeholder="Paste a product link" aria-label="Product link" enterkeyhint="go">
+      <button class="go" id="go" type="submit">Check price</button>
     </form>
-    <div class="tries" id="tries"><span class="lab">Or try one of these</span><div id="chips"></div></div>
+    <div class="tries" id="tries">Try: <span id="chips"></span></div>
   </section>
 
   <div id="error" class="err hidden" role="alert"></div>
 
-  <section id="result" class="hidden">
-    <div class="block">
+  <section id="result" class="hidden" aria-live="polite">
+    <div class="card">
       <div class="prod">
+        <img id="pimg" alt="" class="hidden">
         <div style="min-width:0">
           <span class="lab" id="phost"></span>
           <h2 id="ptitle"></h2>
+          <a class="small" id="plink" href="#" target="_blank" rel="noopener">Open on the shop's site ↗</a>
         </div>
-        <img id="pimg" alt="" class="hidden">
       </div>
       <div class="prices" id="prices"></div>
       <div class="small" id="psrc"></div>
       <div id="manualbox" class="hidden">
         <p class="note" id="manualmsg"></p>
         <div class="manual">
-          <label><span class="lab">Price now</span><input type="text" inputmode="decimal" id="mnow" placeholder="1299"></label>
-          <label><span class="lab">"Was" price</span><input type="text" inputmode="decimal" id="mwas" placeholder="optional"></label>
-          <label><span class="lab">Currency</span><select id="mcur"><option value="">—</option><option>ZAR</option><option>GBP</option><option>EUR</option><option>USD</option></select></label>
+          <label>Price now<input type="text" inputmode="decimal" id="mnow" placeholder="1299"></label>
+          <label>"Was" price<input type="text" inputmode="decimal" id="mwas" placeholder="Optional"></label>
+          <label>Currency<select id="mcur"><option value="">—</option><option>ZAR</option><option>GBP</option><option>EUR</option><option>USD</option></select></label>
         </div>
         <button type="button" class="btn2" id="mapply">Use these prices</button>
       </div>
     </div>
 
-    <section class="block verdict unk" id="verdict" aria-live="polite"></section>
+    <section class="card verdict unk" id="verdict"></section>
 
-    <div class="block">
-      <div class="charthead"><h3>Twelve months of prices</h3><span class="small num" id="cnt"></span></div>
+    <div class="card">
+      <div class="charthead"><h3>12 months of prices</h3><span class="small num" id="cnt"></span></div>
       <div class="prog" id="prog"><i></i></div>
-      <div class="small" id="progtxt" style="margin-top:8px"></div>
-      <div id="chart" style="margin-top:12px"></div>
+      <div class="small" id="progtxt" style="margin-top:6px"></div>
+      <div id="chart"></div>
       <div class="legend">
         <span><svg viewBox="0 0 14 14"><circle cx="7" cy="7" r="4.5" class="c-arch"/></svg>Archived copy</span>
-        <span><svg viewBox="0 0 14 14"><circle cx="7" cy="7" r="3.5" class="c-chk"/></svg>Our daily check</span>
-        <span><svg viewBox="0 0 14 14"><circle cx="7" cy="7" r="6" class="c-ring"/><circle cx="7" cy="7" r="3" class="c-now"/></svg>Today</span>
-        <span><svg viewBox="0 0 22 14"><line x1="0" x2="22" y1="7" y2="7" class="c-was"/></svg>Shop's "was" price</span>
-        <span><svg viewBox="0 0 22 14"><line x1="0" x2="22" y1="7" y2="7" class="c-ln gap"/></svg>No data in between</span>
+        <span><svg viewBox="0 0 14 14"><circle cx="7" cy="7" r="3.5" class="c-chk"/></svg>Our check</span>
+        <span><svg viewBox="0 0 14 14"><circle cx="7" cy="7" r="4" class="c-now"/></svg>Today</span>
+        <span><svg viewBox="0 0 22 14"><line x1="0" x2="22" y1="7" y2="7" class="c-was"/></svg>"Was" price</span>
       </div>
       <div class="tip num" id="tip">Tap a point to see its date and price.</div>
-      <details id="pts"><summary>Every data point</summary><div id="ptable"></div></details>
+      <details id="pts"><summary>All prices</summary><div id="ptable"></div></details>
       <p class="note" id="archnote"></p>
       <div class="hidden" id="retryArch"><button type="button" class="btn2" id="retryArchBtn">Try the archive again</button></div>
     </div>
 
     <div class="actions">
-      <button type="button" id="share">Share this check</button>
+      <button type="button" id="share">Share</button>
       <button type="button" id="again">Check again</button>
     </div>
   </section>
 
-  <section class="method">
-    <h3>How we check</h3>
-    <ol>
-      <li>We read today's price from the product data on the shop's page.</li>
-      <li>We rebuild the last twelve months from copies of the page saved by the <a href="https://web.archive.org" target="_blank" rel="noopener">Internet Archive</a>, about one a week.</li>
-      <li>We re-check each tracked product about once a day, so its history keeps growing.</li>
-      <li>If the shop's "was" price is higher than anything we've seen recently, we say so.</li>
-      <li>Some shops block automated checks, and some pages have no archived copies. When that happens we tell you. We never guess a price.</li>
-    </ol>
-  </section>
-  <footer>Prices change fast. Confirm on the shop's page before you buy.</footer>
+  <footer>Prices come from the shop's page and the <a href="https://web.archive.org" target="_blank" rel="noopener">Internet Archive</a>. We never guess a price. Check the shop before you buy.</footer>
 </main>
 <div class="toast" id="toast" role="status"></div>
 
@@ -260,19 +197,19 @@ function parseNum(s) { if (!s) return null; s = String(s).replace(/[^\d.,]/g, ""
 
 // examples
 EXAMPLES.forEach((e) => {
-  const [store, item] = e.label.split(" · ");
-  const b = document.createElement("button"); b.type = "button"; b.className = "chip";
-  b.innerHTML = `<span><b>${esc(store)}</b>${item ? ` <span class="item">${esc(item)}</span>` : ""}</span><span class="cc">${esc(e.cc || "")}</span>`;
-  b.addEventListener("click", () => { $("u").value = e.url; run(e.url); });
-  $("chips").appendChild(b);
+  const a = document.createElement("a"); a.href = "/?u=" + encodeURIComponent(e.url); a.textContent = e.label;
+  a.addEventListener("click", (ev) => { ev.preventDefault(); $("u").value = e.url; run(e.url); });
+  $("chips").appendChild(a);
 });
 if (!EXAMPLES.length) $("tries").classList.add("hidden");
 
-$("paste").addEventListener("click", async () => {
-  try { const t = await navigator.clipboard.readText(); if (t) { const m = t.match(/https?:\/\/\S+/); $("u").value = m ? m[0] : t.trim(); } else toast("Clipboard is empty"); }
-  catch { $("u").focus(); toast("Long-press the box and choose Paste"); }
+$("f").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const v = $("u").value.trim(); const m = v.match(/https?:\/\/\S+/);
+  if (!v) { showError("Paste a product link first."); $("u").focus(); return; }
+  if (!m && !/^[\w-]+(\.[\w-]+)+\//.test(v)) { showError("That doesn't look like a product link. It should start with https://"); return; }
+  run(m ? m[0] : "https://" + v);
 });
-$("f").addEventListener("submit", (e) => { e.preventDefault(); const v = $("u").value.trim(); const m = v.match(/https?:\/\/\S+/); run(m ? m[0] : v); });
 $("retryArchBtn").addEventListener("click", () => state && loadSnaps(runId));
 $("again").addEventListener("click", () => state && run(state.url, true));
 $("share").addEventListener("click", async () => {
@@ -310,6 +247,7 @@ async function run(url, fresh) {
     $("mcur").value = d.current.currency || d.tld_currency || "";
     $("result").classList.remove("hidden");
     $("tip").textContent = "Tap a point to see its date and price."; $("pts").open = false;
+    $("plink").href = d.url;
     renderHead(); renderPrices(); renderAll();
     $("result").scrollIntoView({ behavior: "smooth", block: "start" });
     if (d.tracked) loadSnaps(my);
@@ -318,7 +256,7 @@ async function run(url, fresh) {
       $("progtxt").textContent = "Tracking is full. Daily checks and archive lookups are unavailable for this product.";
     }
   } catch (e) { if (my === runId) showError("Couldn't reach the checker. Check your connection and try again."); }
-  finally { if (my === runId) { go.disabled = false; go.textContent = "Check the price"; } }
+  finally { if (my === runId) { go.disabled = false; go.textContent = "Check price"; } }
 }
 
 async function loadSnaps(my) {
@@ -387,23 +325,23 @@ function renderPrices() {
   const box = $("prices"), src = $("psrc"), mb = $("manualbox");
   if (p) {
     const claimed = p.was ? (p.was - p.price) / p.was : null;
-    box.innerHTML = `<div class="pcol"><span class="lab">${p.manual ? "You entered" : "Today"}</span><span class="now num">${esc(money(p.price, p.currency))}</span></div>`
-      + (p.was ? `<div class="pcol"><span class="lab">Shop's "was"</span><span class="was num">${esc(money(p.was, p.currency))}</span></div><div class="pcol"><span class="lab">Claimed saving</span><span class="claim num">${Math.round(claimed * 100)}%</span></div>` : "");
+    box.innerHTML = `<span class="now num">${esc(money(p.price, p.currency))}</span>`
+      + (p.was ? `<span class="was num">${esc(money(p.was, p.currency))}</span><span class="claim num">${Math.round(claimed * 100)}% off, says the shop</span>` : "");
     const when = c.checked_at ? new Date(c.checked_at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
-    src.textContent = p.manual ? "Prices entered by you." : `Read from the shop ${when}${state.cached ? " (cached)" : ""} · source: ${c.source || "page"}${c.currency_guessed ? " · currency guessed from the web address" : ""}${p.was ? "" : " · no \"was\" price on the page"}`;
+    src.textContent = p.manual ? "You entered these prices." : `Read from the shop ${when}${c.currency_guessed ? " · currency guessed from the web address" : ""}`;
   } else {
     const arch = state.archive.slice().sort((a, b) => b.t - a.t)[0];
     if (arch) {
-      box.innerHTML = `<div class="pcol"><span class="lab">Last archived price</span><span class="now dim num">${esc(money(arch.price, arch.currency))}</span></div>` + (arch.was ? `<div class="pcol"><span class="lab">Was</span><span class="was num">${esc(money(arch.was, arch.currency))}</span></div>` : "");
-      src.textContent = `We couldn't read today's price. This is the latest archived price, from ${fmtDate(arch.t)}. It may be out of date.`;
+      box.innerHTML = `<span class="now dim num">${esc(money(arch.price, arch.currency))}</span>` + (arch.was ? `<span class="was num">${esc(money(arch.was, arch.currency))}</span>` : "") + `<span class="claim">Latest archived price</span>`;
+      src.textContent = `From an archived copy of ${fmtDate(arch.t)}. It may be out of date.`;
     } else {
-      box.innerHTML = `<div class="pcol"><span class="lab">Today</span><span class="now none">Price not available</span></div>`;
+      box.innerHTML = `<span class="now none">We could not read the price</span>`;
       src.textContent = "";
     }
   }
   if (c.status !== "ok" || !c.price) {
     mb.classList.remove("hidden");
-    $("manualmsg").textContent = (c.message || "We couldn't read the price.") + " Type the price you see on the shop's page and we'll compare it with the history.";
+    $("manualmsg").textContent = (c.status === "blocked" ? "This shop blocks our check." : "We could not read today's price.") + " Type the price you see on the shop's page to compare it.";
   } else mb.classList.add("hidden");
 }
 
@@ -430,7 +368,7 @@ function renderAll() { if (!curPrice()) renderPrices(); renderChart(); renderArc
 
 function setVerdict(cls, big, html) {
   const el = $("verdict");
-  el.className = "block verdict " + cls;
+  el.className = "card verdict " + cls;
   el.innerHTML = `<div class="big">${esc(big)}</div>${html}`;
 }
 
@@ -480,17 +418,16 @@ function renderVerdict() {
   const bfLine = bfPts.length ? (() => { const b = bfPts.reduce((m, x) => (x.price < m.price ? x : m)); return `<p class="note">Last Black Friday (late Nov 2025): ${esc(money(b.price, C))} on ${esc(fmtDate(b.t))}${P < b.price ? ", so today is cheaper." : P > b.price ? `, so today is ${esc(pct((P - b.price) / b.price))} higher.` : ", the same as today."}</p>`; })() : "";
   const claimed = W ? `<p class="note">The shop claims ${Math.round((W - P) / W * 100)}% off ${esc(money(W, C))}. Real saving against the usual price: ${esc(money(Math.max(0, med - P), C))}.</p>` : "";
   setVerdict(cls, big, `<p class="vbody">${esc(body)}</p>${flags}
-    <div class="stats num"><div class="stat"><b>${esc(money(low, C))}</b><span class="lab">12-month low</span></div><div class="stat"><b>${esc(money(med, C))}</b><span class="lab">Usual</span></div><div class="stat"><b>${esc(money(high, C))}</b><span class="lab">12-month high</span></div></div>
-    <div class="stats two num"><div class="stat"><b class="${vsMed >= 0 ? "pos" : "neg"}">${signed(vsMed)}</b><span class="lab">vs usual</span></div><div class="stat"><b class="${vsLow >= 0 ? "pos" : "neg"}">${signed(vsLow)}</b><span class="lab">vs 12-month low</span></div></div>
+    <div class="stats num"><div class="stat"><b>${esc(money(low, C))}</b><span class="lab">12-month low</span></div><div class="stat"><b>${esc(money(med, C))}</b><span class="lab">Usual price</span></div><div class="stat"><b>${esc(money(high, C))}</b><span class="lab">12-month high</span></div></div>
     ${bfLine}${claimed}
-    ${archivedAt ? `<p class="note">We could not read today's price from this shop. This verdict compares the latest archived price (${esc(fmtDate(archivedAt))}) with the older ones. It may be out of date.</p>` : ""}<p class="note">Based on ${pr.length} older price${pr.length === 1 ? "" : "s"}${cur.manual ? " and the price you entered" : ""}.${other ? ` ${other} point(s) with a different or unknown currency were left out.` : ""}</p>`);
+    ${archivedAt ? `<p class="note">Compared using the latest archived price (${esc(fmtDate(archivedAt))}).</p>` : ""}<p class="note">Based on ${pr.length} older price${pr.length === 1 ? "" : "s"}${cur.manual ? " and the price you entered" : ""}.${other ? ` ${other} point(s) with a different or unknown currency were left out.` : ""}</p>`);
   state.verdictText = big;
 }
 
 function renderChart() {
   const { pts, ccy } = points(); const current = curPrice();
   const cur = current?.currency && current.currency === ccy ? current : null;
-  const W = 600, H = 300, L = 62, R = 14, T = 18, B = 34;
+  const W = Math.max(300, Math.round($("chart").clientWidth || 600)), H = W < 520 ? 220 : 280, L = 58, R = 12, T = 16, B = 28;
   const t1 = Date.now(), t0 = t1 - 365 * DAY;
   const all = pts.map((p) => ({ ...p }));
   if (cur) all.push({ t: t1, price: cur.price, kind: "now", was: cur.was });
@@ -502,7 +439,7 @@ function renderChart() {
   const X = (t) => L + ((t - t0) / (t1 - t0)) * (W - L - R), Y = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
   let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Price chart">`;
   for (let i = 0; i <= 4; i++) { const v = lo + ((hi - lo) * i) / 4, y = Y(v); s += `<line x1="${L}" x2="${W - R}" y1="${y}" y2="${y}" class="${i === 0 ? "c-base" : "c-grid"}"/><text x="${L - 8}" y="${y + 4}" class="c-ax" text-anchor="end">${esc(money(v, ccy).replace(/\.\d+$/, ""))}</text>`; }
-  for (let m = 0; m <= 12; m += 2) { const d = new Date(t1 - (12 - m) * 30.4 * DAY); const x = X(d.getTime()); s += `<text x="${x}" y="${H - 10}" class="c-ax" text-anchor="middle">${d.toLocaleDateString("en-GB", { month: "short" })}</text>`; }
+  for (let m = 0; m <= 12; m += (W < 520 ? 3 : 2)) { const d = new Date(t1 - (12 - m) * 30.4 * DAY); const x = X(d.getTime()); s += `<text x="${x}" y="${H - 10}" class="c-ax" text-anchor="middle">${d.toLocaleDateString("en-GB", { month: "short" })}</text>`; }
   if (cur && cur.was) { const y = Y(cur.was); s += `<line x1="${L}" x2="${W - R}" y1="${y}" y2="${y}" class="c-was"/><text x="${W - R}" y="${y - 7}" class="c-wast" text-anchor="end">"was" ${esc(money(cur.was, ccy))}</text>`; }
   const line = all.slice().sort((a, b) => a.t - b.t);
   // solid line only between points < 45 days apart; dotted where we have no data in between
@@ -531,8 +468,8 @@ function renderArchiveNote() {
   if (ai) {
     if (ai.status !== "ok") note = `Price history from the Internet Archive isn't available right now: ${ai.message || "unknown error"}.`;
     else if (!(ai.captures_12mo ?? ai.captures_6mo)) note = "The Internet Archive has no copies of this page from the last twelve months, so older prices are missing.";
-    else note = `The Internet Archive has ${(ai.captures_12mo ?? ai.captures_6mo)} day${(ai.captures_12mo ?? ai.captures_6mo) === 1 ? "" : "s"} with copies of this page in twelve months; we sampled ${ai.sampled}.`;
-    if (state.failed) note += ` ${state.failed} archived cop${state.failed === 1 ? "y" : "ies"} had no readable price (bot-check page, or the price was loaded by JavaScript).`;
+    else note = `Archived copies: ${(ai.captures_12mo ?? ai.captures_6mo)} days in 12 months. We read ${ai.sampled}.`;
+    if (state.failed) note += ` ${state.failed} had no price we could read.`;
   }
   $("archnote").textContent = note;
 }
@@ -543,6 +480,7 @@ function renderTable() {
   $("ptable").innerHTML = `<table><tr><th>Date</th><th>Price</th><th>Was</th><th>Source</th></tr>${pts.slice().reverse().map((p) => `<tr><td>${fmtDate(p.t)}</td><td>${esc(money(p.price, ccy))}</td><td>${p.was ? esc(money(p.was, ccy)) : "—"}</td><td>${p.kind === "archive" ? `<a href="https://web.archive.org/web/${p.ts}/${esc(p.orig || state.canonical)}" target="_blank" rel="noopener">archive</a>` : "our check"}</td></tr>`).join("")}</table>`;
 }
 
+let rz; addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => state && renderChart(), 150); });
 const qs = new URLSearchParams(location.search).get("u");
 if (qs) { $("u").value = qs; run(qs); }
 })();
