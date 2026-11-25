@@ -59,8 +59,9 @@ for (const i of [0, 1, 2]) {
   ok(`example "${label}" URL updated`, p.url().includes("?u="));
   ok(`example "${label}" shop link set`, (await p.getAttribute("#plink", "href")).startsWith("https://"));
   ok(`example "${label}" no sideways scroll`, await noOverflow(p));
-  // chart tap (after archive copies finish loading, because the chart redraws as each one arrives)
-  await p.waitForFunction(() => document.getElementById("prog").classList.contains("hidden") && !document.getElementById("progtxt").textContent.trim(), null, { timeout: 30000 }).catch(() => {});
+  // chart tap: wait until archive copies and the other-shops box (above the chart) finish, so the chart stops moving
+  await p.waitForFunction(() => document.getElementById("prog").classList.contains("hidden") && !document.getElementById("progtxt").textContent.trim() && document.getElementById("others").getAttribute("aria-busy") !== "true", null, { timeout: 45000 }).catch(() => {});
+  await p.waitForTimeout(300);
   await p.locator("#chart circle[data-i]").first().click({ force: true });
   ok(`example "${label}" chart tap updates tip`, !(await p.textContent("#tip")).includes("Tap a point"));
   await p.click("#pts summary"); ok(`example "${label}" all-prices table opens`, (await p.locator("#ptable tr").count()) >= 2);
