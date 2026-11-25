@@ -21,6 +21,7 @@ export const NAMES = [
   "laneFor", "hostKey", "nextCheckAt", "pickBatch", "savedDays", "parseRobots", "robotsAllows", "takealotSeeds",
   "ensureDailySchema", "backfillLanes", "runDaily", "dueSeedDept", "refreshSeeds", "dailyHousekeeping", "apiDailyStatus",
   "DAILY_MS", "DAILY_CAPS", "SEED_CAPS", "MAX_FAILS", "MAX_SEEDS", "BOT_UA", "STALE_MS", "CLAIM_MS", "isE2E", "verifyTurnstile", "notifyOwnerOfRequest",
+  "mDay", "mHuman", "mDevice", "mRefDomain", "mTeam", "verifyAccess", "statsData", "statsHtml", "M_CLICKS",
 ];
 
 const source = [
@@ -32,6 +33,7 @@ const source = [
   read("src/features.js"),
   read("src/daily.js"),
   read("src/og.js"),
+  read("src/stats.js"),
   read("src/og_font.js").replace("export const OG_FONT", "const OG_FONT"),
   "const HTML = " + JSON.stringify(read("public/index.html")) + ";",
   `export { ${NAMES.join(", ")} };`,

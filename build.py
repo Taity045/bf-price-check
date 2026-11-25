@@ -31,7 +31,7 @@ for f in sorted((root / "public/fonts").glob("*.woff2")):
     html = html.replace(f"/fonts/{f.name}", f"/fonts/{hashed}")
 font = (root / "src/og_font.js").read_text().replace("export const OG_FONT", "const OG_FONT")
 static = {n: base64.b64encode((root / "public" / n).read_bytes()).decode() for n in ["og-home.png", "og-home.jpg", "og-square.jpg"]}
-worker = "const STATIC_IMG = " + json.dumps(static) + ";\nconst FONTS = " + json.dumps(fonts) + ";\nconst APP = " + json.dumps({"name": app_name, "js": APP_JS}) + ";\n" + (root / "src/shops.js").read_text() + "\n" + (root / "src/worker.js").read_text() + "\n" + (root / "src/features.js").read_text() + "\n" + (root / "src/daily.js").read_text() + "\n" + (root / "src/og.js").read_text() + "\n" + font + "\nconst HTML = " + json.dumps(html) + ";\n"
+worker = "const STATIC_IMG = " + json.dumps(static) + ";\nconst FONTS = " + json.dumps(fonts) + ";\nconst APP = " + json.dumps({"name": app_name, "js": APP_JS}) + ";\n" + (root / "src/shops.js").read_text() + "\n" + (root / "src/worker.js").read_text() + "\n" + (root / "src/features.js").read_text() + "\n" + (root / "src/daily.js").read_text() + "\n" + (root / "src/og.js").read_text() + "\n" + (root / "src/stats.js").read_text() + "\n" + font + "\nconst HTML = " + json.dumps(html) + ";\n"
 (root / "dist").mkdir(exist_ok=True)
 (root / "dist/worker.js").write_text(worker)
 schema = (root / "schema.sql").read_text()

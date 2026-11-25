@@ -161,6 +161,50 @@ await step("API", async () => {
   ok("old script names still load after a deploy", js.ok && /javascript/.test(js.headers.get("content-type")), js.status);
 });
 
+// 8. private stats: counting works end to end, and the dashboard renders (local dev shortcut /__stats,
+// which needs STATS_DEV=1 and localhost; the real host is protected by Cloudflare Access).
+await step("stats", async () => {
+  const H = KEY ? { "x-e2e-key": KEY } : {};
+  const data = async () => { const r = await fetch(BASE + "/__stats/api/data?days=7", { headers: H }); return r.ok ? r.json() : { status: r.status }; };
+  const sum = (d, k) => (d.clicks || []).filter((c) => c.key === k).reduce((a, c) => a + c.n, 0);
+  const before = await data();
+  ok("stats data answers on the local dev shortcut", before.totals, JSON.stringify(before));
+  if (!before.totals) return;
+  const desktopUA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36";
+  const p = await open({ ...desktop, userAgent: desktopUA }, { fake: false });
+  await p.goto(BASE + "/", { waitUntil: "networkidle" });
+  await p.click("#shopsBtn");
+  await p.waitForTimeout(800);
+  await p.context().close();
+  await fetch(BASE + "/api/check?url=notaurl", { headers: { ...H, "user-agent": desktopUA } });
+  await fetch(BASE + "/", { headers: { ...H, "user-agent": "WhatsApp/2.23.20.0" } });
+  let after = before;
+  for (let i = 0; i < 20; i++) { await new Promise((r) => setTimeout(r, 250)); after = await data(); if (after.totals.pv > before.totals.pv && sum(after, "shops_open") > sum(before, "shops_open")) break; }
+  ok("a page view is counted", after.totals.pv === before.totals.pv + 1, `${before.totals.pv} -> ${after.totals.pv}`);
+  ok("a visitor is counted", after.totals.visitors >= 1, after.totals.visitors);
+  ok("a button click is counted (sendBeacon)", sum(after, "shops_open") === sum(before, "shops_open") + 1);
+  const inv = (d) => (d.outcomes.find((o) => o.key === "invalid") || {}).n || 0;
+  ok("a refused check is counted", inv(after) === inv(before) + 1);
+  ok("a link-preview bot is counted as a bot, not a visit", after.totals.bot === before.totals.bot + 1, `${before.totals.bot} -> ${after.totals.bot}`);
+  if (KEY) {
+    const pr = await (await fetch(BASE + "/api/e2e/stats-probe", { method: "POST", headers: H })).json();
+    const again = await data();
+    ok("stats probe counts a visit and removes it again", pr.page_view_counted && pr.visitor_counted && pr.removed_again && again.totals.pv === after.totals.pv, JSON.stringify(pr));
+  }
+  for (const [name, o, scheme] of [["desktop", desktop, "light"], ["phone", mobile, "light"], ["desktop dark", desktop, "dark"]]) {
+    const q = await open({ ...o, colorScheme: scheme }, { fake: false });
+    const res = await q.goto(BASE + "/__stats/?days=30", { waitUntil: "load" });
+    ok(`stats dashboard ${name} loads`, res.status() === 200, res.status());
+    ok(`stats dashboard ${name} has the charts`, (await q.locator("svg[role=img]").count()) === 1 && (await q.locator("h2").count()) >= 7);
+    ok(`stats dashboard ${name} has no side scroll`, await noSideScroll(q));
+    ok(`stats dashboard ${name} has no errors`, q._errs.length === 0, q._errs.join(" | "));
+    const size = (await res.body()).length;
+    ok(`stats dashboard ${name} is small (< 60 KB)`, size < 60 * 1024, size);
+    await q.screenshot({ path: `${SHOTS}/stats-${name.replace(" ", "-")}.png`, fullPage: true });
+    await q.context().close();
+  }
+});
+
 await browser.close();
 const failed = results.filter((r) => !r.pass);
 console.log(`\n${results.length - failed.length}/${results.length} browser checks passed`);

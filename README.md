@@ -3,6 +3,7 @@
 Live:
 - https://eish.veldwire.com (custom domain)
 - https://bf-price-check.tm-deal-lab.workers.dev (workers.dev, kept working)
+- https://stats.veldwire.com (private stats dashboard, owner only; see [Private stats](#private-stats))
 
 Paste a product link from an online shop. The site shows:
 
@@ -101,6 +102,8 @@ The home page stays clean: heading, link box, Check price, 3 example links (Take
 
 - `OWNER_EMAIL`: where shop requests are emailed. Must be a verified destination in Cloudflare Email Routing.
 - `E2E_KEY`: lets test runs skip email and rate limits and remove their own rows (`POST /api/e2e/cleanup`).
+- `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`: the Cloudflare Access team name and the stats application's Audience (AUD) tag. Without both, `stats.veldwire.com` answers 403 to everyone.
+- `STATS_ALLOWED_EMAILS` (optional): comma-separated emails allowed on the stats page. If not set, the page allows only `OWNER_EMAIL`.
 - `TURNSTILE_SECRET` plus var `TURNSTILE_SITEKEY`: turn on Cloudflare Turnstile on the forms (the code is ready: invisible "interaction-only" widget, server check in `verifyTurnstile`). **Not set now.** Turnstile is free, but making the widget needs the `challenge-widgets` permission, which the deploy token and the Cloudflare connector do not have (checked 2026-11-25). To turn it on: Cloudflare dashboard → Turnstile → Add widget (hostnames `eish.veldwire.com`, `bf-price-check.tm-deal-lab.workers.dev`, mode Managed), put the site key in `wrangler.toml` `TURNSTILE_SITEKEY`, and run `npx wrangler secret put TURNSTILE_SECRET`. Until then the forms use a honeypot and rate limits.
 
 Set a secret: `npx wrangler secret put OWNER_EMAIL`.
@@ -112,6 +115,7 @@ Set a secret: `npx wrangler secret put OWNER_EMAIL`.
 | `src/worker.js` | Worker: API, page parsing, archive lookups, rate limits, cache, cron, routes |
 | `src/features.js` | Verdicts, wall, other shops, email, alerts, Turnstile, API bot checks |
 | `src/daily.js` | Daily price saving: cron batches, back-off, robots.txt, Takealot seed list, `/api/daily-status` |
+| `src/stats.js` | Private stats: cookieless daily counts, click beacon, Cloudflare Access JWT check, dashboard |
 | `src/og.js`, `src/og_font.js` | Share card PNG renderer and server meta tags |
 | `src/shops.js` | Shops we check / known blocked (generated) |
 | `public/index.html` | The app (plain HTML/CSS/JS, inline SVG chart, mobile first; desktop layout from 900 px) |
@@ -128,6 +132,7 @@ Set a secret: `npx wrangler secret put OWNER_EMAIL`.
 - `GET /api/daily-status` → counts for the daily price saving (no links). Cached 5 min.
 - `GET /api/shops`, `/api/config`, `/api/others`, `POST /api/verdict`, `POST /api/request`, `POST /api/alert`.
 - `GET /og-home.jpg`, `/og-square.jpg`, `/og-home.png`, `/og.png?u=…`, `/robots.txt`.
+- `POST /api/m` (body: a button name such as `share`) → counts one click. Always 204. Only known names from the same site are counted.
 
 ### Price extraction (in order)
 
@@ -180,6 +185,8 @@ Preview bots (WhatsApp, facebookexternalhit, etc.) can always fetch pages and sh
 | `alerts` | Price alerts (off) |
 | `shop_requests` | "Ask us to add a shop" requests (made on first use) |
 | `cache`, `rl` | Cache and rate-limit counters |
+| `m_counts` | Stats: daily totals only (`day`, `metric`, `key`, `n`). Kept 400 days |
+| `m_seen`, `m_salt` | Stats: today's salted visitor hashes and today's random salt. Deleted at the start of each new day |
 
 Read shop requests:
 
@@ -198,6 +205,7 @@ npx wrangler d1 execute bf-price-check-db --remote --command "SELECT id, datetim
 | `npm run test:smoke -- URL` | Post-deploy check of a live site | live site |
 | `node tests/e2e_features.mjs [BASE] [SHOTDIR]` | Full live suite: layout at 360–1920 px light/dark, forms, `?url=` links on both domains, share tags, privacy | live site |
 | `node tests/e2e_redesign.mjs [BASE]`, `node tests/e2e_review.mjs [BASE]` | Live click-through suites | live site |
+| `[E2E_KEY=…] node tests/stats_smoke.mjs [STATS_URL] [SITE_URL]` | The stats host is private (403 or Access login, never 200) and the dev shortcut is closed. With the live test key, also runs one made-up page view through the real counter (`POST /api/e2e/stats-probe`), checks it was counted, and removes it again | live site |
 | `node scripts/cf_token_check.mjs` | What the Cloudflare API token can do (never prints it) | Cloudflare API |
 
 The live suites read the test key from `$E2E_KEY` and remove their test rows at the end.
@@ -215,7 +223,7 @@ npm run test:e2e -- http://127.0.0.1:8787
 
 1. **Build and test**: `npm ci`, `python3 build.py`, `npm test`, browser tests against `wrangler dev`.
 2. **Cloudflare token permissions**: read-only report (never blocks).
-3. **Deploy to Cloudflare** (push to `main` only, after tests pass): applies `schema.sql` when the token has D1 Edit, `wrangler deploy`, then smoke tests on workers.dev and on the custom domain. A failed smoke test fails the run.
+3. **Deploy to Cloudflare** (push to `main` only, after tests pass): applies `schema.sql` when the token has D1 Edit, `wrangler deploy`, then smoke tests on workers.dev and on the custom domain, and a check that `stats.veldwire.com` is not readable without Access. A failed smoke test fails the run.
 
 Secrets used in GitHub: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`.
 
@@ -225,7 +233,7 @@ A push to `main` deploys (after the tests pass). **Deploy through CI only.** Sev
 
 Test locally the same way CI does: `npx wrangler d1 execute bf-price-check-db --local --file schema.sql`, put a random `E2E_KEY=…` in `.dev.vars` (git-ignored), `npx wrangler dev --port 8787`, then `E2E_KEY=… node tests/e2e_features.mjs http://127.0.0.1:8787`. Locally, the alert links and the absolute preview-image checks fail (no alerts, the site URL is the live domain); run those on the live site.
 
-Cloudflare resources: Worker `bf-price-check`, D1 `bf-price-check-db`, cron `* * * * *` (daily price saving), custom domain `eish.veldwire.com` (zone veldwire.com), workers.dev on. Cloudflare Web Analytics is turned on for the zone and adds its beacon on the custom domain.
+Cloudflare resources: Worker `bf-price-check`, D1 `bf-price-check-db`, cron `* * * * *` (daily price saving), custom domains `eish.veldwire.com` and `stats.veldwire.com` (zone veldwire.com), workers.dev on. Cloudflare Web Analytics is turned on for the zone and adds its beacon on the custom domain.
 
 ## Known limits
 
@@ -236,6 +244,37 @@ Cloudflare resources: Worker `bf-price-check`, D1 `bf-price-check-db`, cron `* *
 - Marketplace listings (Amazon, MediaMarkt, Takealot) can change seller, so archived prices may be from a different seller.
 - Free-plan Worker limits (CPU time, 50 sub-requests per call) apply; each archive copy is fetched in its own request to stay inside them, and the daily price saving works in small batches every minute.
 
+## Private stats
+
+Dashboard: **https://stats.veldwire.com** (owner only). It shows the last 7, 30 or 90 days: visitors, page views, price checks, share of checks where we read a price, shops, shares, a daily chart (visitors, page views, checks), check outcomes, top shops with their read rate, countries, referring sites, devices, button clicks and other events (shop requests sent, compare searches and matches, shared links opened). Each number shows the change against the period before. Light and dark follow the system setting. It is one server-rendered page with an inline SVG chart and no scripts (about 24 KB).
+
+**What is counted** (daily totals, days in SAST):
+
+| Metric | How |
+|---|---|
+| Page views | Server side, on each GET of `/`, `/privacy`, `/wall` by a browser. Bots, link previews (WhatsApp, Facebook…), scripts, prefetches and our own test runs are left out (bots get their own total). |
+| Visitors | Once per day per device and browser: SHA-256 of today's random salt + IP + browser string, cut to 20 hex characters, kept only for today. The salt is random, made each day and deleted the next day with all hashes, so the IP can't be recovered and a visitor can't be followed across days. The range total is a sum of daily visitors. |
+| Country, device | Counted once per visitor per day. Country from Cloudflare (`request.cf.country`), device (phone, tablet, desktop) from the browser string. |
+| Referrer | The referring site's domain only, never the path. No referrer = "Direct, apps or WhatsApp". |
+| Checks, outcomes, shops | From each `/api/check` answer: price read, no price found, shop blocked us, error, bad link, rate limited; the shop's host and whether we read a price. |
+| Clicks | `navigator.sendBeacon("/api/m", name)` on Share (and WhatsApp, Copy link, More apps), Save, opening another shop's offer (compare), Request a shop, Saved list, Shops list, example links. Only the button name is sent. |
+| Events | Shop requests sent, compare searches and matches, shared links opened (`/?u=`). |
+
+No cookies, no local storage, no tracking library, no raw IP addresses, no full URLs from other sites. The site's Privacy page says this in plain words. Counting runs after the answer is sent (`ctx.waitUntil`), so pages are not slower: one D1 write batch per page view. D1 was chosen over Workers Analytics Engine because the worker can read D1 directly; Analytics Engine needs a separate API token to query.
+
+**Access control (fail closed).** `stats.veldwire.com` is meant to sit behind Cloudflare Access. The worker also checks the `Cf-Access-Jwt-Assertion` header on every request: RS256 signature against the team's public keys (`https://<team>.cloudflareaccess.com/cdn-cgi/access/certs`, cached for an hour), issuer, audience (`ACCESS_AUD`), expiry, and that the email is the owner's (`OWNER_EMAIL`, or `STATS_ALLOWED_EMAILS`). Anything missing or wrong = 403. Until `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` are set, everyone gets 403. The dashboard is only served on that host; the main site and workers.dev never serve it.
+
+**Set up Access (once, in the Cloudflare dashboard):**
+
+1. Zero Trust → choose a team name (for example `veldwire`) and the Free plan (up to 50 users).
+2. Zero Trust → Access → Applications → Add an application → Self-hosted. Name: `BF stats`. Domain: `stats.veldwire.com`. Session: 24 hours.
+3. Add a policy: Action **Allow**, Include → **Emails** → your email. Login method: One-time PIN (or Google). Save.
+4. Open the application again and copy the **Application Audience (AUD) Tag**.
+5. Workers & Pages → `bf-price-check` → Settings → Variables and Secrets → add two **Secrets** (type Secret, not Text, so deploys keep them): `ACCESS_TEAM_DOMAIN` = your team name (or `<team>.cloudflareaccess.com`), `ACCESS_AUD` = the AUD tag.
+6. Open https://stats.veldwire.com, sign in with your email, done.
+
+**Local development:** with `STATS_DEV=1` in `.dev.vars`, `wrangler dev` serves the dashboard at `http://127.0.0.1:8787/__stats` without Access. The shortcut needs that variable *and* a plain-http request from 127.0.0.1, so it can't open on Cloudflare (where `cf-connecting-ip` is the real visitor). Never set `STATS_DEV` on the live worker. `STATS_COUNT_E2E=1` (local only) counts the browser tests' own traffic so the tests can check the counters.
+
 ## Privacy summary
 
-Full text at `/privacy`. We keep product links that people check and the prices we read; shop requests (shop, link, and an email only if given); price alerts when they are on; a hash of the IP address for rate limits. Saved products, stats and badges stay in the browser. No ads, no ad cookies, no sale of data. The site runs on Cloudflare (Web Analytics without cookies; Turnstile when it is set up).
+Full text at `/privacy`. We keep product links that people check and the prices we read; shop requests (shop, link, and an email only if given); price alerts when they are on; a hash of the IP address for rate limits; daily stats totals (visits, checks, button names, country, device, referring domain), with visitors counted by a hash that uses a salt deleted every day. Saved products, stats and badges stay in the browser. No ads, no ad cookies, no sale of data. The site runs on Cloudflare (Web Analytics without cookies; Turnstile when it is set up).

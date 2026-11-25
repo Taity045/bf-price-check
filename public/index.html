@@ -372,6 +372,7 @@ footer{border-top:2px dashed var(--ink)}
       <li>Shop requests: the shop name, the product link, and your email if you give it. We use your email only to reply about that shop.</li>
       <li>Price alerts (when they are on): your email and your price. Each alert email has a stop link. An alert ends after about six months.</li>
       <li>A scrambled form of your internet address, to stop spam. We do not keep the address itself.</li>
+      <li>Daily totals for our own stats: page visits, checks, which buttons were pressed, the country and device type, and the website that sent you here (the domain only). No cookies. To count each visitor once a day, we scramble the internet address and browser name with a key that changes every day and is then deleted. We never store the address itself.</li>
     </ul>
     <h2>What stays on your device</h2>
     <p>Your saved products, stats and badges stay in your browser. We do not receive this list. To remove it, clear your browser data for this site.</p>
@@ -1126,6 +1127,15 @@ renderSavedCount();
 const sp = new URLSearchParams(location.search), qs = sp.get("u") || sp.get("url");
 if (qs && path === "/") { $("u").value = qs; run(qs); }
 })();
+
+// ---------- button counts: no cookies, no IDs, only the button name (see the Privacy page) ----------
+const CLICKS = { share: "share", shareWa: "share_whatsapp", shareCopy: "share_copy", shareMore: "share_more", save: "save", askBtn: "request_open", shopsAsk: "request_open", unsupAsk: "request_open", savedBtn: "saved_open", shopsBtn: "shops_open" };
+document.addEventListener("click", (e) => {
+  const el = e.target && e.target.closest ? e.target.closest("button, a") : null;
+  if (!el || !navigator.sendBeacon) return;
+  const name = CLICKS[el.id] || (el.closest("#otherList") && el.tagName === "A" ? "compare_open" : el.closest("#chips") && el.tagName === "A" ? "example" : "");
+  if (name) try { navigator.sendBeacon("/api/m", name); } catch {}
+}, { capture: true, passive: true });
 </script>
 </body>
 </html>
