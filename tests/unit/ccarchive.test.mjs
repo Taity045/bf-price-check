@@ -97,7 +97,7 @@ describe("per-product filter and runs of the same price", () => {
 });
 
 const loadReq = (rows, { key = KEY, mode = "load" } = {}) => new Request("https://eish.veldwire.com/api/admin/archive-load", { method: "POST", headers: { authorization: `Bearer ${key}`, "content-type": "application/json" }, body: JSON.stringify({ mode, rows }) });
-const row = (o = {}) => ({ key: DUNELM, captured_at: Math.round(ago(120)), last_seen: Math.round(ago(90)), n: 3, price: 85, was: null, currency: "GBP", url: DUNELM, crawl: "CC-MAIN-2026-25", last_crawl: "CC-MAIN-2026-34", ...o });
+const row = (o = {}) => ({ key: DUNELM, captured_at: Math.round(ago(120)), last_seen: Math.round(ago(90)), n: 3, price: 85, was: null, currency: "GBP", url: DUNELM, crawl: "CC-MAIN-2026-25", last_crawl: "CC-MAIN-2026-34", geo: "GB", ...o });
 
 describe("archive load endpoint", () => {
   test("daily cap leaves the D1 free plan's 100k writes for the site (15,000 rows a day)", () => {

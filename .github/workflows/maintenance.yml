@@ -1,4 +1,4 @@
-name: Price fix (geo-priced reads before PR #14)
+name: Price fix (geo-priced reads)
 
 # One-off maintenance: lists (and with apply=true deletes) price rows that were read for a visitor abroad
 # before PR #14: Lakeland without UK VAT, Escentual and other shops in the wrong currency. See
@@ -14,6 +14,10 @@ on:
         description: "Optional: space-separated product links; list/delete compare rows saved for one option of a page with several prices"
         type: string
         default: ""
+      snap_rows:
+        description: "Optional: space-separated url|snap_ts of saved Internet Archive copies of UK shops; re-checked with the UK guard, excluded when it fails (max 8)"
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -27,9 +31,10 @@ jobs:
           ARCHIVE_LOAD_KEY: ${{ secrets.ARCHIVE_LOAD_KEY }}
           APPLY: ${{ inputs.apply }}
           MULTI: ${{ inputs.multi_urls }}
+          SNAPS: ${{ inputs.snap_rows }}
         run: |
           if [ -z "$ARCHIVE_LOAD_KEY" ]; then echo "::error::ARCHIVE_LOAD_KEY secret is not set"; exit 1; fi
-          body=$(python3 -c 'import json,os; b={"apply": os.environ["APPLY"] == "true"}; m=os.environ.get("MULTI","").split(); b.update({"multi_urls": m} if m else {}); print(json.dumps(b))')
+          body=$(python3 -c 'import json,os; b={"apply": os.environ["APPLY"] == "true"}; m=os.environ.get("MULTI","").split(); b.update({"multi_urls": m} if m else {}); sn=os.environ.get("SNAPS","").split(); b.update({"snap_rows": sn} if sn else {}); print(json.dumps(b))')
           code=$(curl -sS -o out.json -w '%{http_code}' -X POST -A "bf-price-check-maintenance/1.0" \
             -H "authorization: Bearer $ARCHIVE_LOAD_KEY" -H "content-type: application/json" \
             --data "$body" https://eish.veldwire.com/api/admin/price-fix)

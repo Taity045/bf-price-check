@@ -6,6 +6,9 @@
 //       Finds each shop's product pages in Common Crawl's public index (data.commoncrawl.org), downloads
 //       each archived page with one byte-range request, and reads its price with the site's own reader.
 //       Writes DIR/captures.jsonl (one line per page read; resumable).
+//   node scripts/cc/archive.mjs recheck --out DIR [--cdx-dir DIR] [--max N] [--again REASON]
+//       UK shops: re-reads captures collected before the UK price check (archivedGeoCheck) and writes
+//       DIR/geo.jsonl. reduce keeps a UK capture only when its copy confirmed the UK GBP price.
 //   node scripts/cc/archive.mjs reduce --out DIR
 //       Sanity filter per product, then one row per run of the same price -> DIR/rows.jsonl (load order).
 //   node scripts/cc/archive.mjs upload --out DIR --endpoint URL [--max-writes 15000] [--mode load|append]
@@ -223,10 +226,29 @@ async function readJsonl(f, fn) {
   const rl = createInterface({ input: createReadStream(f), crlfDelay: Infinity });
   for await (const l of rl) if (l) { try { fn(JSON.parse(l)); } catch {} }
 }
+// UK shops (GBP): a capture counts only when its own page confirmed the UK price (geo "GB", set by
+// readArchivedPage, or by "recheck" for captures read before that check existed). Unconfirmed copies
+// are counted as unusable, never as a price.
+const GBP_SHOPS = new Set(CC_SHOPS.filter((s) => s.ccy === "GBP").map((s) => s.name));
+const geoFile = () => `${OUT}/geo.jsonl`;
+async function readGeo() {
+  const m = new Map();
+  if (existsSync(geoFile())) await readJsonl(geoFile(), (g) => m.set(g.crawl + "|" + g.key, g));
+  return m;
+}
+function geoOk(c, geo) {
+  if (!GBP_SHOPS.has(c.shop)) return true;
+  if (c.geo === "GB") return true;
+  const g = geo.get(c.crawl + "|" + c.key);
+  return !!(g && g.geo === "GB" && Math.abs((g.price ?? c.price) - c.price) < 0.005);
+}
+
 async function reduce() {
   const now = Date.now(), w36 = [now - 183 * DAY, now - 91 * DAY];
   const byKey = new Map(), reasons = {};
+  const geo = await readGeo();
   await readJsonl(`${OUT}/captures.jsonl`, (c) => {
+    if (c.ok && !geoOk(c, geo)) { const g = geo.get(c.crawl + "|" + c.key); c = { ...c, ok: false, reason: g ? "uk-unusable" : "uk-unchecked" }; }
     reasons[c.ok ? "ok" : c.reason] = (reasons[c.ok ? "ok" : c.reason] || 0) + 1;
     if (!c.ok || !c.t || c.t < now - 372 * DAY) return;
     if (!byKey.has(c.key)) byKey.set(c.key, { shop: c.shop, pts: [] });
@@ -242,6 +264,7 @@ async function reduce() {
     if (!kept.length) { dropped++; st.dropped_products++; continue; }
     droppedPts += v.pts.length - kept.length; st.dropped_points += v.pts.length - kept.length;
     const segs = toSegments(kept);
+    if (GBP_SHOPS.has(v.shop)) for (const sg of segs) sg.geo = "GB";
     const has36 = kept.some((p) => p.t >= w36[0] && p.t <= w36[1]);
     const recent = kept.some((p) => p.t >= recentCut);
     st.products++; st.rows += segs.length; if (has36) st.with_3to6m++;
@@ -258,6 +281,63 @@ async function reduce() {
   const summary = { built_at: new Date().toISOString(), products: products.length, rows: total, dropped_products: dropped, dropped_points: droppedPts, page_reads: reasons, per_shop: stats };
   writeFileSync(`${OUT}/reduce_summary.json`, JSON.stringify(summary, null, 1));
   log(JSON.stringify({ products: products.length, rows: total, dropped, droppedPts, reasons }));
+}
+
+// ---------- recheck ----------
+// Captures of UK shops read before the UK check existed: download each copy again and run the same
+// check (archivedGeoCheck through readArchivedPage). Writes DIR/geo.jsonl: geo "GB" when the copy
+// confirms the UK price, else unusable with the reason. --max N caps the downloads per run.
+async function recheck() {
+  const geo = await readGeo(), todo = new Map();
+  await readJsonl(`${OUT}/captures.jsonl`, (c) => {
+    const g = geo.get(c.crawl + "|" + c.key);
+    if (!c.ok || !GBP_SHOPS.has(c.shop) || c.geo === "GB" || (g && !(args.again && g.unusable === args.again))) return;
+    todo.set(c.crawl + "|" + c.key, c);
+  });
+  const max = +(args.max || 1e9), conc = +(args.concurrency || 4);
+  const jobs = [...todo.values()].slice(0, max);
+  log(`recheck: ${todo.size} UK captures not checked yet; this run ${jobs.length}`);
+  if (!jobs.length) return;
+  // The index record (WARC file and byte range) of each capture, from the cached index files.
+  const need = new Map();
+  for (const c of jobs) { const shop = CC_SHOPS.find((s) => s.name === c.shop); (need.get(c.crawl + "|" + shop.surt) || need.set(c.crawl + "|" + shop.surt, []).get(c.crawl + "|" + shop.surt)).push(c); }
+  const recs = new Map();
+  for (const [ck] of need) {
+    const [crawl, surt] = ck.split("|");
+    let lines; try { lines = await cdxLines(crawl, await indexFor(crawl, surt), surt); } catch (e) { log(`index ${crawl} ${surt}: ${e.message}`); continue; }
+    // One crawl can hold several copies of a link: match the copy by its capture time.
+    for (const rec of lines) if (rec.status === "200") recs.set(crawl + "|" + rec.url + "|" + rec.timestamp, rec);
+  }
+  const counts = {};
+  let i = 0;
+  await Promise.all(Array.from({ length: conc }, async () => {
+    while (i < jobs.length) {
+      const c = jobs[i++], shop = CC_SHOPS.find((s) => s.name === c.shop);
+      const ts14 = c.t ? new Date(c.t).toISOString().replace(/[-:T]/g, "").slice(0, 14) : "";
+      const rec = recs.get(c.crawl + "|" + c.url + "|" + ts14);
+      let line;
+      if (!rec) line = { crawl: c.crawl, key: c.key, url: c.url, price: c.price, unusable: "no-index-record" };
+      else {
+        const w = await warcHtml(rec).catch(() => ({ err: "error" }));
+        if (w.err) { counts.retry = (counts.retry || 0) + 1; continue; }  // network: try again next run
+        const r = readArchivedPage(W, w.html, c.url, shop);
+        if (r.ok && r.geo === "GB" && Math.abs(r.price - c.price) < 0.005) line = { crawl: c.crawl, key: c.key, url: c.url, price: c.price, geo: "GB" };
+        else line = { crawl: c.crawl, key: c.key, url: c.url, price: c.price, unusable: r.ok ? "price-changed" : r.reason, ...(r.ok ? { reread: r.price } : {}) };
+      }
+      const k = line.geo ? "uk-confirmed" : line.unusable;
+      counts[k] = (counts[k] || 0) + 1;
+      appendFileSync(geoFile(), JSON.stringify(line) + "\n");
+    }
+  }));
+  log("recheck done " + JSON.stringify(counts));
+}
+const cdxFile = (crawl, surt) => args["cdx-dir"] && `${args["cdx-dir"]}/${crawl}__${surt.replace(/\//g, "_").replace(/\)/g, "").replace(/,/g, ".")}.jsonl.gz`;
+const idxCache = new Map();
+async function indexFor(crawl, surt) {
+  const f = cdxFile(crawl, surt);
+  if (f && existsSync(f)) return null;  // cdxLines reads the cached file
+  if (!idxCache.has(crawl)) idxCache.set(crawl, await clusterIdx(crawl));
+  return idxCache.get(crawl);
 }
 
 // ---------- upload ----------
@@ -308,5 +388,6 @@ async function upload() {
 if (cmd === "latest") { const all = (await listCrawls()).sort(); const id = all[all.length - 1] || ""; console.log(args.after && id <= args.after ? "" : id); }
 else if (cmd === "collect") await collect();
 else if (cmd === "reduce") await reduce();
+else if (cmd === "recheck") await recheck();
 else if (cmd === "upload") await upload();
-else { console.log("usage: collect | reduce | upload (see the top of this file)"); process.exit(1); }
+else { console.log("usage: collect | recheck | reduce | upload (see the top of this file)"); process.exit(1); }

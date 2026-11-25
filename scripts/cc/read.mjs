@@ -40,6 +40,11 @@ export function readArchivedPage(W, html, url, shop) {
   const blk = W.archivedCopyBlocked ? W.archivedCopyBlocked(html, ex) : null;
   if (blk) return { ok: false, reason: blk.reason };
   if (!ex.price) return { ok: false, reason: "no-price" };
+  // UK shops: the copy must itself confirm the UK price (GBP from the page, UK VAT included, Shopify
+  // buyer country GB). Otherwise it is unusable: skipped, never a price. See archivedGeoCheck.
+  if (typeof W.archivedGeoCheck !== "function") throw new Error("archivedGeoCheck missing from the worker build");
+  const geo = W.archivedGeoCheck(html, url, ex, shop.ccy);
+  if (geo) return { ok: false, reason: geo.reason, unusable: true };
   if (!TRUSTED_SOURCES.has(ex.source)) return { ok: false, reason: "untrusted-source" };
   if (!PRODUCT_SIGNAL.some((r) => r.test(html))) return { ok: false, reason: "not-product" };
   if (OOS.test(html) && !INSTOCK.test(html)) return { ok: false, reason: "out-of-stock" };
@@ -60,7 +65,7 @@ export function readArchivedPage(W, html, url, shop) {
   }
   let was = ex.was ? Number(ex.was) : null;
   if (!(was > price) || was > price * 5) was = null;
-  return { ok: true, price, was, currency, title: ex.title || null, source: ex.source };
+  return { ok: true, price, was, currency, title: ex.title || null, source: ex.source, ...(shop.ccy === "GBP" ? { geo: "GB" } : {}) };
 }
 
 // Within one product's archive copies: drop a price that is far from the product's usual price
