@@ -1650,6 +1650,8 @@ const CMP_ERR_TTL = 20 * 60e3;        // a failed or busy shop is retried sooner
 const CMP_SEARCH_TTL = 6 * 3600e3;    // one search on one shop (shared by all products)
 const CMP_SHOP_PER_MIN = 30;          // searches per shop per minute, all visitors together
 const CMP_PER_IP_PER_MIN = 240;       // shop calls per visitor per minute (one check makes up to ~20)
+// Bump when the matching rules or identity reading change, so cached answers from older rules are not shown.
+const CMP_VER = "v2";
 const CMP_MAX_SEARCHES = 2;           // searches per shop per product
 const CMP_MAX_DETAILS = 3;            // product-detail reads per shop per product (to read barcodes)
 
@@ -2147,7 +2149,7 @@ async function cmpIpLimited(env, ip) {
 
 // The identity of a checked product (cached). For Shopify shops the product's own .js gives the barcode.
 async function cmpIdentityFor(env, canon) {
-  const key = "cmpid-v1:" + canon;
+  const key = "cmpid-" + CMP_VER + ":" + canon;
   const c = await cacheGet(env, key);
   if (c) return c;
   const cur = await latestCurrent(env, canon);
@@ -2188,7 +2190,7 @@ async function apiCompare(req, env) {
   const plan = cmpPlan(id, host, id.currency);
   const results = {};
   if (plan.shops.length) {
-    const keys = plan.shops.map((s) => "cmp-v1:" + s.id + ":" + g.canon);
+    const keys = plan.shops.map((s) => "cmp-" + CMP_VER + ":" + s.id + ":" + g.canon);
     const rows = await env.DB.prepare(`SELECT k, v, exp FROM cache WHERE k IN (${keys.map(() => "?").join(",")})`).bind(...keys).all();
     for (const r of rows.results || []) if (r.exp > now()) { try { const v = JSON.parse(r.v); results[v.shop] = v; } catch {} }
   }
@@ -2200,7 +2202,7 @@ async function apiCompareShop(req, env, ctx) {
   const g = await cmpGuard(req, env); if (g.error) return g.error;
   const shop = cmpShopById(new URL(req.url).searchParams.get("shop") || "");
   if (!shop) return json({ error: "unknown shop" }, 400);
-  const key = "cmp-v1:" + shop.id + ":" + g.canon;
+  const key = "cmp-" + CMP_VER + ":" + shop.id + ":" + g.canon;
   const cached = await cacheGet(env, key);
   if (cached) return json({ ...cached, cached: true });
   const ip = req.headers.get("cf-connecting-ip") || "0";
@@ -2233,7 +2235,7 @@ async function cmpSaveHistory(env, m) {
 // Old pages (loaded before this version) still call /api/others: answer with the cached matches.
 async function apiOthersCompat(req, env) {
   const g = await cmpGuard(req, env); if (g.error) return g.error;
-  const rows = await env.DB.prepare("SELECT v, exp FROM cache WHERE k LIKE ? LIMIT 40").bind("cmp-v1:%:" + g.canon).all();
+  const rows = await env.DB.prepare("SELECT v, exp FROM cache WHERE k LIKE ? LIMIT 40").bind("cmp-" + CMP_VER + ":%:" + g.canon).all();
   const matches = [];
   for (const r of rows.results || []) if (r.exp > now()) { try { const v = JSON.parse(r.v); if (v.match) matches.push({ shop: v.name, title: v.match.title, price: v.match.price, currency: v.match.currency, url: v.match.url, match: v.match.level === "barcode" ? "barcode" : v.match.level === "model" ? "model number" : "name and specs" }); } catch {} }
   return json({ matches, searched: [] });
