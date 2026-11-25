@@ -65,7 +65,7 @@ const CMP_GENERIC = new Set(["portable", "waterproof", "water", "resistant", "bl
 const CMP_STOP = new Set(["the", "and", "with", "of", "a", "an", "in", "on", "by", "to", "new", "edition", "version", "official", "genuine", "original", "brand", "free", "shipping", "sa", "south", "africa", "local", "stock", "local stock", "model", "series", "colour", "color", "size", "inch", "inches", "gen", "generation", "includes", "including", "incl", "w", "only", "set", "item", "product", "unit", "1pc", "pc", "piece"]);
 const CMP_ACCESSORY = /\b(compatible|replacement|protector|tempered|skins?|decals?|stickers?|refill|refills|spare)\b|\b(case|cover|sleeve|pouch|strap|band|stand|holder|mount|dock|charger|cable|adapter|controller|remote|lens|filter|bag)\s+(for|compatible|to\s+fit)\b|\bfor\s+(apple|samsung|iphone|ipad|airpods|galaxy|ps5|ps4|playstation|xbox|nintendo|switch|macbook|sony|huawei|xiaomi|oppo|garmin|fitbit|gopro|dji|nikon|canon|lg|hisense|tcl)\b/i;
 const CMP_CONDITION = /\b(refurbished|refurb|renewed|pre[- ]?owned|second[- ]?hand|used|demo|ex[- ]?demo|open[- ]?box|grade\s+[a-c]|parallel\s+import|imported|import|grey\s+import|b-grade|cpo)\b/i;
-const CMP_BUNDLE = /\s\+\s|\bbundle\b|\bcombo\b|\bvoucher\b|\bkit\b|\bwith\s+(?:game|controller|headset|voucher)|\b\d+\s*(?:x|pack|pk)\s+(?:of\s+)?/i;
+const CMP_BUNDLE = /\s\+\s|\bbundle\b|\bcombo\b|\bvoucher\b|\b(?<!(?:model|building|car|construction|lego|technic|brick|bricks)\s)kit\b|\bwith\s+(?:game|controller|headset|voucher)|\b\d+\s*(?:x|pack|pk)\s+(?:of\s+)?/i;
 
 function cmpNorm(s) {
   return decodeEntities(String(s || "")).toLowerCase()
@@ -76,6 +76,7 @@ function cmpNorm(s) {
     .replace(/\beau\s+de\s+parfum\b/g, " edp ").replace(/\beau\s+de\s+toilette\b/g, " edt ").replace(/\beau\s+de\s+cologne\b/g, " edc ")
     .replace(/\bplay\s*station\s*(\d)\b/g, " ps$1 ")
     .replace(/\bwi[\s-]?fi\b/g, " wifi ")
+    .replace(/\bbt\b/g, " bluetooth ")
     .replace(/\busb[\s-]?type[\s-]?c\b|\busb[\s-]?c\b/g, " usbc ")
     .replace(/\b(\d)\s?k\b/g, " $1k ")
     .replace(/\bactive[\s-]+noise[\s-]+cancell?(?:ation|ing)\b|\bnoise[\s-]+cancell?(?:ation|ing)\b/g, " anc ")
@@ -167,7 +168,10 @@ function cmpIdentity(cur, canon) {
   const codes = cmpCodes(title + " " + (cur.mpn || ""), brand);
   let urlCodes = [];
   try { urlCodes = cmpCodes(new URL(canon).pathname.replace(/\/PLID\d+/i, "").replace(/[-_]/g, " "), brand).filter((c) => !codes.includes(c)); } catch {}
-  return { title, brand, gtin: cmpGtin(cur.gtin), gtins: [cmpGtin(cur.gtin)].filter(Boolean), mpn: cur.mpn || null, codes, titleCodes, urlCodes, price: cur.price || null, currency: cur.currency || null };
+  let gtin = cmpGtin(cur.gtin);
+  // book shops often put the ISBN in the link
+  if (!gtin) { try { const m = new URL(canon).pathname.match(/(?:^|[^\d])(97[89]\d{10})(?!\d)/); if (m) gtin = m[1]; } catch {} }
+  return { title, brand, gtin, gtins: [gtin].filter(Boolean), mpn: cur.mpn || null, codes, titleCodes, urlCodes, price: cur.price || null, currency: cur.currency || null };
 }
 
 // What kind of product it is, so we only ask shops that sell it.
@@ -267,6 +271,8 @@ function cmpMatch(src, cand, opts = {}) {
   if (!setEq(A.nums, B.nums)) return { level: null, why: "different numbers" };
   if (A.watt.size && B.watt.size && !setEq(A.watt, B.watt)) return { level: null, why: "different power" };
   for (const k of ["storage", "inch", "ml", "g"]) if (A[k].size && !B[k].size) return { level: null, why: "missing spec" };
+  // the other shop names a size this page does not (a page with several sizes): we can't tell which size this price is for
+  for (const k of ["storage", "ml", "g"]) if (B[k].size && !A[k].size) return { level: null, why: "size not on this page" };
   const isCode = (w) => /\d/.test(w) && /[a-z]/.test(w) && w.length >= 5;
   const core = [...A.words].filter((w) => w !== sb && !sb.split(" ").includes(w) && !CMP_GENERIC.has(w) && !isCode(w));
   // a product line named by a variant word and a number (JBL Flip 7) is enough; otherwise it needs a name word

@@ -222,3 +222,14 @@ describe("shop list", () => {
     assert.equal(W.shopFor("https://nottakealot.com/"), null);
   });
 });
+
+describe("barcode from microdata", () => {
+  test("reads itemprop gtin13 (Loot style) when JSON-LD has none", () => {
+    const html = '<div itemscope itemtype="https://schema.org/Product"><meta itemProp="sku" content="hfbk-8342-g710"/><meta itemProp="gtin13" content="8806095847788"/><h1 itemProp="name">Samsung Galaxy S25</h1><meta itemprop="price" content="16799"><meta itemprop="priceCurrency" content="ZAR"></div>';
+    assert.equal(W.extractFromHtml(html, "www.loot.co.za").gtin, "8806095847788");
+  });
+  test("ignores a gtin that is not 8-14 digits", () => {
+    const html = '<meta itemprop="gtin13" content="n/a"><meta itemprop="price" content="10"><meta itemprop="priceCurrency" content="ZAR">';
+    assert.equal(W.extractFromHtml(html, "x.co.za").gtin, undefined);
+  });
+});

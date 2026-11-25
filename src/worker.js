@@ -458,6 +458,10 @@ function extractFromHtml(html, host) {
   if (/(^|\.)amazon\./.test(host)) source = parseAmazon(html, out);
   if (!source) source = parseJsonLd(html, out);
   const metaSrc = parseMeta(html, out);
+  if (!out.gtin) {
+    const m = html.match(/itemprop=["']gtin(?:8|12|13|14)?["'][^>]{0,80}?content=["'](\d{8,14})["']/i) || html.match(/content=["'](\d{8,14})["'][^>]{0,80}?itemprop=["']gtin(?:8|12|13|14)?["']/i);
+    if (m) out.gtin = m[1];
+  }
   if (!source) source = metaSrc;
   if (!source) source = parseFallback(html, out);
   if (!source) source = parseDataLayer(html, out);
