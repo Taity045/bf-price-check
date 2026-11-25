@@ -109,7 +109,7 @@ const CMP_SHOP = {
   computermania: { shop: "computermania", name: "Computer Mania", status: "match", checked_at: Date.now(), match: { title: "CI Test Kettle 1.7L <b>bold</b>", price: 799, currency: "ZAR", url: "https://shop.example.co.za/cm-kettle", in_stock: false, level: "name" } },
   firstshop: { shop: "firstshop", name: "First Shop", status: "blocked", checked_at: Date.now() },
 };
-for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`compare ${name}`, async () => {
+for (const [name, o] of [["desktop", desktop], ["phone", mobile], ["1440", { viewport: { width: 1440, height: 900 } }], ["390", { ...mobile, viewport: { width: 390, height: 844 } }]]) await step(`compare ${name}`, async () => {
   const p = await open(o);
   await p.route(/\/api\/compare\?/, (r) => r.fulfill({ json: CMP_PLAN }));
   let n = 0;
@@ -117,8 +117,13 @@ for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`c
   await p.goto(BASE + "/");
   await p.fill("#u", PRODUCT); await p.click("#go");
   await p.waitForSelector("#others:not(.hidden)", { timeout: 15000 });
+  const tops = () => p.evaluate(() => ({ chart: document.querySelector("#chart").getBoundingClientRect().top + scrollY, actions: document.querySelector(".actions").getBoundingClientRect().top + scrollY }));
+  const before = await tops();
   ok(`compare ${name}: shows progress while shops answer`, /of 5 shops checked/.test(await p.textContent("#cmpStatus")), await p.textContent("#cmpStatus"));
   await p.waitForFunction(() => /5 shops checked/.test(document.querySelector("#cmpStatus").textContent) && !/of/.test(document.querySelector("#cmpStatus").textContent), null, { timeout: 10000 });
+  const after = await tops();
+  ok(`compare ${name}: chart and buttons do not move while shop rows load`, before.chart === after.chart && before.actions === after.actions, JSON.stringify({ before, after }));
+  ok(`compare ${name}: other shops is below the chart`, (await p.evaluate(() => document.querySelector("#others").getBoundingClientRect().top > document.querySelector("#chart").getBoundingClientRect().bottom)));
   const rows = await p.$$eval("#otherList li", (ls) => ls.map((l) => l.textContent.replace(/\s+/g, " ").trim()));
   ok(`compare ${name}: this page plus 3 matches`, rows.length === 4, rows.join(" | "));
   ok(`compare ${name}: this page first`, /This page/.test(rows[0]), rows[0]);
