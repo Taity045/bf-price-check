@@ -2,7 +2,12 @@ name = "bf-price-check"
 main = "dist/worker.js"
 compatibility_date = "2026-11-01"
 workers_dev = true
-routes = [{ pattern = "eish.veldwire.com", custom_domain = true }]
+# eish = the site. stats = private dashboard (Cloudflare Access + JWT check in src/stats.js).
+# Keep eish first: wrangler dev uses the first route as the local host name.
+routes = [
+  { pattern = "eish.veldwire.com", custom_domain = true },
+  { pattern = "stats.veldwire.com", custom_domain = true },
+]
 preview_urls = false
 
 [build]

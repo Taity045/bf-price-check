@@ -18,6 +18,7 @@ env:
   WRANGLER_SEND_METRICS: "false"
   LIVE_URL: https://bf-price-check.tm-deal-lab.workers.dev
   CUSTOM_DOMAIN_URL: https://eish.veldwire.com
+  STATS_URL: https://stats.veldwire.com
 
 jobs:
   test:
@@ -44,6 +45,8 @@ jobs:
           # A throwaway test key so the browser tests are not rate limited (local worker only).
           key=$(openssl rand -hex 16); echo "::add-mask::$key"
           echo "E2E_KEY=$key" > .dev.vars; echo "E2E_KEY=$key" >> "$GITHUB_ENV"
+          # Local only: open the stats dashboard at /__stats without Access, and count test traffic.
+          printf 'STATS_DEV=1\nSTATS_COUNT_E2E=1\n' >> .dev.vars
           npx wrangler d1 execute bf-price-check-db --local --file schema.sql > /dev/null
           nohup npx wrangler dev --port 8787 --ip 127.0.0.1 --show-interactive-dev-session=false > wrangler-dev.log 2>&1 &
           for i in $(seq 1 90); do
@@ -124,6 +127,8 @@ jobs:
         run: node tests/smoke.mjs "$LIVE_URL"
       - name: Smoke test (custom domain)
         run: node tests/smoke.mjs "$CUSTOM_DOMAIN_URL"
+      - name: Stats host stays private
+        run: node tests/stats_smoke.mjs "$STATS_URL" "$CUSTOM_DOMAIN_URL"
       - name: Report a failed deploy
         if: failure()
         run: echo "::error title=Deploy or smoke test failed::The live site may be broken. Check the steps above, then revert or fix main."

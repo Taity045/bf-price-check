@@ -3,6 +3,8 @@
 //          GET /api/check?url=  -> live price + stored history
 //          GET /api/archive?url= -> Wayback snapshot list
 //          GET /api/snap?url=&ts=&orig= -> price from one Wayback snapshot (cached forever in D1)
+//          POST /api/m          -> one button-click count (cookieless, see src/stats.js)
+//          stats.veldwire.com   -> private stats dashboard (Cloudflare Access)
 //          GET /api/daily-status -> counts for the daily price saving (no URLs)
 //          scheduled (cron)     -> daily price saving, see src/daily.js
 // Bindings: DB (D1)
@@ -893,19 +895,23 @@ export default {
   async fetch(req, env, ctx) {
     const url = new URL(req.url);
     try {
+      // Private stats dashboard: its own host, behind Cloudflare Access (see src/stats.js).
+      if (mIsStatsHost(url, env)) return await statsApp(req, env, url, false);
+      if (mIsDevStats(req, url, env)) return await statsApp(req, env, url, true);
       if (req.method === "OPTIONS") return new Response(null, { headers: { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST", "access-control-allow-headers": "content-type" } });
       if (/^\/api\/(check|archive|snap|others|verdict|request|alert)$/.test(url.pathname)) { const g = apiGuard(req); if (g) return g; }
-      if (url.pathname === "/api/request") return await apiRequest(req, env, ctx);
+      if (url.pathname === "/api/request") return statsTap(req, env, ctx, "request", await apiRequest(req, env, ctx));
+      if (url.pathname === "/api/m") return await statsBeacon(req, env, ctx);
       if (url.pathname === "/api/alert") return await apiAlert(req, env, ctx);
       if (url.pathname === "/api/e2e/cleanup") return await apiE2ECleanup(req, env);
       if (url.pathname === "/api/e2e/mail-test") return await apiMailTest(req, env);
       if (req.method !== "GET" && req.method !== "HEAD") return json({ error: "method not allowed" }, 405);
       if (url.pathname === "/api/shops") return json({ shops: SHOPS.map(({ name, cc, d }) => ({ name, cc, host: d[0] })) }, 200, { "cache-control": "public, max-age=3600" });
-      if (url.pathname === "/api/check") return await apiCheck(req, env, ctx);
+      if (url.pathname === "/api/check") return statsTap(req, env, ctx, "check", await apiCheck(req, env, ctx));
       if (url.pathname === "/api/daily-status") return await apiDailyStatus(env);
       if (url.pathname === "/api/config") return json({ wall: env.WALL === "on", alerts: alertsOn(env), min_judged: WALL_MIN_JUDGED, turnstile: turnstileOn(env) ? env.TURNSTILE_SITEKEY : null }, 200, { "cache-control": "public, max-age=300" });
       if (url.pathname === "/api/verdict") return await apiVerdict(req, env);
-      if (url.pathname === "/api/others") return await apiOthers(req, env);
+      if (url.pathname === "/api/others") return statsTap(req, env, ctx, "others", await apiOthers(req, env));
       if (env.WALL !== "on" && (url.pathname === "/wall" || url.pathname === "/api/wall" || url.pathname === "/api/stats")) return url.pathname === "/wall" ? Response.redirect(url.origin + "/", 302) : json({ error: "off" }, 404);
       if (url.pathname === "/api/wall") return json(await wallData(env), 200, { "cache-control": "public, max-age=300" });
       if (url.pathname === "/api/stats") { const w = await wallData(env); return json({ fake_total: w.fake_total }, 200, { "cache-control": "public, max-age=300" }); }
@@ -917,6 +923,7 @@ export default {
       if (url.pathname === "/alert/stop") return await alertLink(req, env, "stop");
       if (url.pathname === "/api/archive") return await apiArchive(req, env);
       if (url.pathname === "/api/snap") return await apiSnap(req, env);
+      if (["/", "/index.html", "/wall", "/privacy"].includes(url.pathname) && req.method === "GET" && ctx) ctx.waitUntil(statsPageView(req, env).catch(() => {}));
       if (["/", "/index.html", "/wall", "/privacy"].includes(url.pathname)) return new Response(await pageHtml(req, env, ctx), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache", "x-content-type-options": "nosniff", "referrer-policy": "no-referrer" } });
       if (url.pathname.startsWith("/fonts/") && FONTS[url.pathname.slice(7)]) return new Response(Uint8Array.from(atob(FONTS[url.pathname.slice(7)]), (c) => c.charCodeAt(0)), { headers: { "content-type": "font/woff2", "cache-control": "public, max-age=31536000, immutable", "access-control-allow-origin": "*" } });
       // The page names the script by its hash. A page loaded before a deploy may ask for an older name:
