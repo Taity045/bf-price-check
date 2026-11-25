@@ -899,6 +899,7 @@ function renderArchiveNote() {
   const ai = state.archive_meta;
   if (ai) {
     if (ai.status !== "ok") note = `We could not get archive copies just now, so archive prices are missing. Use "Try the archive again".`;
+    if (ai.status !== "ok" && (state.cc || []).length) note = `We could not reach the Internet Archive just now, so its copies are missing. Use "Try the archive again".`;
     else if (!(ai.captures_12mo ?? ai.captures_6mo)) note = "The Internet Archive has no copies of this page from the last twelve months" + ((state.cc || []).length ? "." : ", so older prices are missing.");
     else { const n = ai.captures_12mo ?? ai.captures_6mo; note = `Archived copies: ${n} day${n === 1 ? "" : "s"} in 12 months. We looked at ${ai.sampled}.`; }
     if (state.failed) note += ` ${state.failed} had no price we could read.`;
