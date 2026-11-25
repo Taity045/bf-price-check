@@ -148,6 +148,7 @@ dialog.dlg-fb[open]{display:block;position:fixed;z-index:20;left:12px;right:12px
 .x{background:none;border:0;font-size:22px;min-width:44px}
 .shoplist{list-style:none;padding:0;margin:8px 0 0}
 .shoplist li{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:15px}
+.hist{display:block}
 .field{display:flex;flex-direction:column;gap:4px;margin-top:12px;font-size:14px}
 .field input{height:46px;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--soft);color:var(--ink);font:16px var(--sans)}
 .field input:focus{outline:none;border-color:var(--ink);background:var(--bg)}
@@ -903,7 +904,7 @@ function renderArchiveNote() {
     else if (!(ai.captures_12mo ?? ai.captures_6mo)) note = "The Internet Archive has no copies of this page from the last twelve months" + ((state.cc || []).length ? "." : ", so older prices are missing.");
     else { const n = ai.captures_12mo ?? ai.captures_6mo; note = `Archived copies: ${n} day${n === 1 ? "" : "s"} in 12 months. We looked at ${ai.sampled}.`; }
     if (state.failed) note += ` ${state.failed} had no price we could read.`;
-    if (state.blocked) note += ` We left out ${state.blocked} that showed a bot check or an empty page.`;
+    if (state.blocked) note += ` ${state.blocked} were bot-check or empty pages.`;
   }
   const ccN = (state.cc || []).length;
   if (ccN) note = `Common Crawl web archive: ${ccN} older price${ccN === 1 ? "" : "s"}. ` + note;
@@ -927,7 +928,8 @@ async function openShops() {
   try {
     const d = await (await fetch("/api/shops")).json();
     const cc = { ZA: "South Africa", UK: "United Kingdom", DE: "Germany" };
-    $("shoplist").innerHTML = d.shops.map((x) => `<li><span>${esc(x.name)}</span><span class="small">${esc(cc[x.cc] || x.cc)}</span></li>`).join("");
+    const hist = (x) => x.history === "building" ? "We read today's price. History is building up." : x.history ? `Price history: <b>${x.history}</b>` : "";
+    $("shoplist").innerHTML = d.shops.map((x) => `<li><span>${esc(x.name)}${hist(x) ? `<span class="small hist">${hist(x)}</span>` : ""}</span><span class="small">${esc(cc[x.cc] || x.cc)}</span></li>`).join("");
     shopsLoaded = true;
   } catch { $("shoplist").innerHTML = "<li>We could not load the list. Try again.</li>"; }
 }
