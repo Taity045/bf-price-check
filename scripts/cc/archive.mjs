@@ -272,7 +272,9 @@ async function upload() {
   const products = [];
   // --shops: only these shops (for example the ones whose collection is complete).
   const only = args.shops ? new Set(args.shops.split(",")) : null;
-  await readJsonl(`${OUT}/rows.jsonl`, (p) => { if (!sent.has(p.key) && (!only || only.has(p.shop))) products.push(p); });
+  // --min-pri 2: only products with a readable price from 3-6 months ago (pri 2 or 3).
+  const minPri = +(args["min-pri"] || 0);
+  await readJsonl(`${OUT}/rows.jsonl`, (p) => { if (!sent.has(p.key) && (!only || only.has(p.shop)) && p.pri >= minPri) products.push(p); });
   let written = 0, i = 0, stop = null;
   const BATCH = +(args.batch || 150);
   const save = () => { state.sent = [...sent]; writeFileSync(stateFile, JSON.stringify(state)); };
