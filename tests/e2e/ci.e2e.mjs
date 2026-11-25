@@ -218,7 +218,7 @@ for (const [name, o] of [["1440", { viewport: { width: 1440, height: 900 } }], [
 });
 await step("compare: nothing found", async () => {
   const p = await open(mobile);
-  const bikes = { ...CMP_PLAN, product: { ...CMP_PLAN.product, category: "cycling" }, noun: "bikes and cycling gear", specialists: 2,
+  const bikes = { ...CMP_PLAN, product: { ...CMP_PLAN.product, category: "cycling" }, noun: "bikes and cycling gear", shopNoun: "bike shop", specialists: 2,
     shops: [{ id: "olympiccycles", name: "Olympic Cycles" }, { id: "mellowvelo", name: "Mellow Velo" }, { id: "takealot", name: "Takealot", general: true }], results: {} };
   await p.route(/\/api\/compare\?/, (r) => r.fulfill({ json: bikes }));
   await p.route(/\/api\/compare\/shop\?/, (r) => r.fulfill({ json: { status: "none", checked_at: Date.now() } }));
@@ -226,7 +226,7 @@ await step("compare: nothing found", async () => {
   await p.fill("#u", PRODUCT); await p.click("#go");
   await p.waitForFunction(() => /No exact match/.test(document.querySelector("#cmpSum").textContent), null, { timeout: 10000 });
   const sum = await p.textContent("#cmpSum");
-  ok("compare: names the kind of shops and each shop checked", /Checked 3 shops that sell bikes and cycling gear: Olympic Cycles, Mellow Velo, Takealot\./.test(sum), sum);
+  ok("compare: names the kind of shops and each shop checked", /Checked 2 bike shops \(Olympic Cycles, Mellow Velo\) and 1 general shop \(Takealot\)\./.test(sum), sum);
   ok("compare: says plainly when no shop has the same product", /No exact match at any of them\./.test(sum), sum);
   await p.context().close();
 });

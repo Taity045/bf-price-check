@@ -29,7 +29,7 @@ describe("compare: kind of product picks the shops", () => {
     const p = W.cmpPlan(id("Giant Propel Advanced 2 Carbon Road Bike 2026", {}, "https://www.cyclelab.com/product/1"), "www.cyclelab.com", "ZAR");
     assert.equal(p.category, "cycling"); assert.equal(p.noun, "bikes and cycling gear");
     assert.deepEqual(ids(p), [...BIKE_ZA, "takealot", "loot"]);
-    assert.equal(p.specialists, 5);
+    assert.equal(p.specialists, 5); assert.equal(p.shopNoun, "bike shop");
     for (const no of ["evetech", "hirschs", "exclusivebooks", "cyclelab", "dischem"]) assert.ok(!ids(p).includes(no), no);
   });
   test("a bike in the UK: only UK bike shops, not the shop it came from", () => {

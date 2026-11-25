@@ -451,8 +451,11 @@ async function loadOthers(my) {
     const none = shops.filter((s) => results[s.id] && results[s.id].status === "none").map((s) => s.name);
     const failed = shops.filter((s) => results[s.id] && !["match", "none", "skipped", "robots"].includes(results[s.id].status)).map((s) => s.name);
     const asked = shops.filter((s) => results[s.id] && results[s.id].status === "robots").map((s) => s.name);
-    const parts = [], names = shops.map((s) => s.name).join(", "), n = shops.length, ns = `${n} shop${n === 1 ? "" : "s"}`;
-    if (plan.noun && plan.specialists) parts.push(`Checked ${ns} that sell ${plan.noun}: ${names}.`);
+    const parts = [], names = shops.map((s) => s.name).join(", "), n = shops.length;
+    const spec = shops.filter((s) => !s.general), gen = shops.filter((s) => s.general), k = spec.length;
+    const specTxt = plan.shopNoun ? `${k} ${plan.shopNoun}${k === 1 ? "" : "s"}` : `${k} shop${k === 1 ? " that sells" : "s that sell"} ${plan.noun}`;
+    const genTxt = gen.length ? ` and ${gen.length} general shop${gen.length === 1 ? "" : "s"} (${gen.map((s) => s.name).join(", ")})` : "";
+    if (plan.noun && plan.specialists) parts.push(gen.length ? `Checked ${specTxt} (${spec.map((s) => s.name).join(", ")})${genTxt}.` : `Checked ${specTxt}: ${names}.`);
     else if (plan.noun) parts.push(`We don't know shops here that specialise in ${plan.noun} yet, so we checked ${n === 1 ? "a general shop" : "general shops"}: ${names}.`);
     else parts.push(`We couldn't tell what kind of product this is, so we only checked ${n === 1 ? "a general shop" : "general shops"}: ${names}.`);
     if (done === shops.length && !matches.length) parts.push(n === 1 ? "No exact match there." : "No exact match at any of them.");
