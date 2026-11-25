@@ -29,9 +29,15 @@ async function ensureFeatureTables(env) {
 function median(a) { const s = [...a].sort((x, y) => x - y), n = s.length; return n ? (n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2) : null; }
 function historyPoints(hist, ccy, price) {
   const since = now() - HISTORY_DAYS * DAY_MS;
-  const arch = hist.snaps.filter((s) => s.status === "ok" && s.price).map((s) => ({ t: tsToMs(s.snap_ts), price: s.price, was: s.was, currency: s.currency, kind: "archive" }))
-    // Common Crawl copies (src/archive.js): first and last copy of each run of the same price.
-    .concat(archivePoints(hist.cc || [], since, price).map((p) => ({ t: p.t, price: p.price, was: p.was, currency: p.currency, kind: "cc", link: p.link })));
+  const wb = hist.snaps.filter((s) => s.status === "ok" && s.price).map((s) => ({ t: tsToMs(s.snap_ts), price: s.price, was: s.was, currency: s.currency, kind: "archive" }));
+  // Common Crawl copies (src/archive.js): first and last copy of each run of the same price.
+  // The Internet Archive also holds copies of Common Crawl's crawls, so a Common Crawl price on the
+  // same day as an Internet Archive price that matches is the same evidence: count it once.
+  const day = (t) => new Date(t).toISOString().slice(0, 10);
+  const wbSeen = new Set(wb.map((x) => day(x.t) + "|" + x.currency + "|" + x.price));
+  const arch = wb.concat(archivePoints(hist.cc || [], since, price)
+    .filter((p) => !wbSeen.has(day(p.t) + "|" + p.currency + "|" + p.price))
+    .map((p) => ({ t: p.t, price: p.price, was: p.was, currency: p.currency, kind: "cc", link: p.link })));
   const byDay = new Map();
   for (const c of hist.checks) if (c.price) byDay.set(new Date(c.ts).toISOString().slice(0, 10), { t: c.ts, price: c.price, was: c.was, currency: c.currency, kind: "check" });
   const all = arch.concat([...byDay.values()]).filter((x) => x.t >= since);

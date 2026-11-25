@@ -742,9 +742,13 @@ function dedupeDays(list) { const m = new Map(); for (const c of list) m.set(new
 
 function points() {
   const cur = curPrice(); const ccy = cur ? cur.currency : null;
+  // A Common Crawl price on the same day and at the same price as an Internet Archive copy is the
+  // same evidence (the Internet Archive holds copies of Common Crawl's crawls): show it once.
+  const dk = (x) => new Date(x.t).toISOString().slice(0, 10) + "|" + x.currency + "|" + x.price;
+  const wbSeen = new Set(state.archive.map(dk));
   const all = [
     ...state.archive.map((a) => ({ ...a, kind: "archive" })),
-    ...(state.cc || []).map((a) => ({ ...a, kind: "cc" })),
+    ...(state.cc || []).filter((a) => !wbSeen.has(dk(a))).map((a) => ({ ...a, kind: "cc" })),
     ...state.history.checks.map((c) => ({ ...c, kind: "check" })),
   ].filter((x) => x.price && x.t >= Date.now() - 365 * DAY);
   // keep one currency only
@@ -901,6 +905,7 @@ function renderArchiveNote() {
   const ai = state.archive_meta;
   if (ai) {
     if (ai.status !== "ok") note = `We could not get archive copies just now, so archive prices are missing. Use "Try the archive again".`;
+    if (ai.status !== "ok" && (state.cc || []).length) note = `We could not reach the Internet Archive just now, so its copies are missing. Use "Try the archive again".`;
     else if (!(ai.captures_12mo ?? ai.captures_6mo)) note = "The Internet Archive has no copies of this page from the last twelve months" + ((state.cc || []).length ? "." : ", so older prices are missing.");
     else { const n = ai.captures_12mo ?? ai.captures_6mo; note = `Archived copies: ${n} day${n === 1 ? "" : "s"} in 12 months. We looked at ${ai.sampled}.`; }
     if (state.failed) note += ` ${state.failed} had no price we could read.`;

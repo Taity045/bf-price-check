@@ -167,7 +167,7 @@ On a result page the "Other shops" panel (under the price chart and the buttons,
 
 **robots.txt is respected.** Before a shop's search (or product details) is used, the worker reads that shop's `robots.txt` (cached 24 h) and checks the exact path for our token `DealOrDud-PriceCompare` (or `*`), per RFC 9309. If the path is disallowed the shop is not searched and the page says "Not searched: … (the shop asks tools not to use its search)"; if `robots.txt` does not answer (5xx), the shop is skipped for now and asked again within an hour. Shops whose `robots.txt` disallows the search we would use are switched off in `CMP_SHOPS` (`off: "robots"`): OK Furniture, Toys R Us, Babies R Us, Superbalist, Studio 88, Ackermans, Pep and Lakeland. Products from those shops can still be checked and compared against the other shops.
 
-**Currency**: Shopify shops can price for the visitor's country (another currency, or without UK VAT). Every Shopify request asks for the shop's home country and currency (`country=GB&currency=GBP`, `country=ZA&currency=ZAR`), and an answer the shop says is priced in another currency is refused.
+**Currency**: Shopify shops can price for the visitor's country (our servers abroad saw Escentual in USD and Lakeland without UK VAT). Checking a product page at a Shopify shop we know (`CMP_SHOPS`) adds `?country=…&currency=…` for its home country, and every compare request to a Shopify shop asks for the shop's home country and currency (`country=GB&currency=GBP`, `country=ZA&currency=ZAR`), and an answer the shop says is priced in another currency is refused.
 
 Shops are picked by the product's kind (electronics, appliances, books, fashion…) so a book is not searched at a TV shop. The shop the product came from is not searched again.
 
