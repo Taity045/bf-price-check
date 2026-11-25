@@ -79,3 +79,38 @@ describe("price fix: compare rows saved for one option of a multi-price page", (
     assert.deepEqual((await env.DB.prepare("SELECT id FROM checks ORDER BY id").all()).results.map((r) => r.id), [2, 3]);
   });
 });
+
+describe("price fix: saved Internet Archive copies of UK shops (UK guard)", () => {
+  const AMZ = "https://www.amazon.co.uk/dp/B0CHWZ9TZS";
+  const page = (place) => `<!doctype html><html><head><title>AirPods : Amazon.co.uk</title></head><body><span id="glow-ingress-line1">${place}</span><div id="corePrice_feature_div"><span class="a-price"><span class="a-offscreen">£185.18</span></span></div><span data-currency currencyOfPreference="GBP"></span>${"<p>x</p>".repeat(300)}</body></html>`;
+  function setupSnaps(t, place) {
+    const { env } = testDb(t);
+    env.ARCHIVE_LOAD_KEY = KEY;
+    t.mock.method(globalThis, "fetch", async (raw) => {
+      const u = String(raw);
+      if (u.includes("web.archive.org/web/20251129135306id_/")) return new Response(page(place), { status: 200, headers: { "content-type": "text/html" } });
+      return new Response("no", { status: 404 });
+    });
+    return env;
+  }
+  const add = (env, ts, price) => env.DB.prepare("INSERT INTO product_snaps (url, snap_ts, orig, price, currency, status, fetched_at) VALUES (?, ?, ?, ?, 'GBP', 'ok', 1)").bind(AMZ, ts, AMZ + "/", price).run();
+  test("a copy made for a delivery outside the UK: listed, then excluded (no price, status unusable)", async (t) => {
+    const env = setupSnaps(t, "Deliver to Finland");
+    await add(env, "20251129135306", 185.18);
+    await add(env, "20260630043741", 165.72);
+    const dry = await (await W.apiPriceFix(req({ snap_rows: [`${AMZ}|20251129135306`] }), env)).json();
+    assert.equal(dry.rows[0].recheck.status, "unusable"); assert.equal(dry.rows[0].recheck.reason, "geo-price"); assert.equal(dry.excluded, 0);
+    assert.equal((await env.DB.prepare("SELECT status FROM product_snaps WHERE snap_ts = '20251129135306'").first()).status, "ok");
+    const done = await (await W.apiPriceFix(req({ snap_rows: [`${AMZ}|20251129135306`], apply: true }), env)).json();
+    assert.equal(done.excluded, 1);
+    const rows = (await env.DB.prepare("SELECT snap_ts, status, price FROM product_snaps ORDER BY snap_ts").all()).results.map((r) => ({ ...r }));
+    assert.deepEqual(rows, [{ snap_ts: "20251129135306", status: "unusable", price: null }, { snap_ts: "20260630043741", status: "ok", price: 165.72 }]);
+  });
+  test("a copy the guard confirms as the UK price stays", async (t) => {
+    const env = setupSnaps(t, "Delivering to London E17 7");
+    await add(env, "20251129135306", 185.18);
+    const done = await (await W.apiPriceFix(req({ snap_rows: [`${AMZ}|20251129135306`], apply: true }), env)).json();
+    assert.equal(done.rows[0].recheck.status, "ok"); assert.equal(done.excluded, 0);
+    assert.equal((await env.DB.prepare("SELECT status FROM product_snaps").first()).status, "ok");
+  });
+});

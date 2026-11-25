@@ -66,6 +66,12 @@ describe("UK archive guard (archivedGeoCheck)", () => {
     const enc = amz("Delivering to London E17 7").replace('currencyOfPreference="GBP"', 'data-a-state="{&quot;currencyOfPreference&quot;:&quot;GBP&quot;}"');
     assert.equal(check(enc, u, "GBP"), null);
     assert.equal(check(amz("Delivering to London E17 7").replace('currencyOfPreference="GBP"', 'currencyOfPreference="USD"'), u, "GBP").reason, "currency");
+    // No currency marker: the price read must be shown with a pound sign (here "£1,169.99").
+    const big = amz("Delivering to London E17 7").replace('<span data-currency currencyOfPreference="GBP"></span>', "").replace("£169.99", "£1,169.99");
+    assert.equal(check(big, u, "GBP"), null);
+    assert.match(check(big.replace("£1,169.99", "€1,169.99"), u, "GBP").reason, /^currency/);
+    // The Internet Archive's copy for a Finnish delivery address (seen on a saved AirPods copy).
+    assert.equal(check(amz('<a class="a-link-normal" href="#">Deliver to Finland</a>'), u, "GBP").reason, "geo-price");
     assert.equal(check(amz("Delivering to London E17 7", "<span>Price excl. VAT</span>"), u, "GBP").reason, "ex-vat");
   });
   test("South African shops are not changed by this guard", () => {

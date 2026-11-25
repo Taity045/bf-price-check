@@ -240,6 +240,7 @@ async function apiPriceFix(req, env) {
   if (req.method !== "POST") return json({ error: "method not allowed" }, 405);
   let body = {}; try { body = JSON.parse((await req.text()) || "{}"); } catch { return json({ error: "bad json" }, 400); }
   if (Array.isArray(body.multi_urls)) return priceFixMulti(env, body.multi_urls, body.apply === true);
+  if (Array.isArray(body.snap_rows)) return priceFixSnaps(env, body.snap_rows, body.apply === true);
   const { bad, kept } = await priceFixPlan(env);
   const urls = [...new Set(bad.map((r) => r.url))];
   const out = { before: new Date(PRICE_FIX_BEFORE).toISOString(), rows: bad.map((r) => ({ id: r.id, url: r.url, at: new Date(r.ts).toISOString(), price: r.price, currency: r.currency, source: r.source, via: r.via, why: r.why, after: r.after || null, ratio_after: r.ratio_after || null })), products: urls.length, kept_no_evidence: kept, applied: false };
@@ -281,6 +282,35 @@ async function priceFixMulti(env, list, apply) {
       }
     }
     out.urls.push(one);
+  }
+  return json(out);
+}
+
+// Internet Archive copies of UK shops saved before the UK guard: "url|snap_ts" (max 8 a call, each copy
+// is downloaded again: up to 4 requests with redirects). A copy is excluded only when the guard says
+// so today (archivedGeoCheck through fetchSnapshot): the row is kept as status 'unusable' with no
+// price, so it is not shown and not fetched again; verdicts and cached answers for the product go.
+async function priceFixSnaps(env, list, apply) {
+  const items = [...new Set(list.map(String))].slice(0, 8);
+  const out = { rows: [], applied: apply, excluded: 0, deleted: { verdicts: 0, cache: 0 } };
+  for (const it of items) {
+    const i = it.lastIndexOf("|"), url = it.slice(0, i), ts = it.slice(i + 1);
+    const one = { url, snap_ts: ts, saved: null, recheck: null, excluded: false };
+    const row = /^\d{14}$/.test(ts) ? await env.DB.prepare("SELECT orig, price, currency, status FROM product_snaps WHERE url = ? AND snap_ts = ?").bind(url, ts).first() : null;
+    if (row && row.status === "ok" && ukArchiveShop(url)) {
+      one.saved = { price: row.price, currency: row.currency };
+      const r = await fetchSnapshot(ts, row.orig, url);
+      one.recheck = { status: r.status, reason: r.reason || null, price: r.price ?? null, currency: r.currency ?? null };
+      if (r.status === "unusable" && apply) {
+        one.excluded = ((await env.DB.prepare("UPDATE product_snaps SET status = 'unusable', price = NULL, was = NULL, fetched_at = ? WHERE url = ? AND snap_ts = ? AND status = 'ok'").bind(now(), url, ts).run()).meta.changes || 0) > 0;
+        if (one.excluded) {
+          out.excluded++;
+          out.deleted.verdicts += (await env.DB.prepare("DELETE FROM verdicts WHERE url = ?").bind(url).run()).meta.changes || 0;
+          out.deleted.cache += (await env.DB.prepare("DELETE FROM cache WHERE (k LIKE 'check-%' OR k LIKE 'og-%') AND (substr(k, -length(?1)) = ?1 OR instr(k, ':' || ?1 || ':') > 0)").bind(url).run()).meta.changes || 0;
+        }
+      }
+    }
+    out.rows.push(one);
   }
   return json(out);
 }

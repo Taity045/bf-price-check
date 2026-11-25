@@ -510,9 +510,14 @@ function archivedGeoCheck(html, url, ex, expected) {
     if (!place) return bad("geo-unconfirmed");
     if (!/\bUnited Kingdom\b|\b[A-Z]{1,2}\d[A-Z\d]?(?: \d[A-Z]{0,2})?$/.test(place)) return bad("geo-price");
     if (/id=["']vatMessage[^>]*>\s*(?:<[^>]*>\s*)*[^<]*\b(?:excl\.?|excluding|exclusive of)\s+VAT/i.test(html)) return bad("ex-vat");
-    const pref = html.match(/currencyOfPreference(?:\s*=\s*|["']\s*:\s*|&quot;\s*:\s*)(?:["']|&quot;)([A-Z]{3})(?:["']|&quot;)/);
+    const pref = html.match(/currencyOfPreference(?:\s*=\s*|["']\s*:\s*|&quot;\s*:\s*|["']?\s+value=)(?:["']|&quot;)([A-Z]{3})(?:["']|&quot;)/);
     if (pref && pref[1] !== "GBP") return bad("currency");
     if (!cur && pref) cur = pref[1];
+    // Or the price we read is shown with a pound sign on the page ("£165.72").
+    if (!cur && ex && ex.price) {
+      const n = Number(ex.price).toFixed(2), forms = [n, n.replace(/\B(?=(\d{3})+\.)/g, ",")].map((f) => f.replace(/[.,]/g, "\\$&"));
+      if (new RegExp("(?:£|&pound;|&#163;)\\s*(?:" + forms.join("|") + ")(?!\\d)").test(html)) cur = "GBP";
+    }
   }
   // The currency must come from the page itself, not from the shop's domain.
   if (cur !== "GBP") return bad(cur ? "currency" : "currency-unconfirmed");
