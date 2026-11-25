@@ -12,7 +12,8 @@
 const CHECK_TTL_MS = 6 * 3600 * 1000;      // cache a live check for 6 h
 const CDX_TTL_MS = 12 * 3600 * 1000;       // cache the snapshot list for 12 h
 const HISTORY_DAYS = 365;
-const SNAP_SPACING_DAYS = 6;
+const SNAP_REDIRECT_MS = 864e5;              // a Wayback redirect may move a copy by up to 1 day (copies can be 1 day apart)
+const SNAP_SPACINGS = [1, 2, 3, 4, 6];       // days between used copies: the smallest that fits MAX_SNAPS
 const MAX_SNAPS = 64;
 const MAX_TRACKED = 1000;
 const LIVE_CACHE_PREFIX = "check-v4:";
@@ -452,6 +453,23 @@ function detectBlock(status, html) {
   return null;
 }
 
+// Archived copies only: a copy that is a bot or check page (Cloudflare, Akamai, PerimeterX, DataDome,
+// SiteGround "One moment, please"), or an empty JavaScript shell with no price, is a "blocked copy".
+// It is left out of the history and is not counted as "no price". Live checks keep detectBlock.
+const ARCHIVE_CHECK_PAGE = /<title>\s*(?:One moment, please|Just a moment|Attention Required!? \| Cloudflare|Access Denied|Please wait|Checking your browser|Security check|Verifying you are human|Robot or human\?|Pardon Our Interruption)[^<]*<\/title>|sgcaptcha|\/\.well-known\/sgcaptcha|cf_chl_opt|cf-browser-verification|_cf_chl|challenges\.cloudflare\.com\/turnstile|_pxCaptcha|px-captcha|captcha-delivery\.com|geo\.captcha-delivery|ak_bmsc[\s\S]{0,200}Reference #|errors\.edgesuite\.net|Incapsula incident|_Incapsula_Resource/i;
+const ARCHIVE_SHELL_TEXT = 1500;    // visible characters; below this with no price, the copy is an empty shell
+function visibleTextLength(html) {
+  return html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>|<noscript[\s\S]*?<\/noscript>|<template[\s\S]*?<\/template>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&[a-z#0-9]+;/gi, " ").replace(/\s+/g, " ").trim().length;
+}
+// Returns { reason, message } for a blocked copy, or null. ex = extractFromHtml(html, host), if already read.
+function archivedCopyBlocked(html, ex) {
+  if (detectBlock(200, html)) return { reason: "bot-page", message: "The archived copy is a bot-check page." };
+  const head = html.slice(0, 30000);
+  if (html.length < 400000 && ARCHIVE_CHECK_PAGE.test(head) && !(ex && ex.price)) return { reason: "bot-page", message: "The archived copy is a bot-check page." };
+  if (!(ex && ex.price) && visibleTextLength(html.slice(0, 2000000)) < ARCHIVE_SHELL_TEXT) return { reason: "empty-shell", message: "The archived copy is an empty page (the shop adds the price later with JavaScript)." };
+  return null;
+}
+
 function extractFromHtml(html, host) {
   const out = {};
   let source = null;
@@ -667,7 +685,7 @@ function cdxQueries(canonInfo, origUrl) {
 
 async function getSnapshots(env, canonInfo, origUrl) {
   const oKey = new URL(origUrl).pathname;
-  const key = "cdx-v5:" + JSON.stringify([canonInfo.canon, oKey]);
+  const key = "cdx-v6:" + JSON.stringify([canonInfo.canon, oKey]);
   const cached = await cacheGet(env, key);
   if (cached) return cached;
   const from = ymd(new Date(now() - HISTORY_DAYS * 864e5));
@@ -701,14 +719,7 @@ async function getSnapshots(env, canonInfo, origUrl) {
     return true;
   });
   rows.sort((a, b) => a[0].localeCompare(b[0]));
-  // thin out: newest first, one per SNAP_SPACING_DAYS
-  const picked = [];
-  let last = Infinity;
-  for (let i = rows.length - 1; i >= 0 && picked.length < MAX_SNAPS; i--) {
-    const t = tsToMs(rows[i][0]);
-    if (last - t >= SNAP_SPACING_DAYS * 864e5 - 36e5) { picked.push({ ts: rows[i][0], orig: rows[i][1] }); last = t; }
-  }
-  picked.reverse();
+  const picked = pickSnaps(rows);
   // Always keep the capture closest to last Black Friday, if there is one within 3 days.
   const bf = lastBlackFriday();
   let bfRow = null;
@@ -717,6 +728,23 @@ async function getSnapshots(env, canonInfo, origUrl) {
   const val = { status, message, total: rows.length, snaps: picked, queries: queries.map((q, i) => ({ url: q.url, prefix: q.prefix, rows: results[i].rows ? results[i].rows.length : null, error: results[i].err || null, detail: results[i].detail || null })) };
   if (status === "ok") await cachePut(env, key, val, okCount === results.length ? CDX_TTL_MS : 3600e3);
   return val;
+}
+
+// Thin out the copies (one per day already, newest first). Products with few copies keep every day,
+// so 3 copies a day or two apart still give 3 older prices. Busy products use the smallest spacing
+// (1, 2, 3, 4 or 6 days) that fits MAX_SNAPS, so the whole year stays covered.
+function pickSnaps(rows) {
+  let picked = [];
+  for (const days of SNAP_SPACINGS) {
+    picked = [];
+    let last = Infinity;
+    for (let i = rows.length - 1; i >= 0; i--) {
+      const t = tsToMs(rows[i][0]);
+      if (last - t >= days * 864e5 - 36e5) { picked.push({ ts: rows[i][0], orig: rows[i][1] }); last = t; }
+    }
+    if (picked.length <= MAX_SNAPS) break;
+  }
+  return picked.slice(0, MAX_SNAPS).reverse();
 }
 
 async function fetchSnapshot(ts, orig, canon) {
@@ -733,7 +761,7 @@ async function fetchSnapshot(ts, orig, canon) {
       if (!loc || hop >= 3) return { status: "retry", message: "Archive redirect incomplete" };
       const next = new URL(loc, url);
       const m = (next.pathname + next.search).match(/^\/web\/(\d{14})id_\/(.+)$/);
-      if (next.hostname !== "web.archive.org" || !m || !sameProduct(m[2], canon) || Math.abs(tsToMs(m[1]) - tsToMs(ts)) > SNAP_SPACING_DAYS * 864e5)
+      if (next.hostname !== "web.archive.org" || !m || !sameProduct(m[2], canon) || Math.abs(tsToMs(m[1]) - tsToMs(ts)) > SNAP_REDIRECT_MS)
         return { status: "error", message: "The archive redirected to a different page or date." };
       url = next.href;
     }
@@ -742,8 +770,9 @@ async function fetchSnapshot(ts, orig, canon) {
       return { status: r.status === 429 || r.status >= 500 ? "retry" : "error", message: `Archive HTTP ${r.status}` };
     }
     const html = await readLimitedText(r, true);
-    if (detectBlock(200, html)) return { status: "blocked", message: "The archived copy is a bot-check page." };
     const ex = extractFromHtml(html, host);
+    const blk = archivedCopyBlocked(html, ex);
+    if (blk) return { status: "blocked", reason: blk.reason, message: blk.message };
     if (!ex.price) return { status: "noprice" };
     return { status: "ok", price: ex.price, was: ex.was || null, currency: ex.currency || tldCurrency(host) };
   } catch (e) {
@@ -886,7 +915,8 @@ async function apiCheck(req, env, ctx) {
     current, cached, tracked,
     history: {
       archive: hist.snaps.filter((s) => s.status === "ok").map((s) => ({ t: tsToMs(s.snap_ts), ts: s.snap_ts, orig: s.orig, price: s.price, was: s.was, currency: s.currency })),
-      archive_failed: hist.snaps.filter((s) => s.status !== "ok" && s.status !== "retry").length,
+      archive_failed: hist.snaps.filter((s) => s.status !== "ok" && s.status !== "retry" && s.status !== "blocked").length,
+      archive_blocked: hist.snaps.filter((s) => s.status === "blocked").length,
       checks: hist.checks.map((c) => ({ t: c.ts, price: c.price, was: c.was, currency: c.currency })),
       cc: archivePoints(hist.cc || [], now() - HISTORY_DAYS * 864e5, current.status === "ok" ? current.price : null).map((p) => ({ t: p.t, price: p.price, was: p.was, currency: p.currency, url: p.url, link: p.link })),
     },

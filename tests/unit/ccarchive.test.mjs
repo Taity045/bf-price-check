@@ -49,7 +49,8 @@ describe("archived page sanity filter", () => {
     assert.equal(readArchivedPage(W, fixture("cloudflare-challenge.html"), DUNELM, s).reason, "bot-page");
     assert.equal(readArchivedPage(W, page(ld({ price: "85.00", priceCurrency: "GBP", availability: "https://schema.org/OutOfStock" })), DUNELM, s).reason, "out-of-stock");
     assert.equal(readArchivedPage(W, page(ld({ price: "85.00", priceCurrency: "EUR" })), DUNELM, s).reason, "currency");
-    assert.equal(readArchivedPage(W, page("<p>Hello</p>"), DUNELM, s).reason, "no-price");
+    assert.equal(readArchivedPage(W, page("<p>Hello</p>"), DUNELM, s).reason, "empty-shell");
+    assert.equal(readArchivedPage(W, page("<p>" + "A long description of a teddy throw. ".repeat(60) + "</p>"), DUNELM, s).reason, "no-price");
     assert.notEqual(readArchivedPage(W, page(ld({ price: "0", priceCurrency: "GBP" })), DUNELM, s).ok, true);
   });
   test("a page that is not a product (no product data) is dropped", () => {

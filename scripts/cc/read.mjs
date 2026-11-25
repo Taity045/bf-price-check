@@ -36,6 +36,9 @@ export function readArchivedPage(W, html, url, shop) {
   if (W.detectBlock(200, html)) return { ok: false, reason: "bot-page" };
   const host = new URL(url).hostname.toLowerCase();
   const ex = W.extractFromHtml(html, host);
+  // Bot/check pages and empty JavaScript shells are "blocked copies": skipped, never counted as a price.
+  const blk = W.archivedCopyBlocked ? W.archivedCopyBlocked(html, ex) : null;
+  if (blk) return { ok: false, reason: blk.reason };
   if (!ex.price) return { ok: false, reason: "no-price" };
   if (!TRUSTED_SOURCES.has(ex.source)) return { ok: false, reason: "untrusted-source" };
   if (!PRODUCT_SIGNAL.some((r) => r.test(html))) return { ok: false, reason: "not-product" };
