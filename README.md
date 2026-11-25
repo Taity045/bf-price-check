@@ -15,9 +15,52 @@ The site never invents prices. If a shop blocks the check, or there is no histor
 ## Where the prices come from (and the limits)
 
 - **Today's price**: the shop's product page (for Takealot: its public product API).
-- **Older prices**: (a) Internet Archive copies of the same page from the last 12 months, and (b) prices this site saved when someone checked the product. A cron job (`15 * * * *`) also re-checks up to 2 saved products each hour. This is **not** daily tracking of every product.
-- Many products have few or no archive copies. This is true for most Takealot products (their pages are built by JavaScript, so archive copies have no price). So "Not enough history" is common. The result says why, and the history grows each time someone checks the product.
+- **Older prices**: (a) Internet Archive copies of the same page from the last 12 months, and (b) prices this site saved: when someone checks a product, and then about once a day by the daily price saving (see [Daily price saving](#daily-price-saving)), which also covers a seed list of up to 300 popular Takealot products.
+- Many products have few or no archive copies. This is true for most Takealot products (their pages are built by JavaScript, so archive copies have no price). So "Not enough history" is common at first. The result says why. The history grows by about one price a day per product. A verdict needs 3 older prices (older than 24 h), so a new product can get a verdict after about 4 days of daily saving.
+- Shops that block automatic checks (or say no in robots.txt) get no daily saving; for those, only checks by people add prices.
 - The same text is on the site: footer link "Where prices come from" (opens the Shops dialog).
+
+## Daily price saving
+
+Code: `src/daily.js` (joined into the Worker by `build.py`). Tests: `tests/unit/daily.test.mjs`.
+
+**What it does.** Every product that someone checks joins the daily list (`tracked`, `seed = 0`). A seed list of popular Takealot products is added too (`seed = 1`): the bestsellers of 12 departments (computers, phones, TV and audio, gaming, cameras, home and kitchen, DIY, sport, beauty, toys, baby, garden), from Takealot's public search API, 25 one-price products each, at most 300. Each department list is read again about once a week. About once a day the Worker reads each product's price and saves it in `checks` with `via = 'daily'`. Verdicts use these saved prices together with archive prices (the same rule: at least 3 older prices).
+
+**Schedule.** Cron `* * * * *` (every minute). Each run:
+
+1. takes the products whose `next_check_at` has passed: people's products first, then seed products, oldest first;
+2. reads at most **4 Takealot products** (JSON API, small) and **1 shop page** (HTML, up to 4 MB) — a run that also reads a seed department reads 2 Takealot products and no page;
+3. saves the price, the verdict and the next check time in one D1 batch.
+
+That gives about 5,700 Takealot checks and 1,440 shop-page checks a day, far more than the products we have now.
+
+**Next check.**
+
+| Result | Next check |
+|---|---|
+| Price read | in 23 h (one check per calendar day) |
+| Not viewed for 60 days (seed: not on a bestseller list for 60 days) | weekly (daily again when someone checks it; a product with a price alert stays daily) |
+| Failed (blocked, no price, error) | 6 h, 1 day, 2, 4, then 7 days |
+| 8 failures in a row, HTTP 404/410, robots.txt says no, or shop on the blocked list | paused (`next_check_at` is NULL) until someone checks it again |
+| robots.txt not reachable (5xx) | in 1 h, not counted as a failure |
+
+Seed products that left the bestseller lists 60 days ago are removed from `tracked`; people's products nobody viewed for 120 days are removed. Their saved prices stay in `checks`.
+
+**Limits and why.** Workers Free plan, per cron run (from developers.cloudflare.com, checked 2026-11-25): **10 ms CPU**, **50 subrequests**, **50 D1 queries** (a batch counts as one), 15 min wall time, 5 cron triggers per account. One Takealot product costs about 0.2 ms CPU to parse; a shop page costs 0.1–5 ms (measured on 40 real pages), so one page per run keeps a run well under 10 ms. A full run uses about 10 fetches (products, robots.txt, DNS checks) and 6–8 D1 queries. A run that dies (for example at the CPU limit) has already "claimed" its products for 6 h and counted a failure, so a product that always breaks a run ends up paused instead of blocking the queue. Free plan daily limits are not a concern at this size: 1,440 cron runs of 100,000 requests a day; D1 reads use the `idx_tracked_due` index.
+
+**Being polite.** The daily check says who it is (user agent `Mozilla/5.0 (compatible; DealOrDudBot/1.0; +https://eish.veldwire.com/#priceSrc)`), obeys robots.txt (group `DealOrDudBot`, else `*`; cached for a day), reads at most one page a minute in total and at most 4 Takealot API calls a minute, and does not try to get past blocks or bot checks. In a test from a home connection, 29 of 40 shop pages that work for people's checks also worked for this honest user agent; the others answer 403 or a bot check, so those products get no daily saving.
+
+**More volume.** If the daily list grows past about 1,400 shop-page products (or 5,700 Takealot products), runs fall behind. Workers Paid (USD 5 a month) raises the limits to 30 s CPU and 10,000 subrequests per run; then raise `DAILY_CAPS` in `src/daily.js`.
+
+**How to check that it runs.**
+
+- `curl https://eish.veldwire.com/api/daily-status` → products in the list (people's and seed), due now, paused, prices saved in the last 24 h, time of the last daily save. Counts only, no links. Cached 5 minutes.
+- Each run logs one line: `{"daily":{"picked":5,"saved":5,"failed":0,"paused":0,"skipped":0,...}}`. See it live with `npx wrangler tail bf-price-check --format pretty`, or in the Cloudflare dashboard (Workers Logs are on, `[observability]` in `wrangler.toml`).
+- D1: `npx wrangler d1 execute bf-price-check-db --remote --command "SELECT COUNT(*) AS n, COUNT(DISTINCT url) AS products, datetime(MAX(ts)/1000,'unixepoch') AS last FROM checks WHERE via = 'daily' AND ts > (strftime('%s','now') - 86400) * 1000"` (token needs D1 Read or Edit).
+
+**Schema.** New columns, added by the Worker on first use (`ensureDailySchema`, since SQLite has no `ADD COLUMN IF NOT EXISTS`): `tracked.seed`, `lane` (`takealot` or `page`), `host`, `fails`, `next_check_at`, `days` (days with a saved price in 12 months, for the shop ranking rule); `checks.via`. Indexes `idx_tracked_due (lane, seed, next_check_at)` and `idx_checks_via_ts (via, ts)`. `schema.sql` has the columns for a new database.
+
+**Shop ranking rule.** A shop score (on the wall, which is off) needs at least 5 judged products **and** at least 3 products with saved prices on 7 or more different days.
 
 ## Shops we check
 
@@ -63,6 +106,7 @@ Set a secret: `npx wrangler secret put OWNER_EMAIL`.
 |---|---|
 | `src/worker.js` | Worker: API, page parsing, archive lookups, rate limits, cache, cron, routes |
 | `src/features.js` | Verdicts, wall, other shops, email, alerts, Turnstile, API bot checks |
+| `src/daily.js` | Daily price saving: cron batches, back-off, robots.txt, Takealot seed list, `/api/daily-status` |
 | `src/og.js`, `src/og_font.js` | Share card PNG renderer and server meta tags |
 | `src/shops.js` | Shops we check / known blocked (generated) |
 | `public/index.html` | The app (plain HTML/CSS/JS, inline SVG chart, mobile first; desktop layout from 900 px) |
@@ -76,6 +120,7 @@ Set a secret: `npx wrangler secret put OWNER_EMAIL`.
 - `GET /api/check?url=<product url>` → today's price and saved history. Cached 6 h (30 min after a failed check).
 - `GET /api/archive?url=<canonical>&orig=<pasted url>` → archive index (last 365 days, any capture). Cached 12 h (cache key `cdx-v5:`). It asks the Wayback CDX index for these URL forms and keeps only captures of the same product: the canonical URL, with and without a trailing slash, the pasted URL (with its query, without `#…`), the canonical URL without its query, and the `m.` mobile host. `http`/`https` and `www.`/`m.` count as the same page. Product-ID-only URLs (for example `/PLID123` without the name part) are not searched, because the CDX index has no wildcard in the middle of a path.
 - `GET /api/snap?url=…&ts=…&orig=…` → price from one archive copy, kept in D1.
+- `GET /api/daily-status` → counts for the daily price saving (no links). Cached 5 min.
 - `GET /api/shops`, `/api/config`, `/api/others`, `POST /api/verdict`, `POST /api/request`, `POST /api/alert`.
 - `GET /og-home.jpg`, `/og-square.jpg`, `/og-home.png`, `/og.png?u=…`, `/robots.txt`.
 
@@ -111,7 +156,7 @@ Older prices = archive points + saved checks older than 24 h, last 365 days.
 - Max 4 MB per page, 15 s timeout for stores, 25 s for the archive.
 - Rate limit (D1, per IP per minute): 20 checks, 120 archive-copy reads, 40 verdict saves, 20 other-shop lookups, 5 shop requests.
 - Archive reads require a tracked product and an original URL and timestamp selected from its Wayback index results. Product-defining query parameters are part of the match.
-- Max 1,000 tracked products; products not viewed for 120 days are dropped from the re-check list.
+- Max 1,000 tracked products from people's checks (plus up to 300 seed products); products not viewed for 120 days are dropped from the daily list.
 
 Preview bots (WhatsApp, facebookexternalhit, etc.) can always fetch pages and share images; the bot check applies only to `/api/*`.
 
@@ -121,9 +166,9 @@ Preview bots (WhatsApp, facebookexternalhit, etc.) can always fetch pages and sh
 
 | Table | What it holds |
 |---|---|
-| `checks` | Live prices we read (url, time, price, was, currency, source) |
+| `checks` | Live prices we read (url, time, price, was, currency, source; `via = 'daily'` for the daily price saving) |
 | `product_snaps` | Prices read from archive copies |
-| `tracked` | Products people checked (for the hourly re-check) |
+| `tracked` | Products in the daily price saving: people's checks (`seed = 0`) and the Takealot seed list (`seed = 1`), with `next_check_at`, `fails` |
 | `verdicts` | Latest verdict per product (wall, scores, share card) |
 | `alerts` | Price alerts (off) |
 | `shop_requests` | "Ask us to add a shop" requests (made on first use) |
@@ -171,16 +216,16 @@ Secrets used in GitHub: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`.
 
 A push to `main` deploys (after the tests pass). For a manual deploy: `python3 build.py && npx wrangler deploy`.
 
-Cloudflare resources: Worker `bf-price-check`, D1 `bf-price-check-db`, cron `15 * * * *`, custom domain `eish.veldwire.com` (zone veldwire.com), workers.dev on. Cloudflare Web Analytics is turned on for the zone and adds its beacon on the custom domain.
+Cloudflare resources: Worker `bf-price-check`, D1 `bf-price-check-db`, cron `* * * * *` (daily price saving), custom domain `eish.veldwire.com` (zone veldwire.com), workers.dev on. Cloudflare Web Analytics is turned on for the zone and adds its beacon on the custom domain.
 
 ## Known limits
 
 - Many big stores block requests from cloud servers (HTTP 403/bot checks): in tests Argos, Currys, bol.com, Zalando, Incredible, iStore, Makro, Dis-Chem; John Lewis returned 520, Otto 400. For these the tool shows the latest archived price (if any) and lets the user type the price.
 - Amazon hides the buy box from foreign visitors for some products (e.g. Kindle devices). Items that ship internationally (books etc.) work.
-- Wayback coverage of product pages is thin, especially for South African stores (often 0–3 copies in 12 months). Takealot product pages are rendered by JavaScript, so archived copies have no price. History therefore mostly grows from the prices we save when people check, and from the hourly background re-check of a few products.
+- Wayback coverage of product pages is thin, especially for South African stores (often 0–3 copies in 12 months). Takealot product pages are rendered by JavaScript, so archived copies have no price. History therefore mostly grows from the prices we save: when people check, and about once a day for each product in the daily list.
 - The Internet Archive sometimes answers 503 or is slow; the tool retries and shows a "Try the archive again" button.
 - Marketplace listings (Amazon, MediaMarkt, Takealot) can change seller, so archived prices may be from a different seller.
-- Free-plan Worker limits (CPU time, 50 sub-requests per call) apply; each archive copy is fetched in its own request to stay inside them.
+- Free-plan Worker limits (CPU time, 50 sub-requests per call) apply; each archive copy is fetched in its own request to stay inside them, and the daily price saving works in small batches every minute.
 
 ## Privacy summary
 

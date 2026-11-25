@@ -3,7 +3,8 @@
 //          GET /api/check?url=  -> live price + stored history
 //          GET /api/archive?url= -> Wayback snapshot list
 //          GET /api/snap?url=&ts=&orig= -> price from one Wayback snapshot (cached forever in D1)
-//          scheduled (cron)     -> re-checks tracked URLs once a day
+//          GET /api/daily-status -> counts for the daily price saving (no URLs)
+//          scheduled (cron)     -> daily price saving, see src/daily.js
 // Bindings: DB (D1)
 
 const CHECK_TTL_MS = 6 * 3600 * 1000;      // cache a live check for 6 h
@@ -12,7 +13,6 @@ const HISTORY_DAYS = 365;
 const SNAP_SPACING_DAYS = 6;
 const MAX_SNAPS = 64;
 const MAX_TRACKED = 1000;
-const RECHECK_AFTER_MS = 20 * 3600 * 1000;
 const LIVE_CACHE_PREFIX = "check-v4:";
 const RL = { check: 20, snap: 120, req: 5, verdict: 40, others: 20 };       // requests per IP per minute
 const MAX_HTML = 4 * 1024 * 1024;
@@ -492,7 +492,13 @@ async function fetchStore(url, headers, timeout, verifiedHost) {
   throw new PageReadError("The store redirected too many times.");
 }
 
-async function fetchPage(url, currency, verifiedHost) {
+// agent: null for a check that a person asked for (browser headers), or BOT_HEADERS for the
+// scheduled daily check, which says who we are (see src/daily.js).
+async function fetchPage(url, currency, verifiedHost, agent) {
+  if (agent) {
+    const r = await fetchStore(url, { ...agent, accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8", "accept-language": LANG[currency] || "en-GB,en;q=0.9" }, 15000, verifiedHost);
+    return { status: r.status, html: await readLimitedText(r, true) };
+  }
   const headers = { "user-agent": UA, accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "accept-language": LANG[currency] || "en-GB,en;q=0.9", "cache-control": "no-cache", "upgrade-insecure-requests": "1", "sec-fetch-dest": "document", "sec-fetch-mode": "navigate", "sec-fetch-site": "none" };
   const r = await fetchStore(url, headers, 15000, verifiedHost);
   return { status: r.status, html: await readLimitedText(r, true) };
@@ -509,8 +515,9 @@ function takealotBarcode(d) {
   walk(d.product_information, 0);
   return found || undefined;
 }
-async function takealotApi(plid) {
-  const r = await fetchStore(`https://api.takealot.com/rest/v-1-14-0/product-details/PLID${plid}?platform=desktop&display_credit=false`, { "user-agent": UA, accept: "application/json" }, 12000);
+const takealotApiUrl = (plid) => `https://api.takealot.com/rest/v-1-14-0/product-details/PLID${plid}?platform=desktop&display_credit=false`;
+async function takealotApi(plid, agent, verifiedHost) {
+  const r = await fetchStore(takealotApiUrl(plid), { ...(agent || { "user-agent": UA }), accept: "application/json" }, 12000, verifiedHost);
   if (!r.ok) { await r.body?.cancel(); return { error: `Takealot API answered HTTP ${r.status}.` }; }
   const d = JSON.parse(await readLimitedText(r));
   const items = (d.buybox && d.buybox.items) || [];
@@ -521,18 +528,18 @@ async function takealotApi(plid) {
   return { price, was: was && price && was > price ? was : null, currency: "ZAR", title: (d.core && d.core.title) || d.title, image: img ? img.replace("{size}", "pdpxl") : null, source: "takealot-api", gtin: takealotBarcode(d), brand: (d.core && d.core.brand) || undefined };
 }
 
-async function getCurrent(canonInfo, origUrl, verifiedHost) {
+async function getCurrent(canonInfo, origUrl, verifiedHost, agent) {
   const host = new URL(canonInfo.canon).hostname.toLowerCase();
   const tldCur = tldCurrency(host);
   const res = { checked_at: now(), status: "ok" };
   try {
     if (canonInfo.kind === "takealot") {
-      const t = await takealotApi(canonInfo.plid);
+      const t = await takealotApi(canonInfo.plid, agent, verifiedHost);
       if (t.error) return { ...res, status: "noprice", message: t.error };
       return { ...res, ...t };
     }
     const target = canonInfo.kind === "amazon" ? canonInfo.canon : origUrl;
-    const pg = await fetchPage(target, tldCur, verifiedHost);
+    const pg = await fetchPage(target, tldCur, verifiedHost, agent);
     const blocked = detectBlock(pg.status, pg.html);
     if (blocked) return { ...res, status: "blocked", http: pg.status, message: blocked };
     if (pg.status === 404 || pg.status === 410) return { ...res, status: "error", http: pg.status, message: `The store says this page doesn't exist (HTTP ${pg.status}).` };
@@ -700,20 +707,30 @@ async function rateLimit(env, ip, bucket) {
   const r = await env.DB.prepare("INSERT INTO rl (k, n, win) VALUES (?, 1, ?) ON CONFLICT(k) DO UPDATE SET n = CASE WHEN rl.win = excluded.win THEN rl.n + 1 ELSE 1 END, win = excluded.win RETURNING n").bind(bucket + ":" + ip, win).first();
   return r && r.n > RL[bucket];
 }
+// via: null for a check a person asked for, "daily" for the scheduled check.
+const checkStmt = (env, canon, cur, via = null) => env.DB.prepare("INSERT INTO checks (url, ts, price, was, currency, source, title, via) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").bind(canon, cur.checked_at, cur.price, cur.was || null, cur.currency || null, cur.source || null, cur.title || null, via);
 async function recordCheck(env, canon, cur) {
-  if (cur.price) await env.DB.prepare("INSERT INTO checks (url, ts, price, was, currency, source, title) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(canon, cur.checked_at, cur.price, cur.was || null, cur.currency || null, cur.source || null, cur.title || null).run();
+  if (cur.price) await checkStmt(env, canon, cur).run();
 }
+// A product someone checked: it joins the daily price saving (seed = 0, before the seed list).
+// Its next daily check is about a day after its last live check. A check by a person also
+// restarts a product that was paused after many failed checks.
 async function track(env, canon, origUrl, cur) {
+  await ensureDailySchema(env);
   const viewed = now();
+  const ok = cur.status === "ok";
   const row = await env.DB.prepare(`
-    INSERT INTO tracked (url, orig_url, title, added_at, last_viewed, last_checked, last_status, check_count)
-    SELECT ?, ?, ?, ?, ?, ?, ?, 1
-    WHERE EXISTS (SELECT 1 FROM tracked WHERE url = ?) OR (SELECT COUNT(*) FROM tracked) < ?
+    INSERT INTO tracked (url, orig_url, title, added_at, last_viewed, last_checked, last_status, check_count, seed, lane, host, fails, next_check_at)
+    SELECT ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?
+    WHERE EXISTS (SELECT 1 FROM tracked WHERE url = ?) OR (SELECT COUNT(*) FROM tracked WHERE seed = 0) < ?
     ON CONFLICT(url) DO UPDATE SET orig_url = excluded.orig_url, last_viewed = excluded.last_viewed,
       last_checked = MAX(COALESCE(tracked.last_checked, 0), excluded.last_checked),
       last_status = CASE WHEN excluded.last_checked >= COALESCE(tracked.last_checked, 0) THEN excluded.last_status ELSE tracked.last_status END,
-      title = COALESCE(excluded.title, tracked.title), check_count = tracked.check_count + 1
-    RETURNING url`).bind(canon, origUrl, cur.title || null, viewed, viewed, cur.checked_at, cur.status, canon, MAX_TRACKED).first();
+      title = COALESCE(excluded.title, tracked.title), check_count = tracked.check_count + 1,
+      seed = 0, lane = excluded.lane, host = excluded.host,
+      fails = CASE WHEN excluded.fails = 0 OR tracked.next_check_at IS NULL THEN 0 ELSE tracked.fails END,
+      next_check_at = CASE WHEN tracked.next_check_at IS NULL OR excluded.last_checked > COALESCE(tracked.last_checked, 0) THEN excluded.next_check_at ELSE tracked.next_check_at END
+    RETURNING url`).bind(canon, origUrl, cur.title || null, viewed, viewed, cur.checked_at, cur.status, laneFor(canon), hostKey(canon), ok ? 0 : 1, cur.checked_at + DAILY_MS, canon, MAX_TRACKED).first();
   return !!row;
 }
 async function storedHistory(env, canon) {
@@ -853,30 +870,16 @@ async function apiSnap(req, env) {
 
 async function cron(env, scheduledTime) {
   await ensureFeatureTables(env);
-  // Products with an active price alert go first.
-  const due = await env.DB.prepare("SELECT url, orig_url FROM tracked WHERE last_checked IS NULL OR last_checked < ? ORDER BY (url IN (SELECT url FROM alerts WHERE status = 'active')) DESC, last_checked LIMIT 2").bind(now() - RECHECK_AFTER_MS).all();
-  for (const row of due.results || []) {
-    // Always move last_checked forward, so one failing product can't block the queue.
-    let cur = { status: "error", checked_at: now() };
-    try {
-      const orig = sameProduct(row.orig_url, row.url) ? row.orig_url : row.url;
-      const v = validateUrl(orig);
-      if (v.url) cur = await getCurrent(canonicalize(v.url), v.url.href);
-      await recordCheck(env, row.url, cur);
-      if (cur.status === "ok") await cachePut(env, LIVE_CACHE_PREFIX + row.url, cur, CHECK_TTL_MS);
-      if (cur.status === "ok") { await refreshVerdict(env, row.url).catch(() => {}); await checkAlerts(env, row.url, cur, env.SITE_URL || "https://bf-price-check.tm-deal-lab.workers.dev").catch(() => {}); }
-    } catch { cur = { ...cur, status: "error" }; }
-    await env.DB.prepare("UPDATE tracked SET last_checked = ?, last_status = ?, check_count = check_count + 1 WHERE url = ?").bind(cur.checked_at, cur.status, row.url).run();
-  }
-  // housekeeping
-  // The cron runs at minute 15 of each hour; clean up every 6 hours.
-  if (new Date(scheduledTime).getUTCHours() % 6 !== 0) return;
+  await runDaily(env, scheduledTime);
+  // Housekeeping: the cron runs every minute; clean up once every 6 hours, at minute 15.
+  const at = new Date(scheduledTime);
+  if (at.getUTCMinutes() !== 15 || at.getUTCHours() % 6 !== 0) return;
   await env.DB.prepare("UPDATE alerts SET status = 'expired' WHERE status IN ('pending', 'active') AND created_at < ?").bind(now() - ALERT_DAYS * 864e5).run();
   await env.DB.prepare("DELETE FROM alerts WHERE status = 'pending' AND created_at < ?").bind(now() - 3 * 864e5).run();
   await env.DB.prepare("UPDATE tracked SET last_viewed = ? WHERE url IN (SELECT url FROM alerts WHERE status = 'active')").bind(now()).run();
   await env.DB.prepare("DELETE FROM rl WHERE win < ?").bind(Math.floor(now() / 60000) - 5).run();
   await env.DB.prepare("DELETE FROM cache WHERE exp < ?").bind(now()).run();
-  await env.DB.prepare("DELETE FROM tracked WHERE last_viewed < ?").bind(now() - 120 * 864e5).run();
+  await dailyHousekeeping(env);
 }
 
 async function pageHtml(req, env, ctx) {
@@ -899,6 +902,7 @@ export default {
       if (req.method !== "GET" && req.method !== "HEAD") return json({ error: "method not allowed" }, 405);
       if (url.pathname === "/api/shops") return json({ shops: SHOPS.map(({ name, cc, d }) => ({ name, cc, host: d[0] })) }, 200, { "cache-control": "public, max-age=3600" });
       if (url.pathname === "/api/check") return await apiCheck(req, env, ctx);
+      if (url.pathname === "/api/daily-status") return await apiDailyStatus(env);
       if (url.pathname === "/api/config") return json({ wall: env.WALL === "on", alerts: alertsOn(env), min_judged: WALL_MIN_JUDGED, turnstile: turnstileOn(env) ? env.TURNSTILE_SITEKEY : null }, 200, { "cache-control": "public, max-age=300" });
       if (url.pathname === "/api/verdict") return await apiVerdict(req, env);
       if (url.pathname === "/api/others") return await apiOthers(req, env);

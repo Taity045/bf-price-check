@@ -400,7 +400,8 @@ footer{border-top:2px dashed var(--ink)}
       <li>Today's price comes from the shop's product page.</li>
       <li>Older prices come from public web archive copies of that page (the Internet Archive), and from prices we save when people check a product here.</li>
       <li>Many products have few or no archive copies. This is true for most Takealot products. So you will often see "Not enough history".</li>
-      <li>The history grows over time, because we save the price each time someone checks the product.</li>
+      <li>After someone checks a product here, we check its price again about once a day and save it. We do the same for some popular Takealot products. So the history grows each day.</li>
+      <li>Some shops do not let automatic checks read their pages. For those products, we save the price only when someone checks it here.</li>
     </ul>
     <div class="formrow"><button type="button" class="sec" id="shopsAsk">Ask us to add a shop</button><button type="button" class="go" data-close>Close</button></div>
   </div>
@@ -767,7 +768,7 @@ function renderVerdict() {
       state.verdictText = ev.verdict; return;
     }
     body = pr.length >= 1 ? `We found only ${pr.length} older price${pr.length === 1 ? "" : "s"} in ${C} (latest ${money(pr[pr.length - 1], C)} on ${fmtDate(hist[hist.length - 1].t)}). We need at least 3 to judge.` : `We found no older prices in ${C} for this product yet.`;
-    body += " Why: we found few or no older copies of this page in web archives. We saved today's price, so the next check will have more history.";
+    body += state.tracked ? " Why: we found few or no older copies of this page in web archives. We saved today's price, and we will try to check it again about once a day." : " Why: we found few or no older copies of this page in web archives.";
     if (W) body += ` The shop claims ${Math.round((W - P) / W * 100)}% off ${money(W, C)}. We can't confirm that.`;
     setVerdict("unk", "Not enough history", `<p class="vbody">${esc(body)}</p>`); state.verdictText = null; return;
   }
@@ -1083,7 +1084,7 @@ async function showWall() {
     $("wallCount").textContent = d.fake_total ? `${d.fake_total} fake discount${d.fake_total === 1 ? "" : "s"} caught so far.` : "";
     $("wallList").innerHTML = d.fakes.length ? d.fakes.map((f) => `<li><span><a href="/?u=${encodeURIComponent(f.url)}">${esc(f.title || f.url)}</a></span><span class="small"><b>${esc(f.shop)}</b> · says it was <s>${esc(money(f.was, f.currency))}</s> · highest in 90 days ${esc(money(f.high90, f.currency))} · now ${esc(money(f.price, f.currency))}</span><span class="chip bad">"Was" price ${Math.round(f.gap * 100)}% too high</span></li>`).join("")
       : `<li><span class="small">No fake discounts yet. Each check helps. <a href="/">Check a product</a>.</span></li>`;
-    $("scoreNote").textContent = `We show a score when we have judged at least ${d.min_judged} products from a shop.`;
+    $("scoreNote").textContent = `We show a score when we have judged at least ${d.min_judged} products from a shop, and have saved prices on ${d.rank_min_days || 7} different days for ${d.rank_min_products || 3} or more of its products.`;
     $("scoreTable").innerHTML = d.shops.length ? `<table><tr><th>Shop</th><th>Checks</th><th>Fake discounts</th></tr>${d.shops.map((x) => `<tr><td>${esc(x.shop)}</td><td class="num">${x.checks}</td><td>${x.pct == null ? '<span class="small">Not enough checks yet</span>' : `<b class="num">${x.pct}%</b> <span class="small">of ${x.judged}</span>`}</td></tr>`).join("")}</table>` : `<p class="small">No shops yet.</p>`;
   } catch { $("wallList").innerHTML = `<li><span class="small">We could not load the wall. Try again soon.</span></li>`; }
 }

@@ -3,6 +3,12 @@
 
 const DAY_MS = 864e5;
 const WALL_MIN_JUDGED = 5;          // a shop score needs at least this many judged products
+const RANK_MIN_PRODUCTS = 3;        // ... and at least this many products with saved prices
+const RANK_MIN_DAYS = 7;            // ... on at least this many different days
+// Share of judged products with a fake discount, in %, or null when the shop has too little data.
+function shopScore(judged, fake, ready) {
+  return judged >= WALL_MIN_JUDGED && ready >= RANK_MIN_PRODUCTS ? Math.round((fake / judged) * 100) : null;
+}
 const EMAIL_DAILY_CAP = 60;         // max emails per day, all kinds together
 const ALERT_MAX_PER_EMAIL = 10;
 const ALERT_DAYS = 180;
@@ -77,10 +83,13 @@ function judge(current, hist) {
 async function saveVerdict(env, canon, title, j) {
   if (!j.verdict) return;
   await ensureFeatureTables(env);
+  await verdictStmt(env, canon, title, j).run();
+}
+function verdictStmt(env, canon, title, j) {
   const host = stripWww(new URL(canon).hostname.toLowerCase());
-  await env.DB.prepare(`INSERT INTO verdicts (url, host, title, verdict, price, was, currency, low, med, high, high90, n, gap, archived, low_t, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  return env.DB.prepare(`INSERT INTO verdicts (url, host, title, verdict, price, was, currency, low, med, high, high90, n, gap, archived, low_t, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(url) DO UPDATE SET host = excluded.host, title = COALESCE(excluded.title, verdicts.title), verdict = excluded.verdict, price = excluded.price, was = excluded.was, currency = excluded.currency, low = excluded.low, med = excluded.med, high = excluded.high, high90 = excluded.high90, n = excluded.n, gap = excluded.gap, archived = excluded.archived, low_t = excluded.low_t, updated_at = excluded.updated_at`)
-    .bind(canon, host, title || null, j.verdict, j.price ?? null, j.was ?? null, j.currency ?? null, j.low ?? null, j.med ?? null, j.high ?? null, j.high90 ?? null, j.n, j.gap ?? null, j.archived, j.low_t ?? null, now()).run();
+    .bind(canon, host, title || null, j.verdict, j.price ?? null, j.was ?? null, j.currency ?? null, j.low ?? null, j.med ?? null, j.high ?? null, j.high90 ?? null, j.n, j.gap ?? null, j.archived, j.low_t ?? null, now());
 }
 async function latestCurrent(env, canon) {
   const c = await cacheGet(env, LIVE_CACHE_PREFIX + canon);
@@ -120,10 +129,13 @@ async function wallData(env) {
   const perHost = {};
   for (const r of checks.results || []) { try { const h = stripWww(new URL(r.url).hostname.toLowerCase()); perHost[h] = (perHost[h] || 0) + r.n; } catch {} }
   const total = await env.DB.prepare("SELECT COUNT(*) AS n FROM verdicts WHERE verdict = 'Fake discount'").first();
+  // A shop gets a score only when enough of its products have real saved history (see shopScore).
+  const ready = await env.DB.prepare("SELECT host, SUM(CASE WHEN days >= ? THEN 1 ELSE 0 END) AS n FROM tracked GROUP BY host").bind(RANK_MIN_DAYS).all().catch(() => ({ results: [] }));
+  const readyBy = Object.fromEntries((ready.results || []).map((r) => [r.host, r.n || 0]));
   const val = {
     fakes: (fakes.results || []).map((r) => ({ ...r, shop: shopName(r.host) })),
-    shops: (shops.results || []).map((r) => ({ host: r.host, shop: shopName(r.host), products: r.products, judged: r.judged, fake: r.fake, checks: perHost[r.host] || 0, pct: r.judged >= WALL_MIN_JUDGED ? Math.round((r.fake / r.judged) * 100) : null })),
-    fake_total: total ? total.n : 0, min_judged: WALL_MIN_JUDGED, updated_at: now(),
+    shops: (shops.results || []).map((r) => ({ host: r.host, shop: shopName(r.host), products: r.products, judged: r.judged, fake: r.fake, checks: perHost[r.host] || 0, ready: readyBy[r.host] || 0, pct: shopScore(r.judged, r.fake, readyBy[r.host] || 0) })),
+    fake_total: total ? total.n : 0, min_judged: WALL_MIN_JUDGED, rank_min_products: RANK_MIN_PRODUCTS, rank_min_days: RANK_MIN_DAYS, updated_at: now(),
   };
   await cachePut(env, "wall-v1", val, 10 * 60e3);
   return val;
