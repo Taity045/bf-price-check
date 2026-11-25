@@ -305,8 +305,8 @@ async function recheck() {
   for (const [ck] of need) {
     const [crawl, surt] = ck.split("|");
     let lines; try { lines = await cdxLines(crawl, await indexFor(crawl, surt), surt); } catch (e) { log(`index ${crawl} ${surt}: ${e.message}`); continue; }
-    // One crawl can hold several copies of a link: match the copy by its capture time.
-    for (const rec of lines) if (rec.status === "200") recs.set(crawl + "|" + rec.url + "|" + rec.timestamp, rec);
+    // One crawl can hold several copies of a link (the cached index files carry no capture time).
+    for (const rec of lines) if (rec.status === "200") { const k = crawl + "|" + rec.url; (recs.get(k) || recs.set(k, []).get(k)).push(rec); }
   }
   const counts = {};
   let i = 0;
@@ -314,16 +314,20 @@ async function recheck() {
     while (i < jobs.length) {
       const c = jobs[i++], shop = CC_SHOPS.find((s) => s.name === c.shop);
       const ts14 = c.t ? new Date(c.t).toISOString().replace(/[-:T]/g, "").slice(0, 14) : "";
-      const rec = recs.get(c.crawl + "|" + c.url + "|" + ts14);
-      let line;
-      if (!rec) line = { crawl: c.crawl, key: c.key, url: c.url, price: c.price, unusable: "no-index-record" };
-      else {
+      let cands = recs.get(c.crawl + "|" + c.url) || [];
+      if (cands.some((r) => r.timestamp === ts14)) cands = cands.filter((r) => r.timestamp === ts14);
+      let line = null, first = null, retry = false;
+      // The copy we read is the one with this price: confirmed when a copy of this link in this crawl
+      // shows the same price and passes the UK check.
+      for (const rec of cands.slice(0, 4)) {
         const w = await warcHtml(rec).catch(() => ({ err: "error" }));
-        if (w.err) { counts.retry = (counts.retry || 0) + 1; continue; }  // network: try again next run
+        if (w.err) { retry = true; continue; }
         const r = readArchivedPage(W, w.html, c.url, shop);
-        if (r.ok && r.geo === "GB" && Math.abs(r.price - c.price) < 0.005) line = { crawl: c.crawl, key: c.key, url: c.url, price: c.price, geo: "GB" };
-        else line = { crawl: c.crawl, key: c.key, url: c.url, price: c.price, unusable: r.ok ? "price-changed" : r.reason, ...(r.ok ? { reread: r.price } : {}) };
+        if (r.ok && r.geo === "GB" && Math.abs(r.price - c.price) < 0.005) { line = { crawl: c.crawl, key: c.key, url: c.url, price: c.price, geo: "GB" }; break; }
+        first ||= { crawl: c.crawl, key: c.key, url: c.url, price: c.price, unusable: r.ok ? "price-changed" : r.reason, ...(r.ok ? { reread: r.price } : {}) };
       }
+      if (!line && retry && !first) { counts.retry = (counts.retry || 0) + 1; continue; }  // network: try again next run
+      if (!line) line = first || { crawl: c.crawl, key: c.key, url: c.url, price: c.price, unusable: "no-index-record" };
       const k = line.geo ? "uk-confirmed" : line.unusable;
       counts[k] = (counts[k] || 0) + 1;
       appendFileSync(geoFile(), JSON.stringify(line) + "\n");
