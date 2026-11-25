@@ -1844,7 +1844,7 @@ const CMP_SEARCH_TTL = 6 * 3600e3;    // one search on one shop (shared by all p
 const CMP_SHOP_PER_MIN = 30;          // searches per shop per minute, all visitors together
 const CMP_PER_IP_PER_MIN = 240;       // shop calls per visitor per minute (one check makes up to ~20)
 // Bump when the matching rules or identity reading change, so cached answers from older rules are not shown.
-const CMP_VER = "v2";
+const CMP_VER = "v3";
 const CMP_MAX_SEARCHES = 2;           // searches per shop per product
 const CMP_MAX_DETAILS = 3;            // product-detail reads per shop per product (to read barcodes)
 
@@ -1891,6 +1891,9 @@ const CMP_GENERIC = new Set(["portable", "waterproof", "water", "resistant", "bl
 const CMP_STOP = new Set(["the", "and", "with", "of", "a", "an", "in", "on", "by", "to", "new", "edition", "version", "official", "genuine", "original", "brand", "free", "shipping", "sa", "south", "africa", "local", "stock", "local stock", "model", "series", "colour", "color", "size", "inch", "inches", "gen", "generation", "includes", "including", "incl", "w", "only", "set", "item", "product", "unit", "1pc", "pc", "piece"]);
 const CMP_ACCESSORY = /\b(compatible|replacement|protector|tempered|skins?|decals?|stickers?|refill|refills|spare)\b|\b(case|cover|sleeve|pouch|strap|band|stand|holder|mount|dock|charger|cable|adapter|controller|remote|lens|filter|bag)\s+(for|compatible|to\s+fit)\b|\bfor\s+(apple|samsung|iphone|ipad|airpods|galaxy|ps5|ps4|playstation|xbox|nintendo|switch|macbook|sony|huawei|xiaomi|oppo|garmin|fitbit|gopro|dji|nikon|canon|lg|hisense|tcl)\b/i;
 const CMP_CONDITION = /\b(refurbished|refurb|renewed|pre[- ]?owned|second[- ]?hand|used|demo|ex[- ]?demo|open[- ]?box|grade\s+[a-c]|parallel\s+import|imported|import|grey\s+import|b-grade|cpo)\b/i;
+// Game or special editions (often a console with a game): the word must be on both sides or neither.
+const CMP_EDITION = /\b(fortnite|call of duty|cod|ea sports|fc ?2\d|fifa|spider-?man|marvel|astro bot|god of war|mario|kart|zelda|pokemon|minecraft|hogwarts|gta|grand theft auto|ghost of|battlefield|flowering|chaos|game ?pass|limited edition|special edition|anniversary|collectors?)\b/gi;
+const cmpEditions = (t) => new Set((cmpNorm(t).match(CMP_EDITION) || []).map((x) => x.toLowerCase().replace(/\s+/g, " ")));
 const CMP_BUNDLE = /\s\+\s|\bbundle\b|\bcombo\b|\bvoucher\b|\b(?<!(?:model|building|car|construction|lego|technic|brick|bricks)\s)kit\b|\bwith\s+(?:game|controller|headset|voucher)|\b\d+\s*(?:x|pack|pk)\s+(?:of\s+)?/i;
 
 function cmpNorm(s) {
@@ -2068,6 +2071,7 @@ function cmpMatch(src, cand, opts = {}) {
   if (CMP_ACCESSORY.test(cn) && !CMP_ACCESSORY.test(sn)) return { level: null, why: "accessory" };
   if (CMP_CONDITION.test(cn) && !CMP_CONDITION.test(sn)) return { level: null, why: "used, refurbished or imported" };
   if (CMP_BUNDLE.test(cTitle) && !CMP_BUNDLE.test(src.title)) return { level: null, why: "bundle" };
+  if (!setEq(cmpEditions(src.title), cmpEditions(cTitle))) return { level: null, why: "different edition" };
   const A = cmpAttrs(src.title), B = cmpAttrs(cTitle);
   for (const k of ["storage", "inch", "ml", "g", "pack", "year", "gender"]) if (A[k].size && B[k].size && !setEq(A[k], B[k])) return { level: null, why: "different " + k };
   if (!A.inch.size && !B.inch.size && A.cm.size && B.cm.size && !setEq(A.cm, B.cm)) return { level: null, why: "different size" };

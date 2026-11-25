@@ -148,7 +148,7 @@ Shops are picked by the product's kind (electronics, appliances, books, fashion�
 2. **Same model number** (MPN, Samsung/Sony/Apple part numbers, LEGO set numbers, Nike style codes, …).
 3. **Same name and specs**: same brand, the same core words and numbers, and none of these differ: storage (128 GB vs 256 GB), screen size, ml or grams, litres, pack size, year, men's/women's, colour (when both name one), variant words (Pro, Max, Plus, Ultra, Mini, Lite, Slim, Digital, Disc, SE, FE, ANC, Music, Solar, EDP vs EDT…).
 
-If the other shop names a size (storage, ml, g) that this page does not, it is left out: the page may sell several sizes. Barcodes are also read from page microdata (`itemprop="gtin13"`) and ISBNs from book shop links.
+Game and special editions (Fortnite, Game Pass, Zelda, limited/anniversary editions…) must be named on both sides or neither. If the other shop names a size (storage, ml, g) that this page does not, it is left out: the page may sell several sizes. Barcodes are also read from page microdata (`itemprop="gtin13"`) and ISBNs from book shop links.
 
 A candidate is always rejected if it is an accessory or case for the product, used/refurbished/parallel import/renewed, a bundle, or its price is far from this page's price (model matches: under ⅓ or over 3×; name matches: under ½ or over 2×). Shopify shops with several sizes or colours are read per variant, and the variant is picked by barcode or by a unique spec fit; if that is not possible the row is left out. Fashion needs a barcode or model number (names like "Air Force 1 '07" cover many colours).
 
