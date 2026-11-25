@@ -244,6 +244,23 @@ footer{border-top:2px dashed var(--ink)}
 :focus-visible{outline:3px solid var(--acc);outline-offset:2px}
 .stats .lab,#tip{font-family:var(--sans)}
 #tip b{font-family:var(--mono)}
+.steps{display:none}
+@media (min-width:900px){
+  main{max-width:900px;display:flex;flex-direction:column;min-height:100vh;padding-bottom:0}
+  .hero{padding:24px 0}
+  .hero:has(~#result.hidden){min-height:64vh;display:flex;flex-direction:column;justify-content:center}
+  h1{font-size:clamp(56px,5.4vw,76px)}
+  .sub{font-size:18px;max-width:36em}
+  #f{max-width:760px;margin:32px auto 0;gap:12px;width:100%}
+  #u{height:62px;font-size:18px;padding:0 18px}
+  #f .go{height:62px;padding:0 32px;font-size:18px}
+  .steps{display:flex;justify-content:center;gap:28px;list-style:none;margin:20px 0 0;padding:0;font-size:14px;color:var(--mut);counter-reset:s}
+  .hero:has(~#result:not(.hidden)) .steps{display:none}
+  .steps li{counter-increment:s}
+  .steps li::before{content:counter(s) ". ";font-family:var(--mono);color:var(--ink)}
+  footer{margin-top:auto;padding:16px 0 20px}
+  #result,.page{margin-bottom:40px}
+}
 </style>
 </head>
 <body>
@@ -259,6 +276,7 @@ footer{border-top:2px dashed var(--ink)}
       <button class="go" id="go" type="submit">Check price</button>
     </form>
     <div class="tries" id="tries">Try: <span id="chips"></span></div>
+    <ol class="steps" aria-label="How it works"><li>Paste a link</li><li>We check up to 12 months of prices</li><li>See if the deal is real</li></ol>
   </section>
 
   <!--NOSCRIPT-->
