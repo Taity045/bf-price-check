@@ -218,12 +218,26 @@ for (const [name, o] of [["1440", { viewport: { width: 1440, height: 900 } }], [
 });
 await step("compare: nothing found", async () => {
   const p = await open(mobile);
-  await p.route(/\/api\/compare\?/, (r) => r.fulfill({ json: { ...CMP_PLAN, shops: CMP_PLAN.shops.slice(0, 2), results: {} } }));
+  const bikes = { ...CMP_PLAN, product: { ...CMP_PLAN.product, category: "cycling" }, noun: "bikes and cycling gear", specialists: 2,
+    shops: [{ id: "olympiccycles", name: "Olympic Cycles" }, { id: "mellowvelo", name: "Mellow Velo" }, { id: "takealot", name: "Takealot", general: true }], results: {} };
+  await p.route(/\/api\/compare\?/, (r) => r.fulfill({ json: bikes }));
   await p.route(/\/api\/compare\/shop\?/, (r) => r.fulfill({ json: { status: "none", checked_at: Date.now() } }));
   await p.goto(BASE + "/");
   await p.fill("#u", PRODUCT); await p.click("#go");
-  await p.waitForFunction(() => /didn't find this exact product/.test(document.querySelector("#cmpSum").textContent), null, { timeout: 10000 });
-  ok("compare: says plainly when no shop has the same product", /2 other shops/.test(await p.textContent("#cmpSum")), await p.textContent("#cmpSum"));
+  await p.waitForFunction(() => /No exact match/.test(document.querySelector("#cmpSum").textContent), null, { timeout: 10000 });
+  const sum = await p.textContent("#cmpSum");
+  ok("compare: names the kind of shops and each shop checked", /Checked 3 shops that sell bikes and cycling gear: Olympic Cycles, Mellow Velo, Takealot\./.test(sum), sum);
+  ok("compare: says plainly when no shop has the same product", /No exact match at any of them\./.test(sum), sum);
+  await p.context().close();
+});
+await step("compare: no shops known for this kind of product", async () => {
+  const p = await open(mobile);
+  await p.route(/\/api\/compare\?/, (r) => r.fulfill({ json: { ...CMP_PLAN, product: { ...CMP_PLAN.product, category: "toys" }, noun: "toys", specialists: 0, shops: [], results: {}, reason: "no shops" } }));
+  await p.goto(BASE + "/");
+  await p.fill("#u", PRODUCT); await p.click("#go");
+  await p.waitForFunction(() => /didn't compare/.test(document.querySelector("#cmpSum").textContent), null, { timeout: 10000 });
+  const sum = await p.textContent("#cmpSum");
+  ok("compare: says briefly when we know no shops for the kind of product", /We don't know other shops here that sell toys yet/.test(sum) && !/searched|checked \d/.test(sum), sum);
   await p.context().close();
 });
 

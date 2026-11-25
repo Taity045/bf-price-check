@@ -20,7 +20,7 @@ const CMP_SEARCH_TTL = 6 * 3600e3;    // one search on one shop (shared by all p
 const CMP_SHOP_PER_MIN = 30;          // searches per shop per minute, all visitors together
 const CMP_PER_IP_PER_MIN = 240;       // shop calls per visitor per minute (one check makes up to ~20)
 // Bump when the matching rules or identity reading change, so cached answers from older rules are not shown.
-const CMP_VER = "v6";
+const CMP_VER = "v7";
 const CMP_MAX_SEARCHES = 2;           // searches per shop per product
 const CMP_MAX_DETAILS = 3;            // product-detail reads per shop per product (to read barcodes)
 
@@ -45,12 +45,28 @@ const CMP_SHOPS = [
   { id: "pep", name: "Pep", cur: "ZAR", hosts: ["pepstores.com"], kind: "shopify", base: "https://www.pepstores.com", off: "robots", sells: ["electronics", "toys", "baby"] },
   { id: "exclusivebooks", name: "Exclusive Books", cur: "ZAR", hosts: ["exclusivebooks.co.za"], kind: "shopify", base: "https://exclusivebooks.co.za", sells: ["books"] },
   { id: "ngf", name: "Norman Goodfellows", cur: "ZAR", hosts: ["ngf.co.za"], kind: "shopify", base: "https://www.ngf.co.za", sells: ["liquor"] },
+  // Bike shops (South Africa)
+  // Cycle Lab: its search sends tools back to the home page, so we only use it as the page being checked.
+  { id: "cyclelab", name: "Cycle Lab", cur: "ZAR", hosts: ["cyclelab.com"], kind: "none", base: "https://www.cyclelab.com", off: "nosearch", sells: ["cycling"] },
+  { id: "olympiccycles", name: "Olympic Cycles", cur: "ZAR", hosts: ["olympiccycles.co.za"], kind: "shopify", base: "https://www.olympiccycles.co.za", sells: ["cycling"] },
+  { id: "mellowvelo", name: "Mellow Velo", cur: "ZAR", hosts: ["mellowvelo.co.za"], kind: "shopify", base: "https://mellowvelo.co.za", sells: ["cycling"] },
+  { id: "dville", name: "Dville Cyclery", cur: "ZAR", hosts: ["dvillecyclery.co.za"], kind: "woo", base: "https://dvillecyclery.co.za", sells: ["cycling"] },
+  { id: "bicyclepower", name: "Bicycle Power", cur: "ZAR", hosts: ["bicyclepower.co.za"], kind: "woo", base: "https://bicyclepower.co.za", sells: ["cycling"] },
+  { id: "evobikes", name: "Evo Bikes", cur: "ZAR", hosts: ["evobikes.co.za"], kind: "woo", base: "https://evobikes.co.za", sells: ["cycling"] },
   { id: "lakeland", name: "Lakeland", cur: "GBP", hosts: ["lakeland.co.uk"], kind: "shopify", base: "https://www.lakeland.co.uk", off: "robots", sells: ["appliances", "home"] },
   // UK
   { id: "allbeauty", name: "allbeauty", cur: "GBP", hosts: ["allbeauty.com"], kind: "shopify", base: "https://allbeauty.com", sells: ["beauty"] },
   { id: "escentual", name: "Escentual", cur: "GBP", hosts: ["escentual.com"], kind: "shopify", base: "https://escentual.com", sells: ["beauty"] },
   { id: "fenwick", name: "Fenwick", cur: "GBP", hosts: ["fenwick.co.uk"], kind: "shopify", base: "https://fenwick.co.uk", sells: ["appliances", "home", "beauty", "electronics"] },
+  // Bike shops (UK)
+  { id: "cyclestore", name: "Cyclestore", cur: "GBP", hosts: ["cyclestore.co.uk"], kind: "shopify", base: "https://www.cyclestore.co.uk", sells: ["cycling"] },
+  { id: "biketart", name: "Biketart", cur: "GBP", hosts: ["biketart.com"], kind: "shopify", base: "https://www.biketart.com", sells: ["cycling"] },
+  { id: "99bikes", name: "99 Bikes UK", cur: "GBP", hosts: ["99bikes.co.uk"], kind: "shopify", base: "https://www.99bikes.co.uk", sells: ["cycling"] },
 ];
+// Bike shops we looked at and do not search: Sportsmans Warehouse, Sigma Sports, Halfords, Merlin and Tweeks
+// (robots.txt asks tools not to use their search); Tredz, Leisure Lakes, Pedal On, Westbrook and Mantel
+// (they refuse our requests); Cajees (its product data needs a login).
+// off: "nosearch" = no search we can use (the shop still tells us what kind of product its pages are).
 // off: "robots" = the shop's robots.txt asks tools not to use the search we would use, so we don't search it
 // (it can still be the page someone checks). Checked again at run time (cmpRobotsOk), so new rules apply too.
 const cmpShopById = (id) => CMP_SHOPS.find((s) => s.id === id) || null;
@@ -68,7 +84,7 @@ const CMP_COLOUR_ALIAS = { gray: "grey", charcoal: "grey", graphite: "grey", ivo
 const CMP_VARIANT_STRONG = new Set(["pro", "max", "plus", "ultra", "mini", "lite", "slim", "digital", "disc", "se", "fe", "anc", "fold", "flip", "cellular", "xl"]);
 const CMP_VARIANT = new Set([...CMP_VARIANT_STRONG, "neo", "edge", "note", "s", "air", "oled", "qled", "fhd", "uhd", "hd", "4k", "8k", "studio", "sport", "classic", "x", "e", "music", "solar", "sapphire", "lte", "signature", "elixir", "intense", "absolu", "parfum", "toilette", "cologne", "edp", "edt", "edc", "junior", "kids", "mk2", "ii", "iii", "iv"]);
 // Describing words: may be missing on one side without making a different product.
-const CMP_GENERIC = new Set(["portable", "waterproof", "water", "resistant", "bluetooth", "wireless", "wired", "smart", "speaker", "headphones", "headphone", "headset", "earbuds", "earphones", "buds", "in-ear", "over-ear", "on-ear", "true", "stereo", "audio", "sound", "pod", "pods", "capsule", "coffee", "machine", "maker", "console", "gaming", "game", "phone", "smartphone", "cellphone", "mobile", "dual", "sim", "esim", "watch", "smartwatch", "gps", "running", "fitness", "tracker", "tv", "television", "led", "display", "screen", "mouse", "keyboard", "performance", "ergonomic", "digital", "window", "analog", "airfryer", "fryer", "air-fryer", "kettle", "cordless", "electric", "stainless", "steel", "fridge", "freezer", "combi", "eco", "bottom", "top", "mount", "door", "frost", "free", "no", "with", "charging", "case", "usbc", "cable", "black", "white", "building", "set", "kit", "toy", "toys", "stem", "model", "car", "for", "adults", "boys", "girls", "years", "age", "ages", "spray", "fragrance", "perfume", "eau", "de", "mens", "womens", "unisex", "men", "women", "him", "her", "paperback", "hardcover", "book", "camera", "drone", "tablet", "ereader", "e-reader", "kindle", "wifi", "inch", "uhd", "crystal", "hdr", "edition", "bundle", "pack", "piece", "pieces", "pcs", "new", "latest", "original", "genuine", "series", "range", "collection", "classic", "premium", "deluxe", "standard", "regular", "ultra", "slim", "pro", "max", "plus"]);
+const CMP_GENERIC = new Set(["portable", "waterproof", "water", "resistant", "bluetooth", "wireless", "wired", "smart", "speaker", "headphones", "headphone", "headset", "earbuds", "earphones", "buds", "in-ear", "over-ear", "on-ear", "true", "stereo", "audio", "sound", "pod", "pods", "capsule", "coffee", "machine", "maker", "console", "gaming", "game", "phone", "smartphone", "cellphone", "mobile", "dual", "sim", "esim", "watch", "smartwatch", "gps", "running", "fitness", "tracker", "tv", "television", "led", "display", "screen", "mouse", "keyboard", "performance", "ergonomic", "digital", "window", "analog", "airfryer", "fryer", "air-fryer", "kettle", "cordless", "electric", "stainless", "steel", "fridge", "freezer", "combi", "eco", "bottom", "top", "mount", "door", "frost", "free", "no", "with", "charging", "case", "usbc", "cable", "black", "white", "building", "set", "kit", "toy", "toys", "stem", "model", "car", "for", "adults", "boys", "girls", "years", "age", "ages", "spray", "fragrance", "perfume", "eau", "de", "mens", "womens", "unisex", "men", "women", "him", "her", "paperback", "hardcover", "book", "camera", "drone", "tablet", "ereader", "e-reader", "kindle", "wifi", "inch", "uhd", "crystal", "hdr", "edition", "bundle", "pack", "piece", "pieces", "pcs", "new", "latest", "original", "genuine", "series", "range", "collection", "classic", "premium", "deluxe", "bike", "bikes", "bicycle", "mountain", "road", "gravel", "full", "suspension", "hardtail", "trail", "standard", "regular", "ultra", "slim", "pro", "max", "plus"]);
 // Words that say nothing about which product it is.
 const CMP_STOP = new Set(["the", "and", "with", "of", "a", "an", "in", "on", "by", "to", "new", "edition", "version", "official", "genuine", "original", "brand", "free", "shipping", "sa", "south", "africa", "local", "stock", "local stock", "model", "series", "colour", "color", "size", "inch", "inches", "gen", "generation", "includes", "including", "incl", "w", "only", "set", "item", "product", "unit", "1pc", "pc", "piece"]);
 const CMP_ACCESSORY = /\b(compatible|replacement|protector|tempered|skins?|decals?|stickers?|refill|refills|spare)\b|\b(case|cover|sleeve|pouch|strap|band|stand|holder|mount|dock|charger|cable|adapter|controller|remote|lens|filter|bag)\s+(for|compatible|to\s+fit)\b|\bfor\s+(apple|samsung|iphone|ipad|airpods|galaxy|ps5|ps4|playstation|xbox|nintendo|switch|macbook|sony|huawei|xiaomi|oppo|garmin|fitbit|gopro|dji|nikon|canon|lg|hisense|tcl)\b/i;
@@ -152,6 +168,7 @@ function cmpAttrs(title) {
     else if ((m = t.match(/^(\d+(?:\.\d+)?)(w|kw)$/))) a.watt.add(Math.round(+m[1] * (m[2] === "kw" ? 1000 : 1)));
     else if ((m = t.match(/^(\d+)(pcs|pieces|pack|pk|piece)$/))) a.pack.add(+m[1]);
     else if (/^(19[89]\d|20[0-4]\d)$/.test(t)) a.year.add(+t);
+    else if (/^my(\d\d|20\d\d)$/.test(t)) a.year.add(2000 + (+t.slice(2) % 100)); // bike shops: "MY26" = model year 2026
     else if (/^\d+$/.test(t)) {
       const nx = w[i + 1] || "";
       if (/^(pack|pk|pcs|pieces|piece)$/.test(nx)) { a.pack.add(+t); i++; }
@@ -171,6 +188,7 @@ const overlap = (a, b) => [...a].some((x) => b.has(x));
 function cmpBrand(b) { return String(b || "").toLowerCase().replace(/&amp;/g, "&").replace(/[^a-z0-9&]+/g, " ").trim() || null; }
 
 // The product's identity, from the checked page (title, brand, barcode, model number).
+function cmpSourceShopId(canon) { try { const s = cmpShopForHost(new URL(canon).hostname); return s ? s.id : null; } catch { return null; } }
 function cmpIdentity(cur, canon) {
   const title = String(cur.title || "").replace(/\s+/g, " ").trim();
   let brand = cmpBrand(cur.brand);
@@ -182,12 +200,14 @@ function cmpIdentity(cur, canon) {
   let gtin = cmpGtin(cur.gtin);
   // book shops often put the ISBN in the link
   if (!gtin) { try { const m = new URL(canon).pathname.match(/(?:^|[^\d])(97[89]\d{10})(?!\d)/); if (m) gtin = m[1]; } catch {} }
-  return { title, brand, gtin, gtins: [gtin].filter(Boolean), mpn: cur.mpn || null, codes, titleCodes, urlCodes, price: cur.price || null, currency: cur.currency || null };
+  return { title, brand, gtin, gtins: [gtin].filter(Boolean), mpn: cur.mpn || null, codes, titleCodes, urlCodes, price: cur.price || null, currency: cur.currency || null, pageCategory: cur.category ? String(cur.category).slice(0, 160) : null, sourceShop: cmpSourceShopId(canon) };
 }
 
 // What kind of product it is, so we only ask shops that sell it.
 const CMP_CATS = [
   ["books", /\b(paperback|hardcover|hardback|novel|isbn|book)\b/],
+  // before toys/fashion/electronics: a balance bike, a cycling jacket or a bike computer is a bike-shop item
+  ["cycling", /\b(bikes?|bicycles?|e-?bikes?|mtb|mountain ?bikes?|road ?bikes?|gravel ?bikes?|bmx|balance bike|hardtail|dual[- ]sus\w*|full suspension|groupset|derailleur|cassette|crankset|chainring|bottom bracket|cycling|cyclist|bike (?:computer|light|lights|helmet|pump|rack|lock|shorts|jersey|shoes|tyre|tire|saddle|stand)|bib ?shorts|cleats|clipless pedals?|inner tube|turbo trainer|smart trainer|garmin edge|wahoo)\b/],
   ["liquor", /\b(whisk(?:e)?y|gin|vodka|wine|brandy|rum|beer|cider|champagne|tequila|liqueur|bourbon|cognac|sherry|port|merlot|shiraz|pinotage|chardonnay|sauvignon|cabernet)\b/],
   ["computer", /\b(laptop|notebook|chromebook|macbook|ssd|nvme|hdd|ddr\d|ram|graphics card|gpu|rtx|gtx|radeon|ryzen|intel core|motherboard|monitor|keyboard|mouse|router|mesh|printer|ink|toner|flash drive|memory card|micro ?sd|webcam|desktop pc|gaming pc|power supply|psu|cpu cooler|nas|ups)\b/],
   ["electronics", /\b(phone|iphone|smartphone|galaxy|pixel|tablet|ipad|airpods|ear ?buds|earphones|headphones|headset|speaker|soundbar|tv|television|oled|qled|ps5|ps4|xbox|nintendo|switch 2|console|smart ?watch|watch|apple watch|fitness tracker|camera|gopro|drone|kindle|power ?bank|charger|bluetooth|projector|e-?reader|tracker|airtag|homepod|echo|chromecast|fire tv)\b/],
@@ -198,27 +218,53 @@ const CMP_CATS = [
   ["beauty", /\b(perfume|eau de|edp|edt|parfum|cologne|fragrance|moisturi[sz]er|serum|cleanser|toner|sunscreen|spf|lipstick|mascara|foundation|concealer|shampoo|conditioner|skincare|cerave|la roche|the ordinary|nivea|body lotion|face wash|hair oil|nail polish)\b/],
   ["home", /\b(duvet|pillow|towel|bedding|sheet set|cookware|frying pan|pot set|knife|cutlery|glassware|mug|dinner set|curtain|rug|lamp|mattress|bed|sofa|chair|table|storage|organiser|candle|cushion|braai|gas braai|cooler box)\b/],
 ];
-function cmpCategory(id) {
-  const t = cmpNorm(id.title);
-  if (id.gtin && /^97[89]\d{10}$/.test(id.gtin)) return "books";
-  for (const [cat, re] of CMP_CATS) if (re.test(t)) return cat;
+// Not a bike-shop item even with "bike" in the name.
+const CMP_NOT_CYCLING = /\b(exercise|spin|stationary|indoor|kids?'? ride[- ]on|motor ?bike|motorbike|motorcycle|dirt ?bike|pit ?bike|quad)\b/;
+function cmpCatOf(text) {
+  const t0 = cmpNorm(text || "");
+  if (!t0) return null;
+  // also singular words: breadcrumbs say "Air Fryers", "Kettles"
+  const t = t0 + " | " + t0.replace(/\b([a-z]{3,}?)(?:es|s)\b/g, (w, a) => (/(ss|us|is)$/.test(w) ? w : w.endsWith("es") && /(sh|ch|x|ss)$/.test(a) ? a : w.slice(0, -1)));
+  for (const [cat, re] of CMP_CATS) if (re.test(t) && !(cat === "cycling" && CMP_NOT_CYCLING.test(t))) return cat;
   return null;
 }
+// The title, then the shop's own product category (structured data, breadcrumbs), then the kind of
+// shop the page is from (a bike shop's page with no telling words is still a bike-shop item).
+function cmpCategory(id) {
+  if (id.gtin && /^97[89]\d{10}$/.test(id.gtin)) return "books";
+  const fromPage = cmpCatOf(id.pageCategory), fromTitle = cmpCatOf(id.title);
+  // the title's words first; a shop's breadcrumbs are broad ("Home & Garden") except a bike shop's
+  if (fromPage === "cycling" && !CMP_NOT_CYCLING.test(cmpNorm(id.title))) return "cycling";
+  if (fromTitle) return fromTitle;
+  if (fromPage) return fromPage;
+  const from = id.sourceShop ? cmpShopById(id.sourceShop) : null;
+  if (from && from.sells.length === 1 && from.sells[0] !== "*") return from.sells[0];
+  return null;
+}
+// How to name the shops we searched for a kind of product.
+const CMP_CAT_NOUN = { cycling: "bikes and cycling gear", computer: "computer gear", electronics: "electronics", appliances: "appliances", toys: "toys", baby: "baby products", fashion: "fashion and sportswear", beauty: "beauty products", home: "homeware", books: "books", liquor: "drinks" };
 
 // Which shops to search for this product (same currency, not the shop it came from).
+// Only shops that sell this kind of product; when we can't tell the kind, only general shops (sells "*").
 function cmpPlan(id, sourceHost, currency) {
-  const cat = cmpCategory(id), from = cmpShopForHost(sourceHost);
+  const from = cmpShopForHost(sourceHost);
+  if (from && !id.sourceShop) id = { ...id, sourceShop: from.id };
+  const cat = cmpCategory(id);
   const shops = [], skipped = [];
   for (const s of CMP_SHOPS) {
     if (from && s.id === from.id) continue;
     if (s.off) continue;
     if (s.cur !== currency) continue;
     if (s.brands && !(id.brand && s.brands.includes(id.brand))) { skipped.push({ id: s.id, name: s.name, why: "brand" }); continue; }
-    const sells = s.sells.includes("*") || (cat ? s.sells.includes(cat) : !s.sells.every((x) => ["books", "liquor", "baby"].includes(x)));
-    if (!sells) { skipped.push({ id: s.id, name: s.name, why: "category" }); continue; }
-    shops.push({ id: s.id, name: s.name });
+    const general = s.sells.includes("*");
+    // a brand's own shop sells that brand's products, whatever kind they are
+    if (!general && !(cat && s.sells.includes(cat)) && !s.brands) { skipped.push({ id: s.id, name: s.name, why: "category" }); continue; }
+    shops.push({ id: s.id, name: s.name, general });
   }
-  return { category: cat, shops, skipped };
+  // Specialist shops first: they are the most likely to have it.
+  shops.sort((a, b) => a.general - b.general);
+  const specialists = shops.filter((s) => !s.general).length;
+  return { category: cat, noun: cat ? CMP_CAT_NOUN[cat] || null : null, specialists, shops: shops.map(({ id, name, general }) => ({ id, name, general })), skipped };
 }
 
 // Search words: brand + the words that name the product (no colours, no filler), at most 7 words.
@@ -235,6 +281,11 @@ function cmpQuery(id) {
     if (words.length >= 7) break;
   }
   return words.join(" ");
+}
+
+const CMP_BIKE_WORDS = new Set(["bike", "bikes", "bicycle", "bicycles", "carbon", "alloy", "aluminium", "aluminum", "road", "mountain", "gravel", "trail", "enduro", "xc", "cross", "country", "hardtail", "full", "suspension", "dual", "sus", "electric", "e-bike", "ebike", "e-mtb", "emtb", "mtb", "hybrid", "commuter", "city", "kids", "mens", "womens", "unisex", "frame", "disc", "29er", "650b", "27.5", "in", "with"]);
+function cmpCoreQuery(id) {
+  return cmpQuery(id).split(" ").filter((w) => !CMP_BIKE_WORDS.has(w) && !/^(19|20)\d\d$/.test(w) && !/^my\d\d$/.test(w)).slice(0, 5).join(" ");
 }
 
 // ---------- matching ----------
@@ -257,6 +308,12 @@ function cmpMatch(src, cand, opts = {}) {
   if (!setEq(cmpEditions(src.title), cmpEditions(cTitle))) return { level: null, why: "different edition" };
   const A = cmpAttrs(src.title), B = cmpAttrs(cTitle);
   for (const k of ["storage", "inch", "ml", "g", "pack", "year", "gender"]) if (A[k].size && B[k].size && !setEq(A[k], B[k])) return { level: null, why: "different " + k };
+  // A bike's model year changes the bike (parts, price): when the page names a year, the other shop must too.
+  if (A.year.size && !B.year.size && cmpCategory(src) === "cycling") {
+    const urlYear = cmpAttrs(`${cand.codeText || ""} ${cand.url || ""}`.replace(/[-_/.?=&]/g, " ")).year;
+    if (!urlYear.size) return { level: null, why: "no model year" };
+    if (!setEq(A.year, urlYear)) return { level: null, why: "different year" };
+  }
   if (!A.inch.size && !B.inch.size && A.cm.size && B.cm.size && !setEq(A.cm, B.cm)) return { level: null, why: "different size" };
   if (A.colour.size && B.colour.size && !overlap(A.colour, B.colour)) return { level: null, why: "different colour" };
   const strong = (s) => new Set([...s].filter((x) => CMP_VARIANT_STRONG.has(x)));
@@ -342,6 +399,19 @@ async function cmpHtml(url, opts) { const r = await cmpFetch(url, { accept: "tex
 const absUrl = (base, u) => { try { const x = new URL(u, base); x.hash = ""; return x.href; } catch { return null; } };
 
 // Each returns a list of candidates: { title, brand, price, was, url, in_stock, gtins, mpn, codeText }
+function cmpWooItem(shop, p) {
+  const pr = p && p.prices; if (!pr) return null;
+  if (pr.currency_code && pr.currency_code !== shop.cur) return null;
+  const unit = 10 ** (Number.isInteger(pr.currency_minor_unit) ? pr.currency_minor_unit : 2);
+  const amt = (v) => (v == null || v === "" || !/^\d+$/.test(String(v)) ? null : Math.round((Number(v) / unit) * 100) / 100);
+  const price = amt(pr.price), reg = amt(pr.regular_price);
+  const rng = pr.price_range ? [amt(pr.price_range.min_amount), amt(pr.price_range.max_amount)] : null;
+  const brand = Array.isArray(p.brands) && p.brands[0] ? decodeEntities(String(p.brands[0].name || "")) : null;
+  let url = null; try { const u = new URL(p.permalink); if (stripWww(u.hostname) === stripWww(new URL(shop.base).hostname)) url = u.href; } catch {}
+  return { title: decodeEntities(String(p.name || "")).trim(), brand, price, was: reg && price && reg > price ? reg : null, url,
+    range: !!(rng && rng[0] && rng[1] && rng[0] !== rng[1]), in_stock: p.is_in_stock !== false, gtins: [], mpn: p.sku || null,
+    codeText: p.slug ? String(p.slug).replace(/-/g, " ") : "" };
+}
 const CMP_SEARCH = {
   async takealot(shop, q) {
     const d = await cmpJson(`https://api.takealot.com/rest/v-1-11-0/searches/products?qsearch=${encodeURIComponent(q)}`);
@@ -382,6 +452,11 @@ const CMP_SEARCH = {
     return ps.map((p) => ({ title: p.title, brand: p.vendor, price: parsePrice(p.price), was: parsePrice(p.compare_at_price_min) > parsePrice(p.price) ? parsePrice(p.compare_at_price_min) : null, url: p.url ? absUrl(shop.base, String(p.url).split("?")[0]) : null,
       range: !!(p.price_min && p.price_max && parsePrice(p.price_min) !== parsePrice(p.price_max)),
       in_stock: p.available !== false, gtins: /^\d{8,14}$/.test(String(p.handle || "")) ? [p.handle] : [], handle: p.handle, codeText: p.handle ? p.handle.replace(/-/g, " ") : "" })).filter((x) => x.title && x.url && x.price);
+  },
+  // WooCommerce Store API (public, read-only): prices come in minor units.
+  async woo(shop, q) {
+    const d = await cmpJson(`${shop.base}/wp-json/wc/store/v1/products?search=${encodeURIComponent(q)}&per_page=12`);
+    return (Array.isArray(d) ? d : []).map((p) => cmpWooItem(shop, p)).filter((x) => x && x.title && x.url && x.price);
   },
   async magento(shop, q) {
     const fields = shop.gql === "special"
@@ -484,7 +559,7 @@ function cmpApplyDetail(id, c, d) {
 const CMP_ROBOTS_TOKEN = "DealOrDud-PriceCompare";
 function cmpRobotsTargets(shop) {
   const ex = { takealot: ["https://api.takealot.com", "/rest/v-1-11-0/searches/products?qsearch=x"], loot: [shop.base, "/search?cat=b&terms=x"], evetech: [shop.base, "/search?query=x"],
-    shopify: [shop.base, "/search/suggest.json?q=x&resources%5Btype%5D=product"], magento: [shop.base, "/graphql?query=x"], vtex: [shop.base, "/api/catalog_system/pub/products/search?ft=x"] }[shop.kind];
+    shopify: [shop.base, "/search/suggest.json?q=x&resources%5Btype%5D=product"], magento: [shop.base, "/graphql?query=x"], woo: [shop.base, "/wp-json/wc/store/v1/products?search=x"], vtex: [shop.base, "/api/catalog_system/pub/products/search?ft=x"] }[shop.kind];
   const out = ex ? [ex] : [];
   if (shop.kind === "ldlist" && shop.search) { const u = new URL(shop.search.replace("{q}", "x")); out.push([u.origin, u.pathname + u.search]); }
   if (shop.kind === "shopify") out.push([shop.base, "/products/x.js"]);
@@ -522,8 +597,12 @@ async function cmpSearchShop(env, shop, id) {
   const code = id.codes.find((c) => !c.startsWith("lego")) || null;
   if (code && id.mpn) queries.push(String(id.mpn).slice(0, 40));
   else if (code) queries.push((id.brand ? id.brand + " " : "") + code);
+  const cat = cmpCategory(id);
+  // Bike shops name bikes "Brand Model Year" without the kind words ("carbon road bike"); some shop
+  // searches (WooCommerce) need every word to be in the name, so search the brand and model first.
+  if (cat === "cycling") queries.push(cmpCoreQuery(id));
   queries.push(cmpQuery(id));
-  const fashion = cmpCategory(id) === "fashion";
+  const fashion = cat === "fashion";
   let best = null, searched = 0, details = 0, lastErr = null, candidates = 0;
   const tried = new Set();
   for (const q of queries) {
@@ -616,7 +695,7 @@ async function apiCompare(req, env) {
     const rows = await env.DB.prepare(`SELECT k, v, exp FROM cache WHERE k IN (${keys.map(() => "?").join(",")})`).bind(...keys).all();
     for (const r of rows.results || []) if (r.exp > now()) { try { const v = JSON.parse(r.v); results[v.shop] = v; } catch {} }
   }
-  return json({ product: { title: id.title, brand: id.brand, gtin: id.gtin, codes: id.codes, currency: id.currency, category: plan.category }, shops: plan.shops, skipped: plan.skipped, results, reason: plan.shops.length ? null : "no shops" });
+  return json({ product: { title: id.title, brand: id.brand, gtin: id.gtin, codes: id.codes, currency: id.currency, category: plan.category }, noun: plan.noun, specialists: plan.specialists, shops: plan.shops, skipped: plan.skipped, results, reason: plan.shops.length ? null : "no shops" });
 }
 
 // GET /api/compare/shop?url=&shop=  -> one shop's answer
