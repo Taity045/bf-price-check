@@ -30,7 +30,8 @@ function fixture(t, remote, dns = publicDns) {
     },
     async tick(time) {
       let job;
-      await worker.scheduled({ scheduledTime: time }, env, { waitUntil(p) { job = p; } });
+      // Minute 0 of the hour: not a seed-list slot (minute 5, 15, ...), so no extra network calls.
+      await worker.scheduled({ scheduledTime: time - (time % 3600000) }, env, { waitUntil(p) { job = p; } });
       await job;
     },
   };
@@ -76,7 +77,7 @@ test('redirects are checked before download and cron revalidates DNS', async (t)
   assert.deepEqual(visits, ['shop.example', 'prices.example']);
   assert.ok(lookups.includes('prices.example'));
   available = false;
-  db.exec('UPDATE tracked SET last_checked = 0');
+  db.exec('UPDATE tracked SET last_checked = 0, next_check_at = 0');
   await tick(Date.now());
   assert.equal(db.prepare('SELECT last_status FROM tracked').get().last_status, 'error');
   assert.equal((await api('check')).status, 400);
@@ -200,9 +201,9 @@ test('a product that throws during a scheduled check does not block the queue', 
   t.after(() => db.close());
   t.mock.method(globalThis, 'fetch', (raw) => DOH.has(new URL(raw).hostname) ? publicDns(new URL(raw)) : page());
   db.prepare('INSERT INTO tracked (url, last_checked, last_viewed) VALUES (?, 0, ?)').run(product, Date.now());
-  const failing = { DB: { prepare(sql) { if (sql.startsWith('INSERT INTO checks')) throw new Error('D1 down'); return env.DB.prepare(sql); } } };
+  const failing = { DB: { prepare(sql) { if (sql.startsWith('INSERT INTO checks')) throw new Error('D1 down'); return env.DB.prepare(sql); }, batch: (list) => env.DB.batch(list) } };
   let job;
-  await worker.scheduled({ scheduledTime: Date.now() }, failing, { waitUntil(p) { job = p; } });
+  await worker.scheduled({ scheduledTime: Date.now() - (Date.now() % 3600000) }, failing, { waitUntil(p) { job = p; } });
   await job;
   const row = db.prepare('SELECT last_checked, last_status FROM tracked').get();
   assert.ok(row.last_checked > 0);

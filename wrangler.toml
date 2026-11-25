@@ -8,8 +8,14 @@ preview_urls = false
 [build]
 command = "python3 build.py"
 
+# Daily price saving (src/daily.js): a small batch every minute, to stay inside the Free plan's
+# 10 ms CPU and 50 subrequests per run. Housekeeping runs at minute 15 every 6 hours.
 [triggers]
-crons = ["15 * * * *"]
+crons = ["* * * * *"]
+
+# Workers Logs: lets you see each run's one-line summary ({"daily": ...}) in the dashboard.
+[observability]
+enabled = true
 
 [[d1_databases]]
 binding = "DB"

@@ -1,5 +1,5 @@
-// Loads the worker the same way build.py assembles it (shops.js + worker.js + features.js + og.js +
-// og_font.js), with small stand-ins for the build-time constants, and adds named exports so unit
+// Loads the worker the same way build.py assembles it (shops.js + worker.js + features.js + daily.js +
+// og.js + og_font.js), with small stand-ins for the build-time constants, and adds named exports so unit
 // tests can call the pure functions. Nothing here touches the network.
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
@@ -17,7 +17,10 @@ export const NAMES = [
   "sameProduct", "matchShop", "shopFor", "blockedShopFor",
   "rateLimit", "cacheGet", "cachePut",
   "median", "historyPoints", "judge", "publicVerdict",
-  "escHtml", "apiGuard", "isE2E", "verifyTurnstile", "notifyOwnerOfRequest",
+  "escHtml", "apiGuard", "verdictStmt", "shopScore", "track", "cron",
+  "laneFor", "hostKey", "nextCheckAt", "pickBatch", "savedDays", "parseRobots", "robotsAllows", "takealotSeeds",
+  "ensureDailySchema", "backfillLanes", "runDaily", "dueSeedDept", "refreshSeeds", "dailyHousekeeping", "apiDailyStatus",
+  "DAILY_MS", "DAILY_CAPS", "SEED_CAPS", "MAX_FAILS", "MAX_SEEDS", "BOT_UA", "STALE_MS", "CLAIM_MS", "isE2E", "verifyTurnstile", "notifyOwnerOfRequest",
 ];
 
 const source = [
@@ -27,6 +30,7 @@ const source = [
   read("src/shops.js"),
   read("src/worker.js"),
   read("src/features.js"),
+  read("src/daily.js"),
   read("src/og.js"),
   read("src/og_font.js").replace("export const OG_FONT", "const OG_FONT"),
   "const HTML = " + JSON.stringify(read("public/index.html")) + ";",
