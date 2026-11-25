@@ -11,3 +11,7 @@ CREATE TABLE IF NOT EXISTS alerts (id INTEGER PRIMARY KEY AUTOINCREMENT, url TEX
 CREATE INDEX IF NOT EXISTS idx_alerts_url ON alerts(url, status);
 -- Daily price saving (src/daily.js). On an existing database the worker adds the new columns and
 -- these indexes itself (ensureDailySchema), so this file stays safe to run again.
+-- Private stats (src/stats.js): daily totals only. m_seen holds today's salted visitor hashes, m_salt today's salt; both are cleared daily.
+CREATE TABLE IF NOT EXISTS m_counts (day TEXT NOT NULL, metric TEXT NOT NULL, key TEXT NOT NULL DEFAULT '', n INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (day, metric, key));
+CREATE TABLE IF NOT EXISTS m_seen (day TEXT NOT NULL, h TEXT NOT NULL, PRIMARY KEY (day, h));
+CREATE TABLE IF NOT EXISTS m_salt (day TEXT PRIMARY KEY, salt TEXT NOT NULL);
