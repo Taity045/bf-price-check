@@ -295,7 +295,8 @@ for (const [n, o] of [["390", phone()], ["1440", wide(1440)]]) {
   await p.goto(BASE + "/wall"); ok("/wall goes to the home page while off", new URL(p.url()).pathname === "/");
   await p.goto(BASE + "/privacy");
   const txt = await p.textContent("#privacyView");
-  ok("privacy page mentions Turnstile", /Turnstile/.test(txt));
+  ok("privacy page is short", (await p.$$("#privacyView li")).length <= 3 && !(await p.$("#privacyView h2")) && txt.length < 400, txt.length);
+  ok("privacy page says no accounts and no names", /no accounts, no names/.test(txt));
   ok("privacy page has no remove-your-data promise", !/Remove your data|instant|within \d+ (days|hours)/i.test(txt));
   ok("privacy page has no Your rights section", !/Your rights|Information Regulator/.test(txt) && !(await p.$("#privAsk")));
   const all = await p.content();
