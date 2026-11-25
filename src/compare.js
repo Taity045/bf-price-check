@@ -58,6 +58,8 @@ const CMP_SHOPS = [
   { id: "allbeauty", name: "allbeauty", cur: "GBP", hosts: ["allbeauty.com"], kind: "shopify", base: "https://allbeauty.com", sells: ["beauty"] },
   { id: "escentual", name: "Escentual", cur: "GBP", hosts: ["escentual.com"], kind: "shopify", base: "https://escentual.com", sells: ["beauty"] },
   { id: "fenwick", name: "Fenwick", cur: "GBP", hosts: ["fenwick.co.uk"], kind: "shopify", base: "https://fenwick.co.uk", sells: ["appliances", "home", "beauty", "electronics"] },
+  { id: "robertdyas", name: "Robert Dyas", cur: "GBP", hosts: ["robertdyas.co.uk"], kind: "magento", base: "https://www.robertdyas.co.uk", sells: ["appliances", "home"] },
+  { id: "petertyson", name: "Peter Tyson", cur: "GBP", hosts: ["petertyson.co.uk"], kind: "magento", base: "https://petertyson.co.uk", sells: ["electronics", "appliances"] },
   // Bike shops (UK)
   { id: "cyclestore", name: "Cyclestore", cur: "GBP", hosts: ["cyclestore.co.uk"], kind: "shopify", base: "https://www.cyclestore.co.uk", sells: ["cycling"] },
   { id: "biketart", name: "Biketart", cur: "GBP", hosts: ["biketart.com"], kind: "shopify", base: "https://www.biketart.com", sells: ["cycling"] },
