@@ -796,13 +796,38 @@ async function cacheGet(env, k) {
   if (!r || r.exp < now()) return null;
   try { return JSON.parse(r.v); } catch { return null; }
 }
+// Cache writes are never essential: on a D1 error the value is simply not cached. The same value is
+// not written again while more than half its time to live is left (no rows written for it).
 async function cachePut(env, k, v, ttl) {
-  await env.DB.prepare("INSERT INTO cache (k, v, exp) VALUES (?, ?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v, exp = excluded.exp").bind(k, JSON.stringify(v), now() + ttl).run();
+  const exp = now() + ttl;
+  await softWrite("cache", () => env.DB.prepare("INSERT INTO cache (k, v, exp) VALUES (?, ?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v, exp = excluded.exp WHERE cache.v IS NOT excluded.v OR cache.exp < ?")
+    .bind(k, JSON.stringify(v), exp, exp - ttl / 2).run());
 }
-async function rateLimit(env, ip, bucket) {
-  const win = Math.floor(now() / 60000);
-  const r = await env.DB.prepare("INSERT INTO rl (k, n, win) VALUES (?, 1, ?) ON CONFLICT(k) DO UPDATE SET n = CASE WHEN rl.win = excluded.win THEN rl.n + 1 ELSE 1 END, win = excluded.win RETURNING n").bind(bucket + ":" + ip, win).first();
-  return r && r.n > RL[bucket];
+// Rate limits. On Cloudflare they use the Workers Rate Limiting API (bindings RL_* in wrangler.toml,
+// same limits per minute): no D1 writes, so a busy day does not use up the D1 free plan's 100,000
+// rows written per day. Without the binding (unit tests, old config) they fall back to the D1 table
+// `rl`. If the limiter itself fails, the request is allowed (fail open): a limiter outage must not
+// take the site down.
+const RL_BINDING = { check: "RL_CHECK", snap: "RL_SNAP", req: "RL_REQ", verdict: "RL_VERDICT", others: "RL_OTHERS", cmp: "RL_CMP_IP", cmpshop: "RL_CMP_SHOP" };
+async function overLimit(env, bucket, key, limit) {
+  const b = env[RL_BINDING[bucket]];
+  try {
+    if (b && typeof b.limit === "function") return !(await b.limit({ key: bucket + ":" + key })).success;
+    const win = Math.floor(now() / 60000);
+    const r = await env.DB.prepare("INSERT INTO rl (k, n, win) VALUES (?, 1, ?) ON CONFLICT(k) DO UPDATE SET n = CASE WHEN rl.win = excluded.win THEN rl.n + 1 ELSE 1 END, win = excluded.win RETURNING n").bind(bucket + ":" + key, win).first();
+    return !!r && r.n > limit;
+  } catch { return false; }
+}
+const rateLimit = (env, ip, bucket) => overLimit(env, bucket, ip, RL[bucket]);
+// Runs a D1 write that is not essential for the answer. On an error (D1 write limit, D1 busy) it
+// returns `fallback` instead of failing the request.
+let softWriteLogged = 0;
+async function softWrite(what, fn, fallback = undefined) {
+  try { return await fn(); }
+  catch (e) {
+    if (now() - softWriteLogged > 60e3) { softWriteLogged = now(); console.log(JSON.stringify({ d1_write_failed: what, error: String(e && e.message || e).slice(0, 160) })); }
+    return fallback;
+  }
 }
 // via: null for a check a person asked for, "daily" for the scheduled check.
 const checkStmt = (env, canon, cur, via = null) => env.DB.prepare("INSERT INTO checks (url, ts, price, was, currency, source, title, via) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").bind(canon, cur.checked_at, cur.price, cur.was || null, cur.currency || null, cur.source || null, cur.title || null, via);
@@ -912,11 +937,13 @@ async function apiCheck(req, env, ctx) {
   let cached = !!current;
   if (!current) {
     current = await getCurrent(canonInfo, v.url.toString(), host);
-    await cachePut(env, ckey, current, current.status === "ok" ? CHECK_TTL_MS : 10 * 60 * 1000);
-    await recordCheck(env, canonInfo.canon, current);
+    // Saving is extra: if D1 refuses a write (for example the daily write limit), the person still
+    // gets today's price. softWrite logs the failure once per minute.
+    await softWrite("check-cache", () => cachePut(env, ckey, current, current.status === "ok" ? CHECK_TTL_MS : 10 * 60 * 1000));
+    await softWrite("check-save", () => recordCheck(env, canonInfo.canon, current));
   }
-  const tracked = await track(env, canonInfo.canon, v.url.toString(), current);
-  const hist = await storedHistory(env, canonInfo.canon);
+  const tracked = await softWrite("track", () => track(env, canonInfo.canon, v.url.toString(), current), false);
+  const hist = await storedHistory(env, canonInfo.canon).catch(() => ({ checks: [], snaps: [], cc: [] }));
   let verdict = null;
   try { const j = judge(current, hist); verdict = publicVerdict(j); if (tracked && j.verdict) ctx.waitUntil(saveVerdict(env, canonInfo.canon, current.title, j).catch(() => {})); } catch {}
   return json({

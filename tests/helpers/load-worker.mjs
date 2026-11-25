@@ -15,7 +15,7 @@ export const NAMES = [
   "parseJsonLd", "parseMeta", "parseAmazon", "parseDataLayer", "parseMainPriceBlock", "parseFallback",
   "pageAmount", "detectBlock", "extractFromHtml", "takealotBarcode", "takealotApi", "getCurrent",
   "sameProduct", "matchShop", "shopFor", "blockedShopFor",
-  "rateLimit", "cacheGet", "cachePut",
+  "rateLimit", "overLimit", "softWrite", "cacheGet", "cachePut",
   "median", "historyPoints", "judge", "sparseEvidence", "cdxQueries", "publicVerdict",
   "escHtml", "apiGuard", "verdictStmt", "shopScore", "track", "cron",
   "laneFor", "hostKey", "nextCheckAt", "pickBatch", "savedDays", "parseRobots", "robotsAllows", "takealotSeeds",

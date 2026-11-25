@@ -32,6 +32,45 @@ database_id = "65e86f16-42db-4c07-bbd7-20ba0308d47e"
 [[send_email]]
 name = "EMAIL"
 
+# Rate limits per visitor (or per shop for cmpshop), per minute. Workers Rate Limiting API: counts
+# are kept per Cloudflare location and are approximate, and they write nothing to D1.
+# Same numbers as RL in src/worker.js and CMP_* in src/compare.js. namespace_id: any number unique
+# in the account.
+[[ratelimits]]
+name = "RL_CHECK"
+namespace_id = "7101"
+simple = { limit = 20, period = 60 }
+
+[[ratelimits]]
+name = "RL_SNAP"
+namespace_id = "7102"
+simple = { limit = 120, period = 60 }
+
+[[ratelimits]]
+name = "RL_REQ"
+namespace_id = "7103"
+simple = { limit = 5, period = 60 }
+
+[[ratelimits]]
+name = "RL_VERDICT"
+namespace_id = "7104"
+simple = { limit = 40, period = 60 }
+
+[[ratelimits]]
+name = "RL_OTHERS"
+namespace_id = "7105"
+simple = { limit = 20, period = 60 }
+
+[[ratelimits]]
+name = "RL_CMP_IP"
+namespace_id = "7106"
+simple = { limit = 240, period = 60 }
+
+[[ratelimits]]
+name = "RL_CMP_SHOP"
+namespace_id = "7107"
+simple = { limit = 30, period = 60 }
+
 [vars]
 SITE_URL = "https://bf-price-check.tm-deal-lab.workers.dev"
 MAIL_FROM = "no-reply@veldwire.com"
