@@ -136,9 +136,12 @@ function statsTap(req, env, ctx, kind, res) {
         const s = [mInc(env, day, "check"), mInc(env, day, "outcome", outcome), mInc(env, day, "shop", host)];
         if (outcome === "ok") s.push(mInc(env, day, "shop_ok", host));
         await env.DB.batch(s);
-      } else if (kind === "others" && status === 200) {
+      } else if (kind === "compare" && status === 200) {
         const d = await copy.json();
-        await env.DB.batch([mInc(env, day, "event", "compare_search"), ...(d.matches && d.matches.length ? [mInc(env, day, "event", "compare_found")] : [])]);
+        if (d.shops && d.shops.length) await mInc(env, day, "event", "compare_search").run();
+      } else if (kind === "compare_shop" && status === 200) {
+        const d = await copy.json();
+        if (d.status === "match") await mInc(env, day, "event", "compare_found").run();
       } else if (kind === "request" && status === 200) {
         await mInc(env, day, "event", "request_sent").run();
       }
@@ -306,7 +309,7 @@ function statsHtml(d, base = "", phone = false) {
   const outcomeTotal = d.outcomes.reduce((a, o) => a + o.n, 0);
   const OUT = { ok: ["Price read", "o1"], noprice: ["No price found", "o2"], blocked: ["Shop blocked us", "o3"], error: ["Error", "o4"], invalid: ["Bad link", "o5"], rate_limited: ["Rate limited", "o6"] };
   const CLICK = { share: "Share (opened)", share_whatsapp: "Share → WhatsApp", share_copy: "Share → Copy link", share_more: "Share → More apps", save: "Save", compare_open: "Other shop opened (compare)", request_open: "Request a shop (opened)", saved_open: "Saved list opened", shops_open: "Shops list opened", example: "Example link" };
-  const EV = { request_sent: "Shop requests sent", compare_search: "Compare searches", compare_found: "Compare found a match", shared_link_open: "Shared links opened" };
+  const EV = { request_sent: "Shop requests sent", compare_search: "Compare searches", compare_found: "Compare matches found (one per shop row)", shared_link_open: "Shared links opened" };
   const kpi = (label, v, prev, extra = "") => `<div class="kpi"><div class="kl">${label}</div><div class="kv num">${v}</div><div class="ks">${extra}${prev}</div></div>`;
   const updated = new Date(d.generated + M_OFFSET_MS).toISOString().slice(0, 16).replace("T", " ");
   const range = [7, 30, 90].map((n) => `<a href="${base}/?days=${n}"${n === d.days ? ' aria-current="page"' : ""}>${n} days</a>`).join("");

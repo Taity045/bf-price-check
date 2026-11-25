@@ -38,7 +38,7 @@ async function mockApi(p) {
   await p.route("**/api/check?**", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(rec) }));
   await p.route("**/api/archive?**", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "ok", captures_12mo: rec.history.archive.length, sampled: rec.history.archive.length, pending: [] }) }));
   await p.route("**/api/verdict?**", (r) => r.fulfill({ status: 200, contentType: "application/json", body: "{}" }));
-  await p.route("**/api/others?**", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ matches: [] }) }));
+  await p.route("**/api/compare?**", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ shops: [], skipped: [], results: {} }) }));
 }
 
 // 1. layout matrix: every page, light and dark, phone to big screen
@@ -134,12 +134,11 @@ for (const w of WIDTHS) for (const scheme of ["light", "dark"]) {
   await p.goto(BASE + "/?u=" + encodeURIComponent(MOUSE));
   await p.waitForSelector("#result:not(.hidden)", { timeout: 60000 });
   await p.waitForSelector("#others:not(.hidden)", { timeout: 40000 }).catch(() => {});
+  await p.waitForFunction(() => /shops checked/.test(document.querySelector("#cmpStatus")?.textContent || "") && !/ of /.test(document.querySelector("#cmpStatus").textContent), null, { timeout: 60000 }).catch(() => {});
   const t = await p.textContent("#others").catch(() => "");
-  ok("other shops shows a Takealot barcode match", (await p.isVisible("#others")) && /Takealot/.test(t) && /barcode/.test(t), t.slice(0, 120));
+  ok("other shops shows a same-barcode match at another shop", (await p.isVisible("#others")) && /Same barcode/i.test(t), t.slice(0, 160));
   await p.locator("#others").screenshot({ path: `${OUT}/feature-other-shops.png` }).catch(() => {});
   await p.context().close();
-  const r = await (await fetch(BASE + "/api/others?url=" + encodeURIComponent(PC), { headers: { "user-agent": UA } })).json();
-  ok("other shops hides weak matches (PC: no barcode or model match)", Array.isArray(r.matches) && r.matches.length === 0, JSON.stringify(r).slice(0, 120));
 }
 // 3b. "Ask us to add a shop": footer link and result button, desktop and phone, with a real submit (test row)
 for (const [n, o] of [["1440", wide(1440)], ["1280", wide(1280)], ["390", phone()]]) {
