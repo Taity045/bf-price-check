@@ -18,9 +18,10 @@ const CMP_TTL = 12 * 3600e3;          // a shop's answer for one product
 const CMP_ERR_TTL = 20 * 60e3;        // a failed or busy shop is retried sooner
 const CMP_SEARCH_TTL = 6 * 3600e3;    // one search on one shop (shared by all products)
 const CMP_SHOP_PER_MIN = 30;          // searches per shop per minute, all visitors together
+const CMP_SLOW_PER_MIN = 6;           // shops whose robots.txt asks for 10 s between requests (slow: true)
 const CMP_PER_IP_PER_MIN = 240;       // shop calls per visitor per minute (one check makes up to ~20)
 // Bump when the matching rules or identity reading change, so cached answers from older rules are not shown.
-const CMP_VER = "v7";
+const CMP_VER = "v8";
 const CMP_MAX_SEARCHES = 2;           // searches per shop per product
 const CMP_MAX_DETAILS = 3;            // product-detail reads per shop per product (to read barcodes)
 
@@ -53,6 +54,9 @@ const CMP_SHOPS = [
   { id: "dville", name: "Dville Cyclery", cur: "ZAR", hosts: ["dvillecyclery.co.za"], kind: "woo", base: "https://dvillecyclery.co.za", sells: ["cycling"] },
   { id: "bicyclepower", name: "Bicycle Power", cur: "ZAR", hosts: ["bicyclepower.co.za"], kind: "woo", base: "https://bicyclepower.co.za", sells: ["cycling"] },
   { id: "evobikes", name: "Evo Bikes", cur: "ZAR", hosts: ["evobikes.co.za"], kind: "woo", base: "https://evobikes.co.za", sells: ["cycling"] },
+  // Groceries, household and toiletries (South Africa). Both ask for 10 s between requests (Crawl-delay).
+  { id: "pnp", name: "Pick n Pay", cur: "ZAR", hosts: ["pnp.co.za"], kind: "pnp", base: "https://www.pnp.co.za", slow: true, grocer: true, sells: ["groceries", "beauty", "baby", "liquor"] },
+  { id: "clicks", name: "Clicks", cur: "ZAR", hosts: ["clicks.co.za"], kind: "clicks", base: "https://clicks.co.za", slow: true, grocer: true, sells: ["groceries", "beauty", "baby"] },
   { id: "lakeland", name: "Lakeland", cur: "GBP", hosts: ["lakeland.co.uk"], kind: "shopify", base: "https://www.lakeland.co.uk", off: "robots", sells: ["appliances", "home"] },
   // UK
   { id: "allbeauty", name: "allbeauty", cur: "GBP", hosts: ["allbeauty.com"], kind: "shopify", base: "https://allbeauty.com", sells: ["beauty"] },
@@ -61,6 +65,7 @@ const CMP_SHOPS = [
   { id: "robertdyas", name: "Robert Dyas", cur: "GBP", hosts: ["robertdyas.co.uk"], kind: "magento", base: "https://www.robertdyas.co.uk", sells: ["appliances", "home"] },
   { id: "petertyson", name: "Peter Tyson", cur: "GBP", hosts: ["petertyson.co.uk"], kind: "magento", base: "https://petertyson.co.uk", sells: ["electronics", "appliances"] },
   // Bike shops (UK)
+  { id: "morrisons", name: "Morrisons", cur: "GBP", hosts: ["groceries.morrisons.com"], kind: "morrisons", base: "https://groceries.morrisons.com", grocer: true, noFragrance: true, sells: ["groceries", "beauty", "baby", "liquor"] },
   { id: "cyclestore", name: "Cyclestore", cur: "GBP", hosts: ["cyclestore.co.uk"], kind: "shopify", base: "https://www.cyclestore.co.uk", sells: ["cycling"] },
   { id: "biketart", name: "Biketart", cur: "GBP", hosts: ["biketart.com"], kind: "shopify", base: "https://www.biketart.com", sells: ["cycling"] },
   { id: "99bikes", name: "99 Bikes UK", cur: "GBP", hosts: ["99bikes.co.uk"], kind: "shopify", base: "https://www.99bikes.co.uk", sells: ["cycling"] },
@@ -68,6 +73,37 @@ const CMP_SHOPS = [
 // Bike shops we looked at and do not search: Sportsmans Warehouse, Sigma Sports, Halfords, Merlin and Tweeks
 // (robots.txt asks tools not to use their search); Tredz, Leisure Lakes, Pedal On, Westbrook and Mantel
 // (they refuse our requests); Cajees (its product data needs a login).
+// Grocery shops and pharmacies we looked at and do not search (shown on the result, so people know).
+// Their product pages can still be checked (Woolworths, Checkers and Shoprite work as the page checked).
+const CMP_NOT_SEARCHED = {
+  ZAR: [
+    { name: "Woolworths", hosts: ["woolworths.co.za"], why: "robots" },     // robots.txt: Disallow /*searchterm (its search)
+    { name: "Checkers", hosts: ["checkers.co.za", "sixty60.co.za"], why: "browser" },   // search results load only in a browser, behind a bot check (AWS WAF)
+    { name: "Shoprite", hosts: ["shoprite.co.za"], why: "browser" },       // same site as Checkers
+    { name: "Dis-Chem", hosts: ["dischem.co.za"], why: "blocks" },         // refuses our requests (HTTP 403); robots.txt also disallows its search
+    { name: "Makro", hosts: ["makro.co.za"], why: "blocks" },              // bot check (PerimeterX); robots.txt disallows search
+    { name: "Game", hosts: ["game.co.za"], why: "blocks" },                // bot check (PerimeterX); robots.txt disallows search
+  ],
+  GBP: [
+    { name: "Tesco", hosts: ["tesco.com"], why: "blocks" },
+    { name: "Sainsbury's", hosts: ["sainsburys.co.uk"], why: "blocks" },
+    { name: "Asda", hosts: ["asda.com"], why: "blocks" },
+    { name: "Ocado", hosts: ["ocado.com"], why: "blocks" },
+    { name: "Boots", hosts: ["boots.com"], why: "blocks" },
+    { name: "Superdrug", hosts: ["superdrug.com"], why: "blocks" },
+    { name: "Waitrose", hosts: ["waitrose.com"], why: "robots" },
+    { name: "Iceland", hosts: ["iceland.co.uk"], why: "robots" },
+  ],
+};
+const CMP_NOT_SEARCHED_CATS = ["groceries", "beauty", "baby"];
+// Shops' own brands: sold only at that shop, so never the same product at another shop.
+const CMP_OWN_BRAND = /^(woolworths|ww|pnp|pick n pay|no name|pnp no name|checkers|checkers housebrand|housebrand|ritebrand|shoprite|simple truth|forage (?:and|&) feast|clicks|clicks expert|dis ?chem|morrisons|the best|morrisons the best|savers|morrisons savers|tesco|sainsburys|asda|m&s|marks (?:and|&) spencer|waitrose|essential waitrose|boots|superdrug)$/;
+const CMP_OWN_BRAND_START = /^(woolworths|pnp|pick n pay|no name|checkers housebrand|checkers|housebrand|ritebrand|simple truth|forage (?:and|&) feast|clicks|dis-?chem|morrisons|tesco|sainsburys|asda|m&s|waitrose)\b/;
+function cmpOwnBrand(brand, title) {
+  const b = cmpBrand(brand);
+  if (b && CMP_OWN_BRAND.test(b)) return true;
+  return CMP_OWN_BRAND_START.test(cmpNorm(title).replace(/[^a-z0-9& -]/g, ""));
+}
 // off: "nosearch" = no search we can use (the shop still tells us what kind of product its pages are).
 // off: "robots" = the shop's robots.txt asks tools not to use the search we would use, so we don't search it
 // (it can still be the page someone checks). Checked again at run time (cmpRobotsOk), so new rules apply too.
@@ -90,6 +126,8 @@ const CMP_GENERIC = new Set(["portable", "waterproof", "water", "resistant", "bl
 // Words that say nothing about which product it is.
 const CMP_STOP = new Set(["the", "and", "with", "of", "a", "an", "in", "on", "by", "to", "new", "edition", "version", "official", "genuine", "original", "brand", "free", "shipping", "sa", "south", "africa", "local", "stock", "local stock", "model", "series", "colour", "color", "size", "inch", "inches", "gen", "generation", "includes", "including", "incl", "w", "only", "set", "item", "product", "unit", "1pc", "pc", "piece"]);
 const CMP_ACCESSORY = /\b(compatible|replacement|protector|tempered|skins?|decals?|stickers?|refill|refills|spare)\b|\b(case|cover|sleeve|pouch|strap|band|stand|holder|mount|dock|charger|cable|adapter|controller|remote|lens|filter|bag)\s+(for|compatible|to\s+fit)\b|\bfor\s+(apple|samsung|iphone|ipad|airpods|galaxy|ps5|ps4|playstation|xbox|nintendo|switch|macbook|sony|huawei|xiaomi|oppo|garmin|fitbit|gopro|dji|nikon|canon|lg|hisense|tcl)\b/i;
+const CMP_FRAGRANCE = /\b(eau de (parfum|toilette|cologne)|parfum|perfume|edp|edt|cologne|fragrance)\b/;
+const CMP_ACCESSORY_GROCERY = /\b(compatible|replacement|spare)\b|\bfor\s+(apple|samsung|iphone|thermomix|nespresso|dolce gusto|keurig)\b/i;
 const CMP_CONDITION = /\b(refurbished|refurb|renewed|pre[- ]?owned|second[- ]?hand|used|demo|ex[- ]?demo|open[- ]?box|grade\s+[a-c]|parallel\s+import|imported|import|grey\s+import|b-grade|cpo)\b/i;
 // Game or special editions (often a console with a game): the word must be on both sides or neither.
 const CMP_EDITION = /\b(fortnite|call of duty|cod|ea sports|fc ?2\d|fifa|spider-?man|marvel|astro bot|god of war|mario|kart|zelda|pokemon|minecraft|hogwarts|gta|grand theft auto|ghost of|battlefield|flowering|chaos|game ?pass|limited edition|special edition|anniversary|collectors?)\b/gi;
@@ -97,8 +135,10 @@ const cmpEditions = (t) => new Set((cmpNorm(t).match(CMP_EDITION) || []).map((x)
 const CMP_BUNDLE = /\s\+\s|\bbundle\b|\bcombo\b|\bvoucher\b|\b(?<!(?:model|building|car|construction|lego|technic|brick|bricks)\s)kit\b|\bwith\s+(?:game|controller|headset|voucher)|\b\d+\s*(?:x|pack|pk)\s+(?:of\s+)?/i;
 
 function cmpNorm(s) {
-  return decodeEntities(String(s || "")).toLowerCase()
+  return decodeEntities(String(s || "")).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
     .replace(/[\u2019'`´]/g, "")
+    // multipacks: "6x330ml", "4 × 250 ml" -> "6 x 330ml"
+    .replace(/(\d+)\s*[x\u00d7]\s*(?=\d+(?:[.,]\d+)?\s*(?:ml|cl|l|lt|ltr|litres?|g|kg)\b)/g, "$1 x ")
     .replace(/[\u2010-\u2015]/g, "-")
     .replace(/(\d)[,](\d)/g, "$1.$2")
     .replace(/(\d+(?:\.\d+)?)\s*(?:"|''|\u201d|\u2033|-?\s*inch(?:es)?\b|-in\b)/g, " $1in ")
@@ -115,7 +155,7 @@ function cmpNorm(s) {
     .replace(/\bmen(?:s)?\b|\bmale\b/g, " mens ")
     .replace(/\bwom[ae]n(?:s)?\b|\bladies\b|\bfemale\b/g, " womens ")
     .replace(/\b(?:jnr|youth|boys|girls|kid|childrens|children|infants?|toddlers?|grade\s?school|gs|ps|td)\b/g, " kids ")
-    .replace(/\b(\d+(?:\.\d+)?)\s*(gb|tb|mb|mah|wh|kw|w|v|hz|l|lt|ltr|litres?|liters?|ml|kg|g|cm|mm|pcs|pieces|pack|pk|piece)\b/g, " $1$2 ")
+    .replace(/\b(\d+(?:\.\d+)?)\s*(gb|tb|mb|mah|wh|kw|w|v|hz|l|lt|ltr|litres?|liters?|ml|kg|g|cm|mm|pcs|pieces|pack|pk|piece|cl)\b/g, " $1$2 ")
     .replace(/\s+/g, " ").trim();
 }
 const cmpWords = (s) => cmpNorm(s).split(/[\s,()|\[\]{}:;!?*&/]+/).flatMap((t) => t.split(/(?<=[a-z])-(?=[a-z])|-(?=\d+in$)/)).map((t) => t.replace(/^[^a-z0-9.+]+|[^a-z0-9+]+$/g, "")).filter(Boolean);
@@ -155,6 +195,13 @@ function cmpCodesMatch(a, b) {
   return null;
 }
 // Barcodes compare without leading zeros (UPC 12 = EAN 13 = GTIN 14). Shop-internal EAN-13s (prefix 2) are ignored.
+// GS1 check digit (EAN-8, UPC-A, EAN-13, GTIN-14).
+function cmpGtinCheck(g) {
+  const d = String(g).split("").map(Number), n = d.length;
+  let sum = 0;
+  for (let i = 0; i < n - 1; i++) sum += d[i] * ((n - 1 - i) % 2 === 1 ? 3 : 1);
+  return (10 - (sum % 10)) % 10 === d[n - 1];
+}
 const cmpGtin = (g) => { const s = String(g || "").replace(/\D/g, "").replace(/^0+/, ""); return s.length >= 8 && s.length <= 14 && !(s.length === 13 && s[0] === "2") ? s : null; };
 
 function cmpAttrs(title) {
@@ -165,7 +212,7 @@ function cmpAttrs(title) {
     if ((m = t.match(/^(\d+(?:\.\d+)?)(gb|tb)$/))) a.storage.add(+m[1] * (m[2] === "tb" ? 1024 : 1));
     else if ((m = t.match(/^(\d+(?:\.\d+)?)in$/))) a.inch.add(Math.round(+m[1]));
     else if ((m = t.match(/^(\d+(?:\.\d+)?)cm$/))) a.cm.add(Math.round(+m[1]));
-    else if ((m = t.match(/^(\d+(?:\.\d+)?)(l|lt|ltr|litres?|liters?|ml)$/))) a.ml.add(Math.round(+m[1] * (m[2] === "ml" ? 1 : 1000)));
+    else if ((m = t.match(/^(\d+(?:\.\d+)?)(l|lt|ltr|litres?|liters?|ml|cl)$/))) a.ml.add(Math.round(+m[1] * (m[2] === "ml" ? 1 : m[2] === "cl" ? 10 : 1000)));
     else if ((m = t.match(/^(\d+(?:\.\d+)?)(kg|g)$/))) a.g.add(Math.round(+m[1] * (m[2] === "kg" ? 1000 : 1)));
     else if ((m = t.match(/^(\d+(?:\.\d+)?)(w|kw)$/))) a.watt.add(Math.round(+m[1] * (m[2] === "kw" ? 1000 : 1)));
     else if ((m = t.match(/^(\d+)(pcs|pieces|pack|pk|piece)$/))) a.pack.add(+m[1]);
@@ -174,6 +221,7 @@ function cmpAttrs(title) {
     else if (/^\d+$/.test(t)) {
       const nx = w[i + 1] || "";
       if (/^(pack|pk|pcs|pieces|piece)$/.test(nx)) { a.pack.add(+t); i++; }
+      else if (nx === "x" && /^\d+(?:\.\d+)?(ml|cl|l|lt|ltr|litres?|liters?|g|kg)$/.test(w[i + 2] || "")) { a.pack.add(+t); i++; }   // 6 x 330ml
       else a.nums.add(String(+t));
     }
     else if (CMP_COLOUR_SET.has(t)) a.colour.add(CMP_COLOUR_ALIAS[t] || t);
@@ -187,14 +235,14 @@ function cmpAttrs(title) {
 const setEq = (a, b) => a.size === b.size && [...a].every((x) => b.has(x));
 const overlap = (a, b) => [...a].some((x) => b.has(x));
 
-function cmpBrand(b) { return String(b || "").toLowerCase().replace(/&amp;/g, "&").replace(/[^a-z0-9&]+/g, " ").trim() || null; }
+function cmpBrand(b) { return String(b || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/&amp;/g, "&").replace(/[^a-z0-9&]+/g, " ").trim() || null; }
 
 // The product's identity, from the checked page (title, brand, barcode, model number).
 function cmpSourceShopId(canon) { try { const s = cmpShopForHost(new URL(canon).hostname); return s ? s.id : null; } catch { return null; } }
 function cmpIdentity(cur, canon) {
   const title = String(cur.title || "").replace(/\s+/g, " ").trim();
   let brand = cmpBrand(cur.brand);
-  if (brand && /^(generic|unbranded|no brand|other|none|n a)$/.test(brand)) brand = null;
+  if (brand && /^(generic|unbranded|no brand|other|others|other brands?|various|assorted|none|n a)$/.test(brand)) brand = null;
   const titleCodes = cmpCodes(title, brand);
   const codes = cmpCodes(title + " " + (cur.mpn || ""), brand);
   let urlCodes = [];
@@ -202,6 +250,8 @@ function cmpIdentity(cur, canon) {
   let gtin = cmpGtin(cur.gtin);
   // book shops often put the ISBN in the link
   if (!gtin) { try { const m = new URL(canon).pathname.match(/(?:^|[^\d])(97[89]\d{10})(?!\d)/); if (m) gtin = m[1]; } catch {} }
+  // Woolworths names branded products by their barcode: /prod/_/A-7613033745843
+  if (!gtin) { try { const u = new URL(canon); const m = u.pathname.match(/\/A-(\d{8}|\d{12,14})$/); if (m && /(^|\.)woolworths\.co\.za$/.test(u.hostname) && cmpGtinCheck(m[1])) gtin = cmpGtin(m[1]); } catch {} }
   return { title, brand, gtin, gtins: [gtin].filter(Boolean), mpn: cur.mpn || null, codes, titleCodes, urlCodes, price: cur.price || null, currency: cur.currency || null, pageCategory: cur.category ? String(cur.category).slice(0, 160) : null, sourceShop: cmpSourceShopId(canon) };
 }
 
@@ -210,10 +260,14 @@ const CMP_CATS = [
   ["books", /\b(paperback|hardcover|hardback|novel|isbn|book)\b/],
   // before toys/fashion/electronics: a balance bike, a cycling jacket or a bike computer is a bike-shop item
   ["cycling", /\b(bikes?|bicycles?|e-?bikes?|mtb|mountain ?bikes?|road ?bikes?|gravel ?bikes?|bmx|balance bike|hardtail|dual[- ]sus\w*|full suspension|groupset|derailleur|cassette|crankset|chainring|bottom bracket|cycling|cyclist|bike (?:computer|light|lights|helmet|pump|rack|lock|shorts|jersey|shoes|tyre|tire|saddle|stand)|bib ?shorts|cleats|clipless pedals?|inner tube|turbo trainer|smart trainer|garmin edge|wahoo)\b/],
+  // Groceries: food, drinks, household and cleaning, pet food, and the shop's grocery departments
+  // (breadcrumbs: "Beverages > Soft Drinks", "Food Cupboard", "Toiletries"). Before liquor (ginger beer) and
+  // the electrical kinds (dishwasher tablets, oven chips). Not machines (cmpCatOf: CMP_NOT_GROCERY).
+  ["groceries", /\b(groceries|grocery|food cupboard|pantry|beverages?|soft drinks?|cold ?drinks?|cooldrinks?|fizzy drinks?|energy drinks?|juices?|cordials?|squash|mineral water|sparkling water|still water|spring water|coffee|instant coffee|coffee beans|coffee pods|coffee capsules|tea ?bags?|rooibos|hot drinks|hot chocolate|cereals?|oats|muesli|granola|cornflakes|weet-?bix|rusks|biscuits?|cookies|crackers|chocolates?|slabs?|sweets|candy|chewing gum|chips|crisps|snacks?|popcorn|sugar|flour|rice|pasta|spaghetti|noodles|maize meal|mealie meal|sauces?|ketchup|mayonnaise|mayo|chutney|peanut butter|jam|spreads?|margarine|butter|cheese|yoghurts?|yogurts?|custard|jelly|soups?|stock cubes|spices?|seasoning|salt|vinegar|cooking oil|olive oil|sunflower oil|canola oil|baked beans|beans|tuna|pilchards|sardines|corned beef|canned food|tinned|frozen|ice cream|bakery|bread|dairy|fresh milk|long life milk|full cream milk|milk powder|creamer|eggs|ginger beer|root beer|tonic water|soda water|lemonade|cola|household|cleaning|cleaners?|laundry|washing powder|washing liquid|detergents?|fabric softener|fabric conditioner|bleach|dishwashing|dishwasher tablets|dish ?wash|toilet paper|toilet rolls?|tissues|paper towels?|kitchen towels?|serviettes|refuse bags|bin bags|cling ?wrap|foil|disinfectant|surface spray|air fresheners?|insect spray|pet food|dog food|cat food|toiletries|personal care|oral care|toothpaste|mouthwash|dental floss|deodorants?|roll-?on|antiperspirant|body wash|shower gel|bath soap|soap bars?|soap|hand wash|hand soap|sanitary pads|tampons|panty liners|shaving (?:cream|gel|foam)|razor blades|disposable razors|cotton wool|cotton buds|petroleum jelly|aqueous cream|lip balm|wipes|baby wipes|coca-?cola|coke|fanta|sprite|pepsi|stoney|sparletta|appletiser|grapetiser|red bull|monster energy|powerade|energade|nescafe|ricoffy|frisco|jacobs|douwe egberts|lipton|five roses|joko|freshpak|twinings|pg tips|yorkshire tea|milo|nesquik|kelloggs?|jungle oats|bokomo|futurelife|pronutro|cadbury|lindt|ferrero|kit ?kat|oreo|beacon|lays|doritos|pringles|nik naks|willards|heinz|knorr|all gold|lucky star|tastic|spekko|iwisa|white star|albany|sasko|blue ribbon|clover|parmalat|danone|lancewood|rama|flora|stork|crosse (?:and|&) blackwell|mrs balls|royco|aromat|robertsons|maggi|huggies|pampers|kotex|stayfree|lil-?lets|colgate|aquafresh|sensodyne|close-?up|listerine|protex|lifebuoy|palmolive|vaseline|rexona|mitchum|sunlight|omo|ariel|persil|sta-?soft|jik|domestos|harpic|handy andy|mr muscle|dettol|glade|airwick|baygon|walkers|mcvities|kenco|warburtons|hovis|bisto)\b/],
   ["liquor", /\b(whisk(?:e)?y|gin|vodka|wine|brandy|rum|beer|cider|champagne|tequila|liqueur|bourbon|cognac|sherry|port|merlot|shiraz|pinotage|chardonnay|sauvignon|cabernet)\b/],
   ["computer", /\b(laptop|notebook|chromebook|macbook|ssd|nvme|hdd|ddr\d|ram|graphics card|gpu|rtx|gtx|radeon|ryzen|intel core|motherboard|monitor|keyboard|mouse|router|mesh|printer|ink|toner|flash drive|memory card|micro ?sd|webcam|desktop pc|gaming pc|power supply|psu|cpu cooler|nas|ups)\b/],
   ["electronics", /\b(phone|iphone|smartphone|galaxy|pixel|tablet|ipad|airpods|ear ?buds|earphones|headphones|headset|speaker|soundbar|tv|television|oled|qled|ps5|ps4|xbox|nintendo|switch 2|console|smart ?watch|watch|apple watch|fitness tracker|camera|gopro|drone|kindle|power ?bank|charger|bluetooth|projector|e-?reader|tracker|airtag|homepod|echo|chromecast|fire tv)\b/],
-  ["appliances", /\b(air ?fryer|fryer|kettle|toaster|microwave|fridge|refrigerator|freezer|washing machine|washer|tumble dryer|dishwasher|vacuum|blender|mixer|food processor|coffee machine|espresso|nespresso|iron|steamer|heater|fan|air ?con(?:ditioner)?|stove|oven|hob|juicer|slow cooker|pressure cooker|multi ?cooker|hair ?dryer|straightener|shaver|trimmer|toothbrush|purifier|dehumidifier|humidifier)\b/],
+  ["appliances", /\b(air ?fryer|fryer|kettle|toaster|microwave|fridge|refrigerator|freezer|washing machine|washer|tumble dryer|dishwasher|vacuum|blender|mixer|food processor|coffee machine|espresso|nespresso|iron|steamer|heater|fan|air ?con(?:ditioner)?|stove|oven|hob|juicer|slow cooker|pressure cooker|multi ?cooker|rice cooker|hair ?dryer|straightener|shaver|trimmer|electric toothbrush|sonic toothbrush|purifier|dehumidifier|humidifier)\b/],
   ["toys", /\b(lego|toy|toys|doll|barbie|hot wheels|puzzle|board game|nerf|playset|action figure|plush|duplo|playmobil|ride[- ]on|scooter|rc car|remote control car|beyblade|pokemon cards?)\b/],
   ["baby", /\b(pram|stroller|car seat|nappy|nappies|diaper|baby|infant formula|feeding bottle|pacifier|dummy|cot|camping cot|baby monitor)\b/],
   ["fashion", /\b(shoes?|sneakers?|trainers?|boots?|sandals?|slides?|slippers?|heels|loafers?|t-?shirt|tee|shirt|jeans|dress|jacket|hoodie|sweater|jumper|shorts|socks|cap|beanie|tights|leggings|bra|briefs|boxers|trousers|pants|skirt|blazer|coat|tracksuit|joggers|backpack|handbag|wallet|sunglasses|air force|air max|jordan|dunk|yeezy|ultraboost|samba|gazelle|stan smith|chuck taylor|old skool|gel[- ]\w+)\b/],
@@ -221,13 +275,20 @@ const CMP_CATS = [
   ["home", /\b(duvet|pillow|towel|bedding|sheet set|cookware|frying pan|pot set|knife|cutlery|glassware|mug|dinner set|curtain|rug|lamp|mattress|bed|sofa|chair|table|storage|organiser|candle|cushion|braai|gas braai|cooler box)\b/],
 ];
 // Not a bike-shop item even with "bike" in the name.
+const CMP_LIQUOR = /\b(whisk(?:e)?y|gin|vodka|wine|brandy|rum|beer|cider|champagne|tequila|liqueur|bourbon|cognac|sherry|merlot|shiraz|pinotage|chardonnay|sauvignon|cabernet|lager)\b/;
+// Not a grocery item even with a grocery word in the name (a coffee machine, a milk frother, a soap dispenser).
+const CMP_NOT_GROCERY = /\b(machine|maker|grinder|frother|dispenser|appliance|electric|cordless|rechargeable|battery[- ]powered|kettle|fridge|freezer|blender|toaster|microwave|airfryer|air fryer|vacuum|scale|storage container|lunch ?box|cooler box|cooler|tumbler|flask|mug|teapot|tea set|tea towel|coffee table|table|chair|cooker|fryer|grater|slicer|knife|knives|basket|cookbook|book|novel|lego|toy|doll|disney|figure|puzzle|playset|costume|t-?shirt|hoodie|socks|phone case|laptop|monitor|speaker|headphones|earbuds|tv)\b/;
 const CMP_NOT_CYCLING = /\b(exercise|spin|stationary|indoor|kids?'? ride[- ]on|motor ?bike|motorbike|motorcycle|dirt ?bike|pit ?bike|quad)\b/;
 function cmpCatOf(text) {
   const t0 = cmpNorm(text || "");
   if (!t0) return null;
   // also singular words: breadcrumbs say "Air Fryers", "Kettles"
   const t = t0 + " | " + t0.replace(/\b([a-z]{3,}?)(?:es|s)\b/g, (w, a) => (/(ss|us|is)$/.test(w) ? w : w.endsWith("es") && /(sh|ch|x|ss)$/.test(a) ? a : w.slice(0, -1)));
-  for (const [cat, re] of CMP_CATS) if (re.test(t) && !(cat === "cycling" && CMP_NOT_CYCLING.test(t))) return cat;
+  for (const [cat, re] of CMP_CATS) {
+    if (!re.test(t) || (cat === "cycling" && CMP_NOT_CYCLING.test(t))) continue;
+    if (cat === "groceries" && (CMP_NOT_GROCERY.test(t) || CMP_LIQUOR.test(t.replace(/\b(?:ginger|root) beer\b|\bnon-?alcoholic\b[^|]*/g, " ")))) continue;   // rum and cola is a drink for the liquor shop
+    return cat;
+  }
   return null;
 }
 // The title, then the shop's own product category (structured data, breadcrumbs), then the kind of
@@ -237,6 +298,9 @@ function cmpCategory(id) {
   const fromPage = cmpCatOf(id.pageCategory), fromTitle = cmpCatOf(id.title);
   // the title's words first; a shop's breadcrumbs are broad ("Home & Garden") except a bike shop's
   if (fromPage === "cycling" && !CMP_NOT_CYCLING.test(cmpNorm(id.title))) return "cycling";
+  // a grocery department (Beverages, Food Cupboard, Toiletries) wins over a title word of another kind
+  // ("Galaxy" chocolate is not a phone, "Pampers Pants" are not trousers), but not for a machine
+  if (fromPage === "groceries" && !["books", "cycling", "liquor", "beauty", "baby"].includes(fromTitle) && !CMP_NOT_GROCERY.test(cmpNorm(id.title))) return "groceries";
   if (fromTitle) return fromTitle;
   if (fromPage) return fromPage;
   const from = id.sourceShop ? cmpShopById(id.sourceShop) : null;
@@ -246,7 +310,7 @@ function cmpCategory(id) {
 // How to name the shops we searched for a kind of product.
 // What to call the specialist shops for a kind of product ("5 bike shops"); others: "shops that sell …".
 const CMP_CAT_SHOP = { cycling: "bike shop", books: "book shop", toys: "toy shop", beauty: "beauty shop", computer: "computer shop" };
-const CMP_CAT_NOUN = { cycling: "bikes and cycling gear", computer: "computer gear", electronics: "electronics", appliances: "appliances", toys: "toys", baby: "baby products", fashion: "fashion and sportswear", beauty: "beauty products", home: "homeware", books: "books", liquor: "drinks" };
+const CMP_CAT_NOUN = { groceries: "groceries and toiletries", cycling: "bikes and cycling gear", computer: "computer gear", electronics: "electronics", appliances: "appliances", toys: "toys", baby: "baby products", fashion: "fashion and sportswear", beauty: "beauty products", home: "homeware", books: "books", liquor: "drinks" };
 
 // Which shops to search for this product (same currency, not the shop it came from).
 // Only shops that sell this kind of product; when we can't tell the kind, only general shops (sells "*").
@@ -255,6 +319,11 @@ function cmpPlan(id, sourceHost, currency) {
   if (from && !id.sourceShop) id = { ...id, sourceShop: from.id };
   const cat = cmpCategory(id);
   const shops = [], skipped = [];
+  // grocery shops and pharmacies we can't search, named on the result (not the shop this page is from)
+  const h = stripWww(String(sourceHost || "").toLowerCase());
+  const notSearched = CMP_NOT_SEARCHED_CATS.includes(cat) ? (CMP_NOT_SEARCHED[currency] || []).filter((x) => !x.hosts.some((d) => h === d || h.endsWith("." + d))).map(({ name, why }) => ({ name, why })) : [];
+  // a shop's own brand (PnP, Checkers Housebrand, Woolworths, Clicks…) is sold only there: nothing to compare
+  if (!id.gtin && cmpOwnBrand(id.brand, id.title)) return { category: cat, noun: cat ? CMP_CAT_NOUN[cat] || null : null, shopNoun: null, specialists: 0, shops: [], skipped: [], notSearched: [], ownBrand: true };
   for (const s of CMP_SHOPS) {
     if (from && s.id === from.id) continue;
     if (s.off) continue;
@@ -263,18 +332,20 @@ function cmpPlan(id, sourceHost, currency) {
     const general = s.sells.includes("*");
     // a brand's own shop sells that brand's products, whatever kind they are
     if (!general && !(cat && s.sells.includes(cat)) && !s.brands) { skipped.push({ id: s.id, name: s.name, why: "category" }); continue; }
+    // a supermarket that sells toiletries but not perfume
+    if (s.noFragrance && cat === "beauty" && CMP_FRAGRANCE.test(cmpNorm(id.title))) { skipped.push({ id: s.id, name: s.name, why: "category" }); continue; }
     shops.push({ id: s.id, name: s.name, general });
   }
   // Specialist shops first: they are the most likely to have it.
   shops.sort((a, b) => a.general - b.general);
   const specialists = shops.filter((s) => !s.general).length;
-  return { category: cat, noun: cat ? CMP_CAT_NOUN[cat] || null : null, shopNoun: cat ? CMP_CAT_SHOP[cat] || null : null, specialists, shops: shops.map(({ id, name, general }) => ({ id, name, general })), skipped };
+  return { category: cat, noun: cat ? CMP_CAT_NOUN[cat] || null : null, shopNoun: cat ? CMP_CAT_SHOP[cat] || null : null, specialists, shops: shops.map(({ id, name, general }) => ({ id, name, general })), skipped, notSearched };
 }
 
 // Search words: brand + the words that name the product (no colours, no filler), at most 7 words.
 function cmpQuery(id) {
   const words = [];
-  const brand = id.brand && !cmpNorm(id.title).includes(id.brand) ? id.brand : null;
+  const brand = id.brand && !cmpNorm(id.title).replace(/-/g, " ").includes(id.brand) ? id.brand : null;
   if (brand) words.push(brand);
   for (const t of cmpNorm(id.title).replace(/[()\[\]|,:;!?*"]/g, " ").split(/[\s/]+/)) {
     const c = t.replace(/^[^a-z0-9]+|[^a-z0-9+]+$/g, "");
@@ -287,6 +358,16 @@ function cmpQuery(id) {
   return words.join(" ");
 }
 
+// Brand and up to two naming words, without the size (some grocery searches find nothing with it).
+function cmpShortQuery(id) {
+  const brand = id.brand || "", bw = cmpWords(brand);
+  const words = cmpWords(id.title).filter((w) => !bw.includes(w) && !CMP_STOP.has(w) && !CMP_GROCERY_FILLER.has(w) && !/\d/.test(w) && w !== "x" && w.length > 1);
+  const lead = brand && !cmpNorm(id.title).includes(cmpNorm(brand)) ? [cmpNorm(brand)] : [];
+  const tw = cmpWords(id.title);
+  // keep the brand words where the title has them (title start), then two more
+  const head = lead.length ? lead : tw.filter((w) => bw.includes(w));
+  return [...head, ...words.slice(0, 2)].join(" ").trim();
+}
 const CMP_BIKE_WORDS = new Set(["bike", "bikes", "bicycle", "bicycles", "carbon", "alloy", "aluminium", "aluminum", "road", "mountain", "gravel", "trail", "enduro", "xc", "cross", "country", "hardtail", "full", "suspension", "dual", "sus", "electric", "e-bike", "ebike", "e-mtb", "emtb", "mtb", "hybrid", "commuter", "city", "kids", "mens", "womens", "unisex", "frame", "disc", "29er", "650b", "27.5", "in", "with"]);
 function cmpCoreQuery(id) {
   return cmpQuery(id).split(" ").filter((w) => !CMP_BIKE_WORDS.has(w) && !/^(19|20)\d\d$/.test(w) && !/^my\d\d$/.test(w)).slice(0, 5).join(" ");
@@ -306,11 +387,16 @@ function cmpMatch(src, cand, opts = {}) {
   const brandInName = sb && (cmpHasWord(cn, sb) || cmpHasWord(cTitle.toLowerCase(), sb) || sb.split(" ").some((w) => w.length >= 3 && (cmpHasWord(cn, w) || cmpHasWord(cTitle.toLowerCase(), w))));
   if (sb && cb && sb !== cb && !cb.includes(sb) && !sb.includes(cb) && !brandInName) return { level: null, why: "different brand" };
   if (sb && !cb && !brandInName) return { level: null, why: "brand not in name" };
-  if (CMP_ACCESSORY.test(cn) && !CMP_ACCESSORY.test(sn)) return { level: null, why: "accessory" };
+  // (groceries: "Skin Soft" nappies and "Refill" packs are not accessories; a refill is caught as another word)
+  const acc = opts.grocery ? CMP_ACCESSORY_GROCERY : CMP_ACCESSORY;
+  if (acc.test(cn) && !acc.test(sn)) return { level: null, why: "accessory" };
   if (CMP_CONDITION.test(cn) && !CMP_CONDITION.test(sn)) return { level: null, why: "used, refurbished or imported" };
   if (CMP_BUNDLE.test(cTitle) && !CMP_BUNDLE.test(src.title)) return { level: null, why: "bundle" };
   if (!setEq(cmpEditions(src.title), cmpEditions(cTitle))) return { level: null, why: "different edition" };
-  const A = cmpAttrs(src.title), B = cmpAttrs(cTitle);
+  // groceries: "soft drink" is a plain describing phrase ("Nivea Soft" is a name, so not "soft" alone)
+  const gT = (t) => (opts.grocery ? String(t).replace(/\bsoft[\s-]+drinks?\b/gi, "drink") : t);
+  const A = cmpAttrs(gT(src.title)), B = cmpAttrs(gT(cTitle));
+  if (opts.grocery) { const g = cmpGroceryCheck(src, cand, A, B); if (g) return { level: null, why: g }; }
   for (const k of ["storage", "inch", "ml", "g", "pack", "year", "gender"]) if (A[k].size && B[k].size && !setEq(A[k], B[k])) return { level: null, why: "different " + k };
   // A bike's model year changes the bike (parts, price): when the page names a year, the other shop must too.
   if (A.year.size && !B.year.size && cmpCategory(src) === "cycling") {
@@ -348,20 +434,44 @@ function cmpMatch(src, cand, opts = {}) {
   // the other shop names a size this page does not (a page with several sizes): we can't tell which size this price is for
   for (const k of ["storage", "ml", "g"]) if (B[k].size && !A[k].size) return { level: null, why: "size not on this page" };
   const isCode = (w) => /\d/.test(w) && /[a-z]/.test(w) && w.length >= 5;
-  const core = [...A.words].filter((w) => w !== sb && !sb.split(" ").includes(w) && !CMP_GENERIC.has(w) && !isCode(w));
+  const core = [...A.words].filter((w) => w !== sb && !sb.split(" ").includes(w) && !CMP_GENERIC.has(w) && !isCode(w) && !(opts.grocery && CMP_GROCERY_FILLER.has(w)));
   // a product line named by a variant word and a number (JBL Flip 7) is enough; otherwise it needs a name word
-  if (!core.length && !(A.variant.size && A.nums.size)) return { level: null, why: "name too short" };
+  // groceries: brand and exact pack size are enough when the other shop's name adds only packaging words
+  const groceryShort = opts.grocery && (A.ml.size || A.g.size);
+  if (!core.length && !(A.variant.size && A.nums.size) && !groceryShort) return { level: null, why: "name too short" };
   const missing = core.filter((w) => !B.words.has(w) && !cmpHasWord(cn, w));
   if (missing.length) return { level: null, why: "missing words: " + missing.slice(0, 3).join(", ") };
   // the candidate may add plain describing words, but not more than a few
   const extra = [...B.words].filter((w) => !A.words.has(w) && !cmpHasWord(sn, w) && w !== cb && !(cb && cb.split(" ").includes(w)) && !CMP_GENERIC.has(w) && !isCode(w));
   if (extra.length > 6) return { level: null, why: "too many other words" };
+  // groceries: any other word can be another flavour or kind (Zero, Light, Cherry, Mild, Refill): no match
+  if (opts.grocery) { const ex = extra.filter((w) => !CMP_GROCERY_FILLER.has(w)); if (ex.length) return { level: null, why: "other words: " + ex.slice(0, 3).join(", ") }; }
   const specs = A.storage.size + A.inch.size + A.ml.size + A.g.size + A.nums.size;
   if (!specs && core.length < 2 && !A.variant.size) return { level: null, why: "name too general" };
+  if (opts.grocery && !(A.ml.size || A.g.size)) return { level: null, why: "no pack size" };
   if (ratio < 0.5 || ratio > 2) return { level: null, why: "price far off" };
   return { level: "name" };
 }
 const CMP_RANK = { barcode: 3, model: 2, name: 1 };
+// Words a grocery name may add without being another product (packaging and plain describing words).
+const CMP_GROCERY_FILLER = new Set(["drink", "drinks", "cooldrink", "beverage", "bottle", "bottles", "plastic", "pet", "can", "cans", "tin", "tins", "tinned", "jar", "pouch", "carton", "box", "bag", "original", "taste", "regular", "classic", "energy", "each", "ea", "single", "multipack", "value"]);
+// Groceries: the same pack size and the same number in a multipack, and not a shop's own brand.
+// Returns why it is not the same product, or null.
+function cmpGroceryCheck(src, cand, A, B) {
+  if (cmpOwnBrand(cand.brand, cand.title)) return "shop's own brand";
+  const pa = A.pack.size ? A.pack : new Set([1]), pb = B.pack.size ? B.pack : new Set([1]);
+  if (!setEq(pa, pb)) return "different pack";
+  for (const k of ["ml", "g"]) if (A[k].size && B[k].size && !setEq(A[k], B[k])) return "different size";
+  if ((A.ml.size && B.g.size && !B.ml.size) || (A.g.size && B.ml.size && !B.g.size)) return "different size";
+  return null;
+}
+// A candidate worth reading the barcode of: same brand in the name, same pack size and multipack.
+function cmpGroceryClose(src, c) {
+  const A = cmpAttrs(src.title), B = cmpAttrs(c.title), cn = cmpNorm(c.title);
+  const sb = src.brand;
+  const brandIn = !sb || cmpHasWord(cn, sb) || sb.split(" ").some((w) => w.length >= 3 && cmpHasWord(cn, w));
+  return brandIn && !cmpGroceryCheck(src, c, A, B) && (A.ml.size || A.g.size) && (setEq(A.ml, B.ml) && setEq(A.g, B.g));
+}
 const cmpShape = (c) => c.replace(/[a-z]/g, "a").replace(/\d/g, "9");
 function cmpCodesConflict(a, b) {
   if (!a.length || !b.length) return false;
@@ -489,6 +599,39 @@ const CMP_SEARCH = {
       return { title: p.productName, brand: p.brand, price, was, url: p.link && absUrl(shop.base, p.link), in_stock: avail, gtins };
     }).filter((x) => x.title && x.url && x.price);
   },
+  // Pick n Pay: the public product search its own site calls (SAP Commerce OCC, POST, a few fields only).
+  // price.value is the shelf price; a Smart Shopper price is shown only as a member price.
+  async pnp(shop, q) {
+    const fields = "products(code,name,url,price(FULL),stock(FULL),available,potentialPromotions(FULL))";
+    const d = await cmpJson(`${shop.base}/pnphybris/v2/pnp-spa/products/search?query=${encodeURIComponent(q)}&fields=${encodeURIComponent(fields)}&pageSize=12&storeCode=${PNP_STORE}`, { method: "POST", body: "{}", headers: { "content-type": "application/json" } });
+    return ((d && d.products) || []).map((p) => cmpPnpItem(shop, p)).filter((x) => x && x.title && x.url && x.price);
+  },
+  // Clicks: the JSON its search page loads (SAP Commerce). The brand is separate from the name.
+  // price.value is the regular shelf price (promotions such as "2 for R95" or ClubCard 10% are separate).
+  async clicks(shop, q) {
+    const d = await cmpJson(`${shop.base}/search/results?q=${encodeURIComponent(q + ":relevance")}&page=0`);
+    return ((d && d.results) || []).slice(0, 20).map((p) => {
+      const pr = p.price || {};
+      if (pr.currencyIso && pr.currencyIso !== shop.cur) return null;
+      const brand = p.brand ? decodeEntities(String(p.brand)).trim() : null, name = decodeEntities(String(p.name || "")).trim();
+      const title = brand && !cmpNorm(name).startsWith(cmpNorm(brand)) ? brand + " " + name : name;
+      const st = ((p.stock || {}).stockLevelStatus || {}).code;
+      return { title, brand, price: parsePrice(pr.value), was: null, url: p.url ? absUrl(shop.base, p.url) : null, in_stock: st !== "outOfStock", gtins: [] };
+    }).filter((x) => x && x.title && x.url && x.price);
+  },
+  // Morrisons: the search page's own data (window.__INITIAL_STATE__ products). Prices in GBP with VAT.
+  // "price.current" is the price for everyone ("Now £3.50, Was £5.25"); a More Card price is shown only as a member price.
+  async morrisons(shop, q) {
+    const html = await cmpHtml(`${shop.base}/search?q=${encodeURIComponent(q).replace(/%20/g, "+")}`, { timeout: 15000 });
+    const i = html.indexOf("window.__INITIAL_STATE__=");
+    if (i < 0) throw new CmpError("no data", "error");
+    const j = html.indexOf("</script>", i);
+    let d; try { d = JSON.parse(html.slice(i + 25, j).trim().replace(/;$/, "")); } catch { throw new CmpError("no data", "error"); }
+    const links = {};
+    for (const m of html.matchAll(/href="(\/products\/[a-z0-9-]+\/(\d{5,12}))"/g)) links[m[2]] = m[1];
+    const ents = Object.values((((d.data || {}).products || {}).productEntities) || {});
+    return ents.slice(0, 24).map((p) => cmpMorrisonsItem(shop, p, links)).filter((x) => x && x.title && x.url && x.price);
+  },
   async ldlist(shop, q) {
     const html = await cmpHtml(shop.search.replace("{q}", encodeURIComponent(q)));
     const out = [];
@@ -509,8 +652,47 @@ const CMP_SEARCH = {
     return out.filter((x) => x.title && x.url && x.price);
   },
 };
+function cmpPnpMember(promos) {
+  for (const x of promos || []) {
+    if (!x || x.promotionDisplayType !== "SMART_SHOPPER") continue;
+    const t = now(), st = Date.parse(String(x.startDate || "").replace(/([+-]\d\d)(\d\d)$/, "$1:$2")), en = Date.parse(String(x.endDate || "").replace(/([+-]\d\d)(\d\d)$/, "$1:$2"));
+    if ((st && t < st) || (en && t > en)) continue;
+    const m = String(x.promotionTextMessage || x.description || "").match(/^\s*1\s+for\s+R\s?(\d[\d,]*(?:\.\d{2})?)/i);
+    if (m) return { label: "Smart Shopper price", price: parsePrice(m[1].replace(/,/g, "")) };
+  }
+  return null;
+}
+function cmpPnpItem(shop, p) {
+  const pr = (p && p.price) || {};
+  if (pr.currencyIso && pr.currencyIso !== shop.cur) return null;
+  const price = parsePrice(pr.value), old = parsePrice(pr.oldPrice);
+  const st = String(((p.stock || {}).stockLevelStatus) || "");
+  const member = cmpPnpMember(p.potentialPromotions);
+  return { title: decodeEntities(String(p.name || "")).trim(), brand: null, price, was: old && price && old > price ? old : null, url: p.url ? absUrl(shop.base, String(p.url)) : null,
+    in_stock: p.available !== false && !/outofstock/i.test(st), gtins: [], code: p.code || null, member: member && member.price && member.price < price ? member : null };
+}
+function cmpMorrisonsItem(shop, p, links) {
+  const pr = (p && p.price) || {}, cur = pr.current || {}, orig = pr.original || {};
+  if ((cur.currency && cur.currency !== shop.cur) || !p.retailerProductId || !links[p.retailerProductId]) return null;
+  let price = parsePrice(cur.amount), was = parsePrice(orig.amount);
+  let member = null;
+  // a More Card price is for card holders only: show the price for everyone, and the card price beside it
+  if (was && price && was > price && (p.offers || []).some((o) => /more card/i.test(String(o && o.description || "")) && /now|£/i.test(String(o.description)) && !/meal deal|buy \d|any \d/i.test(String(o.description)))) { member = { label: "More Card price", price }; price = was; was = null; }
+  let title = decodeEntities(String(p.name || "")).replace(/\s+/g, " ").trim();
+  const size = p.size && p.size.value ? String(p.size.value).trim() : "";
+  if (size && !cmpNorm(title).replace(/\s+/g, "").includes(cmpNorm(size).replace(/\s+/g, ""))) title += " " + size;
+  return { title, brand: p.brand || null, price, was: was && price && was > price ? was : null, url: absUrl(shop.base, links[p.retailerProductId]), in_stock: p.available !== false, gtins: [], member };
+}
 // Extra reads that give a candidate's barcode (and the exact price) before it is accepted.
 const CMP_DETAIL = {
+  async pnp(shop, c) {
+    if (!c.code || !/^[\w]{6,30}$/.test(c.code)) return null;
+    const fields = "code,name,brand,price(FULL),stock(FULL),classifications(FULL),potentialPromotions(FULL)";
+    const d = await cmpJson(`${shop.base}/pnphybris/v2/pnp-spa/products/${encodeURIComponent(c.code)}?fields=${encodeURIComponent(fields)}&storeCode=${PNP_STORE}`);
+    const f = pnpFacts(d), it = cmpPnpItem(shop, d);
+    if (!it) return null;
+    return { gtins: [f.barcode].filter(Boolean), price: it.price, was: it.was, brand: f.brand || d.brand || null, member: it.member };
+  },
   async takealot(shop, c) { const d = await takealotApi(c.id); if (d.error) return null; return { gtins: [d.gtin].filter(Boolean), price: d.price, was: d.was || null, title: d.title, brand: d.brand }; },
   async shopify(shop, c) {
     if (!c.handle) return null;
@@ -553,6 +735,8 @@ function cmpApplyDetail(id, c, d) {
     return;
   }
   if (d.gtins) c.gtins = d.gtins;
+  if (d.member !== undefined) c.member = d.member;
+  if (d.brand && !c.brand) c.brand = d.brand;
   if (d.price) { c.price = d.price; c.range = false; }
   if (d.was) c.was = d.was;
   if (d.mpn && !c.mpn) c.mpn = d.mpn;
@@ -563,10 +747,12 @@ function cmpApplyDetail(id, c, d) {
 const CMP_ROBOTS_TOKEN = "DealOrDud-PriceCompare";
 function cmpRobotsTargets(shop) {
   const ex = { takealot: ["https://api.takealot.com", "/rest/v-1-11-0/searches/products?qsearch=x"], loot: [shop.base, "/search?cat=b&terms=x"], evetech: [shop.base, "/search?query=x"],
-    shopify: [shop.base, "/search/suggest.json?q=x&resources%5Btype%5D=product"], magento: [shop.base, "/graphql?query=x"], woo: [shop.base, "/wp-json/wc/store/v1/products?search=x"], vtex: [shop.base, "/api/catalog_system/pub/products/search?ft=x"] }[shop.kind];
+    shopify: [shop.base, "/search/suggest.json?q=x&resources%5Btype%5D=product"], magento: [shop.base, "/graphql?query=x"], woo: [shop.base, "/wp-json/wc/store/v1/products?search=x"], vtex: [shop.base, "/api/catalog_system/pub/products/search?ft=x"],
+    pnp: [shop.base, "/pnphybris/v2/pnp-spa/products/search?query=x"], clicks: [shop.base, "/search/results?q=x"], morrisons: [shop.base, "/search?q=x"] }[shop.kind];
   const out = ex ? [ex] : [];
   if (shop.kind === "ldlist" && shop.search) { const u = new URL(shop.search.replace("{q}", "x")); out.push([u.origin, u.pathname + u.search]); }
   if (shop.kind === "shopify") out.push([shop.base, "/products/x.js"]);
+  if (shop.kind === "pnp") out.push([shop.base, "/pnphybris/v2/pnp-spa/products/x"]);
   return out;
 }
 async function cmpRobotsRules(env, origin) {
@@ -606,7 +792,11 @@ async function cmpSearchShop(env, shop, id) {
   // searches (WooCommerce) need every word to be in the name, so search the brand and model first.
   if (cat === "cycling") queries.push(cmpCoreQuery(id));
   queries.push(cmpQuery(id));
+  // Groceries: shop searches often find nothing for a long name with the size; also try brand and name only.
+  const grocery = cat === "groceries" || cat === "baby" || (!!shop.grocer && cat === "beauty");
+  if (grocery) queries.push(cmpShortQuery(id));
   const fashion = cat === "fashion";
+  const mopts = { noNameMatch: fashion, grocery };
   let best = null, searched = 0, details = 0, lastErr = null, candidates = 0;
   const tried = new Set();
   for (const q of queries) {
@@ -616,29 +806,36 @@ async function cmpSearchShop(env, shop, id) {
     const key = `cmps-v1:${shop.id}:${q.toLowerCase()}`;
     list = await cacheGet(env, key);
     if (!list) {
-      if (await cmpShopBusy(env, shop.id)) { lastErr = new CmpError("busy", "busy"); break; }
+      if (await cmpShopBusy(env, shop)) { lastErr = new CmpError("busy", "busy"); break; }
       searched++;
       try { list = await CMP_SEARCH[shop.kind](shop, q); await cachePut(env, key, list, CMP_SEARCH_TTL); }
       catch (e) { lastErr = e instanceof CmpError ? e : new CmpError(/timed? ?out|abort/i.test(String(e)) ? "timeout" : "failed", "error"); continue; }
     }
     candidates += list.length;
-    for (const c of list) {
-      let m = cmpMatch(id, c, { noNameMatch: fashion });
+    // groceries with a barcode: read the barcodes of the closest candidates first (same brand and pack size)
+    const close = grocery && id.gtin ? new Set(list.filter((c) => cmpGroceryClose(id, c))) : null;
+    // (closest name first: fewest words that are not in the product's name)
+    const sw = new Set(cmpWords(id.title)), extra = (c) => cmpWords(c.title).filter((w) => !sw.has(w)).length;
+    const order = close && close.size ? [...list].sort((a, b) => (close.has(b) - close.has(a)) || (close.has(a) ? extra(a) - extra(b) : 0)) : list;
+    for (const c of order) {
+      let m = cmpMatch(id, c, mopts);
       // A plausible candidate without a barcode: read its details once to confirm (or rule out) the barcode.
       const detail = CMP_DETAIL[shop.kind];
       // (matched by model or name: confirm by barcode or get the exact price; found by a barcode search: check it)
       const byBarcodeSearch = q === id.gtin && list.indexOf(c) < 2;
       const soft = !m.level && (m.why === "missing spec" || c.range);
-      const worth = detail && details < CMP_MAX_DETAILS && !c.detailed && ((!(c.gtins || []).length && ((m.level && (id.gtin || c.range)) || byBarcodeSearch)) || (soft && !/brand|accessory|bundle|used|variant|model/.test(m.why || "")));
+      const worth = detail && details < CMP_MAX_DETAILS && !c.detailed && ((!(c.gtins || []).length && ((m.level && (id.gtin || c.range)) || byBarcodeSearch || (close && close.has(c)))) || (soft && !/brand|accessory|bundle|used|variant|model/.test(m.why || "")));
+      if (worth && shop.slow && await cmpShopBusy(env, shop)) continue;
       if (worth) {
         details++;
         try {
           const d = await detail(shop, c);
-          if (d) { cmpApplyDetail(id, c, d); m = cmpMatch(id, c, { noNameMatch: fashion }); }
+          if (d) { cmpApplyDetail(id, c, d); m = cmpMatch(id, c, mopts); }
         } catch {}
       }
       if (!m.level || !c.price || c.range) continue;
-      const r = { shop: shop.id, name: shop.name, title: c.title, price: c.price, was: c.was && c.was > c.price ? c.was : null, currency: shop.cur, url: c.url, in_stock: c.in_stock !== false, level: m.level, code: m.code || null, multi: !!c.multi };
+      const r = { shop: shop.id, name: shop.name, title: c.title, price: c.price, was: c.was && c.was > c.price ? c.was : null, currency: shop.cur, url: c.url, in_stock: c.in_stock !== false, level: m.level, code: m.code || null, multi: !!c.multi,
+        member: c.member && c.member.price && c.member.price < c.price ? { label: c.member.label, price: c.member.price } : null };
       if (!best || CMP_RANK[r.level] > CMP_RANK[best.level] || (CMP_RANK[r.level] === CMP_RANK[best.level] && (r.in_stock && !best.in_stock || (r.in_stock === best.in_stock && r.price < best.price)))) best = r;
     }
     if (best && best.level !== "name") break;
@@ -649,7 +846,7 @@ async function cmpSearchShop(env, shop, id) {
 }
 
 // Rate Limiting API on Cloudflare, D1 table `rl` without it (see overLimit in worker.js).
-const cmpShopBusy = (env, shopId) => overLimit(env, "cmpshop", shopId, CMP_SHOP_PER_MIN);
+const cmpShopBusy = (env, shop) => shop.slow ? overLimit(env, "cmpslow", shop.id, CMP_SLOW_PER_MIN) : overLimit(env, "cmpshop", shop.id, CMP_SHOP_PER_MIN);
 const cmpIpLimited = (env, ip) => overLimit(env, "cmp", ip, CMP_PER_IP_PER_MIN);
 
 // The identity of a checked product (cached). For Shopify shops the product's own .js gives the barcode.
@@ -699,7 +896,7 @@ async function apiCompare(req, env) {
     const rows = await env.DB.prepare(`SELECT k, v, exp FROM cache WHERE k IN (${keys.map(() => "?").join(",")})`).bind(...keys).all();
     for (const r of rows.results || []) if (r.exp > now()) { try { const v = JSON.parse(r.v); results[v.shop] = v; } catch {} }
   }
-  return json({ product: { title: id.title, brand: id.brand, gtin: id.gtin, codes: id.codes, currency: id.currency, category: plan.category }, noun: plan.noun, shopNoun: plan.shopNoun, specialists: plan.specialists, shops: plan.shops, skipped: plan.skipped, results, reason: plan.shops.length ? null : "no shops" });
+  return json({ product: { title: id.title, brand: id.brand, gtin: id.gtin, codes: id.codes, currency: id.currency, category: plan.category }, noun: plan.noun, shopNoun: plan.shopNoun, specialists: plan.specialists, shops: plan.shops, skipped: plan.skipped, notSearched: plan.notSearched || [], results, reason: plan.ownBrand ? "own brand" : plan.shops.length ? null : "no shops" });
 }
 
 // GET /api/compare/shop?url=&shop=  -> one shop's answer

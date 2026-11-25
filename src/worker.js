@@ -694,7 +694,13 @@ async function getCurrent(canonInfo, origUrl, verifiedHost, agent) {
     if (pg.status >= 400) return { ...res, status: "error", http: pg.status, message: `The store answered HTTP ${pg.status}.` };
     const ex = extractFromHtml(pg.html, host);
     const pr = rd ? readPage(rd, pg.html) : null;
-    if (pr && pr.price) { ex.price = pr.price; ex.was = pr.was || null; ex.currency = pr.currency || ex.currency; ex.source = pr.source; if (pr.title && !ex.title) ex.title = pr.title; }
+    if (pr && pr.price) {
+      ex.price = pr.price; ex.was = pr.was || null; ex.currency = pr.currency || ex.currency; ex.source = pr.source;
+      // titleFirst: the reader's name, brand and category are better than the page's general ones
+      if (pr.title && (!ex.title || pr.titleFirst)) ex.title = pr.title;
+      if (pr.brand && (!ex.brand || pr.titleFirst)) ex.brand = pr.brand;
+      if (pr.category && (!ex.category || pr.titleFirst)) ex.category = pr.category;
+    }
     let currency = ex.currency, currencyGuessed = false;
     if (!currency && ex.price) { currency = tldCur; currencyGuessed = !!currency && canonInfo.kind !== "amazon"; }
     if (ex.price && canonInfo.kind === "amazon" && tldCur && currency !== tldCur) return { ...res, status: "noprice", http: pg.status, title: ex.title, image: ex.image, message: `Amazon showed us a price in ${currency} instead of ${tldCur} (it does this for visitors outside the country), so we can't read the local price.` };
@@ -874,7 +880,7 @@ async function cachePut(env, k, v, ttl) {
 // rows written per day. Without the binding (unit tests, old config) they fall back to the D1 table
 // `rl`. If the limiter itself fails, the request is allowed (fail open): a limiter outage must not
 // take the site down.
-const RL_BINDING = { check: "RL_CHECK", snap: "RL_SNAP", req: "RL_REQ", verdict: "RL_VERDICT", others: "RL_OTHERS", cmp: "RL_CMP_IP", cmpshop: "RL_CMP_SHOP" };
+const RL_BINDING = { check: "RL_CHECK", snap: "RL_SNAP", req: "RL_REQ", verdict: "RL_VERDICT", others: "RL_OTHERS", cmp: "RL_CMP_IP", cmpshop: "RL_CMP_SHOP", cmpslow: "RL_CMP_SLOW" };
 async function overLimit(env, bucket, key, limit) {
   const b = env[RL_BINDING[bucket]];
   try {

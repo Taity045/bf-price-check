@@ -419,11 +419,12 @@ async function loadOthers(my) {
   sec.classList.remove("hidden");
   if (!shops.length) {
     $("otherList").innerHTML = ""; $("cmpProg").classList.add("hidden"); $("cmpStatus").textContent = "";
-    $("cmpSum").textContent = plan.noun ? `We don't know other shops here that sell ${plan.noun} yet, so we didn't compare.` : "We couldn't tell what kind of product this is, so we didn't search other shops.";
+    $("cmpSum").textContent = plan.reason === "own brand" ? "This is a shop's own brand. Other shops don't sell it, so we didn't compare."
+      : plan.noun ? `We don't know other shops here that sell ${plan.noun} yet, so we didn't compare.` : "We couldn't tell what kind of product this is, so we didn't search other shops.";
     return;
   }
   const ago = (t) => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? "just now" : m < 60 ? m + " min ago" : Math.round(m / 60) + " h ago"; };
-  const LEVEL = { barcode: "Same barcode", model: "Same model number", name: "Same name and specs" };
+  const LEVEL = { barcode: "Same barcode", model: "Same model number", name: ["groceries", "baby"].includes(plan.product.category) ? "Same name and size" : "Same name and specs" };
   const render = () => {
     const done = shops.filter((s) => results[s.id]).length;
     const matches = shops.map((s) => results[s.id]).filter((r) => r && r.status === "match" && r.match);
@@ -438,7 +439,7 @@ async function loadOthers(my) {
     for (const r of matches.sort((a, b) => (b.match.in_stock - a.match.in_stock) || a.match.price - b.match.price)) {
       const m = r.match, d = herePrice != null ? m.price - herePrice : null;
       const diff = d == null || !m.in_stock ? "" : Math.abs(d) < 0.5 ? '<span class="diff">Same price</span>' : `<span class="diff ${d < 0 ? "less" : ""}">${esc(money(Math.abs(Math.round(d)), m.currency))} ${d < 0 ? "less" : "more"}</span>`;
-      rows.push({ price: m.price, html: `<span class="os"><b>${esc(r.name)}</b><span class="ot">${esc(m.title)}</span><span class="tag ${m.level === "name" ? "" : "sure"}">${LEVEL[m.level]}</span>${m.in_stock && isLow(m.price) ? lowTag : ""}${m.in_stock ? "" : '<span class="tag oos">Out of stock</span>'}</span><span class="op"><b class="num">${esc(money(m.price, m.currency))}</b>${m.was ? `<span class="was small">${esc(money(m.was, m.currency))}</span>` : ""}${diff}<a href="${esc(m.url)}" target="_blank" rel="noopener nofollow">Open ↗</a><span class="small">${esc(ago(r.checked_at))}</span></span>`, oos: !m.in_stock });
+      rows.push({ price: m.price, html: `<span class="os"><b>${esc(r.name)}</b><span class="ot">${esc(m.title)}</span><span class="tag ${m.level === "name" ? "" : "sure"}">${LEVEL[m.level]}</span>${m.in_stock && isLow(m.price) ? lowTag : ""}${m.in_stock ? "" : '<span class="tag oos">Out of stock</span>'}</span><span class="op"><b class="num">${esc(money(m.price, m.currency))}</b>${m.was ? `<span class="was small">${esc(money(m.was, m.currency))}</span>` : ""}${m.member ? `<span class="small">${esc(m.member.label)} ${esc(money(m.member.price, m.currency))}</span>` : ""}${diff}<a href="${esc(m.url)}" target="_blank" rel="noopener nofollow">Open ↗</a><span class="small">${esc(ago(r.checked_at))}</span></span>`, oos: !m.in_stock });
     }
     const waiting = shops.filter((s) => !results[s.id]);
     $("otherList").innerHTML = rows.map((r) => `<li class="${r.here ? "here" : ""}${r.oos ? " oos" : ""}">${r.html}</li>`).join("")
@@ -462,6 +463,9 @@ async function loadOthers(my) {
     if (matches.length && none.length) parts.push(`Not found at: ${none.join(", ")}.`);
     if (failed.length) parts.push(`Couldn't check: ${failed.join(", ")} (try again later).`);
     if (asked.length) parts.push(`Not searched: ${asked.join(", ")} (the shop asks tools not to use its search).`);
+    const ns = plan.notSearched || [], nsBy = (w) => ns.filter((x) => x.why === w).map((x) => x.name), and = (a) => a.length > 1 ? a.slice(0, -1).join(", ") + " and " + a[a.length - 1] : a[0];
+    const nsTxt = [["robots", "ask tools not to use their search"], ["browser", "show search results only in a browser"], ["blocks", "block tools like ours"]].filter(([w]) => nsBy(w).length).map(([w, t]) => `${and(nsBy(w))} (${t})`);
+    if (nsTxt.length && done === shops.length) parts.push(`We can't search ${nsTxt.join("; ")}.`);
     $("cmpSum").textContent = parts.join(" ");
   };
   render();

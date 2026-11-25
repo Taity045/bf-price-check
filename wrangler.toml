@@ -71,6 +71,12 @@ name = "RL_CMP_SHOP"
 namespace_id = "7107"
 simple = { limit = 30, period = 60 }
 
+# Compare searches at shops whose robots.txt asks for 10 s between requests (Pick n Pay, Clicks).
+[[ratelimits]]
+name = "RL_CMP_SLOW"
+namespace_id = "7108"
+simple = { limit = 6, period = 60 }
+
 [vars]
 SITE_URL = "https://bf-price-check.tm-deal-lab.workers.dev"
 MAIL_FROM = "no-reply@veldwire.com"
