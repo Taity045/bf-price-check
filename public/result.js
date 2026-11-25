@@ -84,9 +84,14 @@ async function run(url, fresh) {
     $("tip").textContent = "Tap a point to see its date and price."; $("pts").open = false;
     $("plink").href = d.url;
     $("others").classList.add("hidden"); state.revealed = null;
+    // Black Friday week: "cheaper somewhere else?" leads. Its card shows from the first render (no layout shift later).
+    const willCmp = !!(d.tracked && d.current.status === "ok");
+    $("cmpHead").classList.toggle("hidden", !willCmp);
+    if (willCmp) setCmpHead("", "Checking other shops…", "We look for the exact same product for less.");
     renderHead(); renderPrices(); renderSupport(); renderAll(); renderSaveBtn();
     $("result").scrollIntoView({ behavior: "smooth", block: "start" });
     countCheck();
+    if (willCmp) loadOthers(my);
     if (d.tracked) loadSnaps(my).then(() => finalize(my));
     else {
       finalize(my);
@@ -409,20 +414,54 @@ function finalize(my) {
   fetch("/api/verdict?url=" + encodeURIComponent(state.canonical)).catch(() => {});
   countVerdict(state.verdictText, state.canonical);
   updateSaved(state);
-  loadOthers(my);
+}
+function setCmpHead(cls, big, line, jump) {
+  $("cmpHead").className = "card cmphead " + cls;
+  $("cmpBig").textContent = big; $("cmpLine").textContent = line;
+  $("cmpJump").classList.toggle("hidden", !jump);
+}
+const andList = (a, max = 4) => { a = a.length > max ? [...a.slice(0, max), `${a.length - max} more`] : a; return a.length > 1 ? a.slice(0, -1).join(", ") + " and " + a[a.length - 1] : a[0] || ""; };
+// The headline from the compare results: the cheapest exact match in stock that saves at least R5 (or 0.50).
+function cmpHeadline(plan, shops, results, herePrice, LEVEL) {
+  const C = plan.product.currency, n = shops.length, done = shops.filter((s) => results[s.id]).length;
+  const inStock = shops.map((s) => results[s.id]).filter((r) => r && r.status === "match" && r.match && r.match.in_stock);
+  const minSave = C === "ZAR" ? 5 : 0.5;
+  const cheaper = herePrice == null ? [] : inStock.filter((r) => herePrice - r.match.price >= minSave).sort((a, b) => a.match.price - b.match.price);
+  if (cheaper.length) {
+    const b = cheaper[0], save = Math.round((herePrice - b.match.price) * 100) / 100;
+    const more = cheaper.length > 1 ? ` Also cheaper at ${andList(cheaper.slice(1).map((r) => r.name))}.` : "";
+    const chk = b.match.level === "name" ? " Check the model and colour on the shop's page." : "";
+    return ["good", `Cheaper at ${b.name}: ${money(b.match.price, C)}`, `Save ${money(save, C)} (${pct(save / herePrice)}). ${LEVEL[b.match.level]} as this product.${chk}${more}${done < n ? ` Still checking ${n - done} more.` : " Delivery not included."}`];
+  }
+  if (done < n) return ["", `Checking ${n} shop${n === 1 ? "" : "s"}…`, `${done} of ${n} done. We look for the exact same product for less.`];
+  const failed = shops.filter((s) => results[s.id] && !["match", "none", "skipped", "robots"].includes(results[s.id].status)).map((s) => s.name);
+  const cant = [...shops.filter((s) => results[s.id] && results[s.id].status === "robots").map((s) => s.name), ...(plan.notSearched || []).map((x) => x.name)];
+  let line;
+  if (herePrice == null && inStock.length) {
+    const lo = inStock.reduce((m, r) => (r.match.price < m.match.price ? r : m));
+    return ["", `Found at ${inStock.length} other shop${inStock.length === 1 ? "" : "s"}`, `Lowest: ${lo.name}, ${money(lo.match.price, C)}. We can't compare it with this page's price (other currency).`, true];
+  }
+  if (inStock.length) line = `We checked ${n} shop${n === 1 ? "" : "s"}. ${inStock.length} sell${inStock.length === 1 ? "s" : ""} the exact same product, but not for less.`;
+  else line = `We checked ${n} shop${n === 1 ? "" : "s"}. None has the exact same product in stock.`;
+  if (failed.length) line += ` Couldn't check ${andList(failed)}.`;
+  if (cant.length) line += ` We can't search ${andList(cant)}.`;
+  return ["", "No cheaper exact match found", line, true];
 }
 async function loadOthers(my) {
   if (!state.tracked || !state.current || state.current.status !== "ok") return;
   const canon = state.canonical, sec = $("others");
   let plan;
-  try { const r = await fetch("/api/compare?url=" + encodeURIComponent(canon)); if (!r.ok) return; plan = await r.json(); } catch { return; }
-  if (my !== runId || !plan || !plan.product) return;
+  const fail = () => { if (my === runId) setCmpHead("", "Couldn't check other shops", "Try again later with Check again."); };
+  try { const r = await fetch("/api/compare?url=" + encodeURIComponent(canon)); if (!r.ok) return fail(); plan = await r.json(); } catch { return fail(); }
+  if (my !== runId) return;
+  if (!plan || !plan.product) return setCmpHead("", "Not compared", "We couldn't read enough about this product to search other shops.");
   const here = curPrice(), shops = plan.shops || [], results = Object.assign({}, plan.results || {});
   sec.classList.remove("hidden");
   if (!shops.length) {
     $("otherList").innerHTML = ""; $("cmpProg").classList.add("hidden"); $("cmpStatus").textContent = "";
     $("cmpSum").textContent = plan.reason === "own brand" ? "This is a shop's own brand. Other shops don't sell it, so we didn't compare."
       : plan.noun ? `We don't know other shops here that sell ${plan.noun} yet, so we didn't compare.` : "We couldn't tell what kind of product this is, so we didn't search other shops.";
+    setCmpHead("", "Not compared", $("cmpSum").textContent);
     return;
   }
   const ago = (t) => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? "just now" : m < 60 ? m + " min ago" : Math.round(m / 60) + " h ago"; };
@@ -469,6 +508,8 @@ async function loadOthers(my) {
     const nsTxt = [["robots", "ask tools not to use their search"], ["browser", "show search results only in a browser"], ["blocks", "block tools like ours"]].filter(([w]) => nsBy(w).length).map(([w, t]) => `${and(nsBy(w))} (${t})`);
     if (nsTxt.length && done === shops.length) parts.push(`We can't search ${nsTxt.join("; ")}.`);
     $("cmpSum").textContent = parts.join(" ");
+    const [hc, hb, hl, hj] = cmpHeadline(plan, shops, results, herePrice, LEVEL);
+    setCmpHead(hc, hb, hl, hj || hc === "good");
   };
   render();
   const queue = shops.filter((s) => !results[s.id]);

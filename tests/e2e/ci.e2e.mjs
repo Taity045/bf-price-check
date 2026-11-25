@@ -174,13 +174,18 @@ for (const [name, o] of [["desktop", desktop], ["phone", mobile], ["1440", { vie
   await p.goto(BASE + "/");
   await p.fill("#u", PRODUCT); await p.click("#go");
   await p.waitForSelector("#others:not(.hidden)", { timeout: 15000 });
-  const tops = () => p.evaluate(() => ({ chart: document.querySelector("#chart").getBoundingClientRect().top + scrollY, actions: document.querySelector(".actions").getBoundingClientRect().top + scrollY }));
+  const tops = () => p.evaluate(() => ({ chart: document.querySelector("#chart").getBoundingClientRect().top + scrollY, actions: document.querySelector(".actions").getBoundingClientRect().top + scrollY, verdict: document.querySelector("#verdict").getBoundingClientRect().top + scrollY }));
   const before = await tops();
   ok(`compare ${name}: shows progress while shops answer`, /of 5 shops checked/.test(await p.textContent("#cmpStatus")), await p.textContent("#cmpStatus"));
   await p.waitForFunction(() => /5 shops checked/.test(document.querySelector("#cmpStatus").textContent) && !/of/.test(document.querySelector("#cmpStatus").textContent), null, { timeout: 10000 });
   const after = await tops();
   // up to 1 px: sub-pixel rounding on CI (seen once: 1351.875 -> 1352.875); a real push is a row height (40+ px)
   ok(`compare ${name}: chart and buttons do not move while shop rows load (within 1 px)`, Math.abs(before.chart - after.chart) <= 1 && Math.abs(before.actions - after.actions) <= 1, JSON.stringify({ before, after }));
+  ok(`compare ${name}: verdict does not move when the headline fills in (within 1 px)`, Math.abs(before.verdict - after.verdict) <= 1, JSON.stringify({ before, after }));
+  const head = (await p.textContent("#cmpHead")).replace(/\u00a0/g, " ").replace(/\s+/g, " ");
+  ok(`compare ${name}: headline names the cheaper shop and the saving`, /Cheaper at Hirsch's: R ?899/.test(head) && /Save R ?100 \(10%\)/.test(head) && /Same model number as this product/.test(head), head);
+  ok(`compare ${name}: headline is above the verdict`, await p.evaluate(() => document.querySelector("#cmpHead").getBoundingClientRect().bottom <= document.querySelector("#verdict").getBoundingClientRect().top));
+  ok(`compare ${name}: out-of-stock cheaper shop is not the headline`, !/Computer Mania/.test(head), head);
   ok(`compare ${name}: other shops is below the chart`, (await p.evaluate(() => document.querySelector("#others").getBoundingClientRect().top > document.querySelector("#chart").getBoundingClientRect().bottom)));
   const rows = await p.$$eval("#otherList li", (ls) => ls.map((l) => l.textContent.replace(/\s+/g, " ").trim()));
   ok(`compare ${name}: this page plus 3 matches`, rows.length === 4, rows.join(" | "));
@@ -199,6 +204,7 @@ for (const [name, o] of [["desktop", desktop], ["phone", mobile], ["1440", { vie
   await p.waitForFunction(() => !document.querySelector(".toast.on, .toast.show"), null, { timeout: 6000 }).catch(() => {});
   await p.waitForTimeout(3500);
   await p.locator("#others").screenshot({ path: `${SHOTS}/compare-${name}.png` });
+  await p.locator("#cmpHead").screenshot({ path: `${SHOTS}/headline-${name}.png` });
   await p.context().close();
 });
 for (const [name, o] of [["1440", { viewport: { width: 1440, height: 900 } }], ["390", { ...mobile, viewport: { width: 390, height: 844 } }]]) await step(`compare tie ${name}`, async () => {
@@ -213,6 +219,9 @@ for (const [name, o] of [["1440", { viewport: { width: 1440, height: 900 } }], [
   const rows = await p.$$eval("#otherList li", (ls) => ls.map((l) => l.textContent.replace(/\s+/g, " ").trim()));
   ok(`compare tie ${name}: this page and the shop at the same price are both tagged`, /Same lowest price/.test(rows[0]) && /OK Furniture/.test(rows[1]) && /Same lowest price/.test(rows[1]) && /Same price/.test(rows[1]), rows.join(" | "));
   ok(`compare tie ${name}: the dearer shop is not tagged`, !/Cheapest|Same lowest/.test(rows[2]), rows[2]);
+  const head = (await p.textContent("#cmpHead")).replace(/\s+/g, " ");
+  ok(`compare tie ${name}: headline says no cheaper exact match, and how many sell it`, /No cheaper exact match found/.test(head) && /We checked 2 shops\. 2 sell the exact same product, but not for less\./.test(head), head);
+  await p.locator("#cmpHead").screenshot({ path: `${SHOTS}/headline-none-${name}.png` });
   await p.locator("#others").screenshot({ path: `${SHOTS}/compare-tie-${name}.png` });
   await p.context().close();
 });

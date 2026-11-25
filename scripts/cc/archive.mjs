@@ -6,6 +6,7 @@
 //       Finds each shop's product pages in Common Crawl's public index (data.commoncrawl.org), downloads
 //       each archived page with one byte-range request, and reads its price with the site's own reader.
 //       Writes DIR/captures.jsonl (one line per page read; resumable).
+//       --keys FILE: only these product links (one per line), for example the products people check most.
 //   node scripts/cc/archive.mjs recheck --out DIR [--cdx-dir DIR] [--max N] [--again REASON]
 //       UK shops: re-reads captures collected before the UK price check (archivedGeoCheck) and writes
 //       DIR/geo.jsonl. reduce keeps a UK capture only when its copy confirmed the UK GBP price.
@@ -14,6 +15,8 @@
 //   node scripts/cc/archive.mjs upload --out DIR --endpoint URL [--max-writes 15000] [--mode load|append]
 //       Sends rows to the worker's admin endpoint (key in env ARCHIVE_LOAD_KEY, never printed).
 //       DIR/upload_state.json remembers what was sent, so the next day's run continues.
+//       --first FILE: JSON { keys: [...], shops: [...] }. These products go first, then these shops
+//       in this order, then the usual load order. Used to load the most-checked products first.
 //
 // Public data only: Common Crawl's index and WARC files, read under its terms of use.
 import { createReadStream, existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, readdirSync } from "node:fs";
@@ -143,11 +146,20 @@ async function warcHtml(rec) {
   return { html: body.toString("utf8"), t: date ? Date.parse(date) : null };
 }
 
+// Does product link K belong to this shop? Host without "www." plus the path prefix of its index key.
+function inShop(shop, k) {
+  const [host, path = ""] = shop.surt.split(")");
+  let u; try { u = new URL(k); } catch { return false; }
+  return u.hostname.replace(/^www\./, "") === host.split(",").reverse().join(".") && u.pathname.startsWith(path || "/");
+}
 async function collect() {
   const crawls = await pickCrawls();
   if (!crawls.length) { log("no new crawl to collect"); return; }
   const deadline = args["max-minutes"] ? Date.now() + +args["max-minutes"] * 60e3 : Infinity;
-  const shops = args.shops ? CC_SHOPS.filter((s) => args.shops.split(",").includes(s.name)) : CC_SHOPS;
+  let shops = args.shops ? CC_SHOPS.filter((s) => args.shops.split(",").includes(s.name)) : CC_SHOPS;
+  // --keys FILE: only these product links (normalised with the same productKey as everything else).
+  const wanted = args.keys ? new Set(readFileSync(args.keys, "utf8").split("\n").map((l) => l.trim()).filter(Boolean).map((u) => productKey(W, u)).filter(Boolean)) : null;
+  if (wanted) shops = shops.filter((s) => [...wanted].some((k) => inShop(s, k)));
   log("crawls", crawls.join(" "), "shops", shops.length);
   const capFile = `${OUT}/captures.jsonl`, done = new Set();
   if (existsSync(capFile)) for (const l of readFileSync(capFile, "utf8").split("\n")) if (l) { try { const c = JSON.parse(l); if (c.ok || !/^(HTTP|error)/.test(c.reason || "")) done.add(c.crawl + "|" + c.key); } catch {} }
@@ -190,7 +202,7 @@ async function collect() {
         let u; try { u = new URL(rec.url); } catch { continue; }
         if (!shop.path.test(u.pathname)) continue;
         const key = productKey(W, rec.url);
-        if (!key || done.has(crawl + "|" + key) || (only && !only.has(key))) continue;
+        if (!key || done.has(crawl + "|" + key) || (only && !only.has(key)) || (wanted && !wanted.has(key))) continue;
         const prev = byKey.get(key);
         if (!prev || rec.url.length < prev.url.length) byKey.set(key, rec);
       }
@@ -358,7 +370,17 @@ async function upload() {
   const only = args.shops ? new Set(args.shops.split(",")) : null;
   // --min-pri 2: only products with a readable price from 3-6 months ago (pri 2 or 3).
   const minPri = +(args["min-pri"] || 0);
-  await readJsonl(`${OUT}/rows.jsonl`, (p) => { if (!sent.has(p.key) && (!only || only.has(p.shop)) && p.pri >= minPri) products.push(p); });
+  // --first FILE: listed products first (in list order, whatever their --min-pri), then listed shops (in list order); stable otherwise.
+  const f = args.first && existsSync(args.first) ? JSON.parse(readFileSync(args.first, "utf8")) : null;
+  const firstKeys = new Set(f ? f.keys || [] : []);
+  await readJsonl(`${OUT}/rows.jsonl`, (p) => { if (!sent.has(p.key) && (!only || only.has(p.shop)) && (p.pri >= minPri || firstKeys.has(p.key))) products.push(p); });
+  if (f) {
+    const kRank = new Map((f.keys || []).map((k, i) => [k, i])), sRank = new Map((f.shops || []).map((s, i) => [s, i]));
+    const rank = (p) => kRank.has(p.key) ? kRank.get(p.key) : 1e6 + (sRank.has(p.shop) ? sRank.get(p.shop) : 1e3);
+    products.forEach((p, i) => { p._i = i; });
+    products.sort((a, b) => rank(a) - rank(b) || a._i - b._i);
+    log(`first: ${products.filter((p) => kRank.has(p.key)).length} listed products waiting, shop order ${(f.shops || []).join(", ")}`);
+  }
   let written = 0, i = 0, stop = null;
   const BATCH = +(args.batch || 150);
   const save = () => { state.sent = [...sent]; writeFileSync(stateFile, JSON.stringify(state)); };
