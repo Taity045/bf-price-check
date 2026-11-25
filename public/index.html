@@ -740,8 +740,6 @@ function dedupeDays(list) { const m = new Map(); for (const c of list) m.set(new
 
 function points() {
   const cur = curPrice(); const ccy = cur ? cur.currency : null;
-  // A Common Crawl price on the same day and at the same price as an Internet Archive copy is the
-  // same evidence (the Internet Archive holds copies of Common Crawl's crawls): show it once.
   const dk = (x) => new Date(x.t).toISOString().slice(0, 10) + "|" + x.currency + "|" + x.price;
   const wbSeen = new Set(state.archive.map(dk));
   const all = [
@@ -777,20 +775,22 @@ function bestLine(P, C) {
   return `<p class="best">Lowest price we found in the last 12 months: <b>${esc(money(low.price, C))}</b> in ${esc(new Date(low.t).toLocaleDateString("en-GB", { month: "long", year: "numeric" }))}.</p>`;
 }
 
-// Evidence from 1 or 2 older prices (same rules as sparseEvidence in src/features.js).
-function sparseEvidence(P, W, h) {
+// as src/features.js: a real move is >= 5 % and >= R5 (0.50 in other currencies)
+const bigMove = (a, b, c) => Math.abs(b - a) >= Math.max(.05 * a, c == "ZAR" ? 5 : .5);
+function sparseEvidence(P, W, h, C) {
   const recent = h.filter((x) => x.t >= Date.now() - 183 * DAY && x.price > 0);
   if (!P || !recent.length) return null;
   const pt = recent.reduce((m, x) => (x.price < m.price || (x.price === m.price && x.t > m.t) ? x : m));
   const maxOld = Math.max(...recent.map((x) => x.price));
-  // "Inflated" needs a price from at least 2 weeks ago: a sale that started a few days ago is not a fake.
+  // "Inflated" needs a price >= 2 weeks old: a new sale is not a fake.
   const old = recent.filter((x) => x.t <= Date.now() - 14 * DAY);
   if (W && W > P && old.length) {
     const o = old.reduce((m, x) => (x.price < m.price ? x : m));
     if (o.price <= W * 0.9 && maxOld < W * 0.97) return { verdict: "Likely inflated was price", pt: o };
   }
-  if (pt.price < P * 0.98) return { verdict: "Seen cheaper before", pt };
-  if (pt.price <= P * 1.02) return { verdict: "Seen at this price before", pt };
+  const mv = bigMove(pt.price, P, C);
+  if (pt.price < P && mv) return { verdict: "Seen cheaper before", pt };
+  if (pt.price <= P || !mv) return { verdict: "Seen at this price before", pt };
   return null;
 }
 function renderVerdict() {
@@ -812,7 +812,7 @@ function renderVerdict() {
   }
   const P = cur.price, W = cur.was, C = cur.currency;
   if (pr.length < 3) {
-    const ev = sparseEvidence(P, W, hist);
+    const ev = sparseEvidence(P, W, hist, C);
     if (ev) {
       const pt = ev.pt;
       const src = srcLink(pt);
@@ -820,7 +820,7 @@ function renderVerdict() {
       let vb;
       if (ev.verdict === "Likely inflated was price") { cls = "bad"; vb = `Was cheaper before: ${when}. The shop's "was" price of ${esc(money(W, C))} looks inflated.`; }
       else if (ev.verdict === "Seen cheaper before") { cls = "meh"; vb = `Seen cheaper before: ${when}. Today's price is ${esc(pct((P - pt.price) / pt.price))} higher.`; }
-      else { cls = "meh"; vb = `Same price before: ${when}. Today's price is not a special deal.`; }
+      else { cls = "meh"; vb = `About the same price before: ${when}. Today's price is not a special deal.`; }
       state.v = { big: ev.verdict, P, W, C, low: pt.price, evT: pt.t };
       setVerdict(cls, ev.verdict, `<p class="vbody">${vb}</p><p class="note">Based on ${pr.length} older price${pr.length === 1 ? "" : "s"} from the last 6 months. We give a full verdict from 3 older prices.</p>`);
       state.verdictText = ev.verdict; return;
@@ -832,13 +832,14 @@ function renderVerdict() {
   }
   const low = Math.min(...pr), high = Math.max(...pr), med = median(pr);
   const high90 = p90.length >= 2 ? Math.max(...p90) : high;
-  const vsMed = (med - P) / med, vsLow = (low - P) / low;
+  const vsMed = (med - P) / med;
   const inflated = W && W > high90 * 1.03;
   const neverSeen = W && W > high * 1.03;
-  if (P <= low * 1.005 && vsMed >= 0.05) { cls = "good"; big = "Real deal"; body = `This is the lowest price we found in twelve months, ${pct(vsMed)} below the usual ${money(med, C)}.`; }
-  else if (inflated && vsMed < 0.05) { cls = "bad"; big = "Fake discount"; body = `The "was" price looks inflated. Today's price is about what it usually costs (${money(med, C)}).`; }
-  else if (P > med * 1.03) { cls = "bad"; big = "Pricier than usual"; body = `It usually costs ${money(med, C)}. Today's price is ${pct(vsMed)} higher. Wait if you can.`; }
-  else if (vsMed >= 0.05) { cls = "good"; big = "Decent deal"; body = `${pct(vsMed)} below the usual ${money(med, C)}, but it has been cheaper: ${money(low, C)}.`; }
+  const mv = bigMove(med, P, C), cheaper = mv && P < med, dearer = mv && P > med;
+  if (P <= low * 1.005 && cheaper) { cls = "good"; big = "Real deal"; body = `This is the lowest price we found in twelve months, ${pct(vsMed)} below the usual ${money(med, C)}.`; }
+  else if (inflated && !cheaper) { cls = "bad"; big = "Fake discount"; body = `The "was" price looks inflated. Today's price is about what it usually costs (${money(med, C)}).`; }
+  else if (dearer) { cls = "bad"; big = "Pricier than usual"; body = `It usually costs ${money(med, C)}. Today's price is ${pct(vsMed)} higher. Wait if you can.`; }
+  else if (cheaper) { cls = "good"; big = "Decent deal"; body = `${pct(vsMed)} below the usual ${money(med, C)}, but it has been cheaper: ${money(low, C)}.`; }
   else { cls = "meh"; big = "Same old price"; body = `Close to the usual ${money(med, C)}. Not a special deal.`; }
   if (W) {
     if (neverSeen) flags += `<div class="flag">The "was" price of ${esc(money(W, C))} is higher than any price we saw in twelve months (highest: ${esc(money(high, C))}).</div>`;
@@ -878,7 +879,7 @@ function renderChart() {
   for (let m = 0; m <= 12; m += (W < 520 ? 3 : 2)) { const d = new Date(t1 - (12 - m) * 30.4 * DAY); const x = X(d.getTime()); s += `<text x="${x}" y="${H - 10}" class="c-ax" text-anchor="middle">${d.toLocaleDateString("en-GB", { month: "short" })}</text>`; }
   if (cur && cur.was) { const y = Y(cur.was); s += `<line x1="${L}" x2="${W - R}" y1="${y}" y2="${y}" class="c-was"/><text x="${W - R}" y="${y - 7}" class="c-wast" text-anchor="end">"was" ${esc(money(cur.was, ccy))}</text>`; }
   const line = all.slice().sort((a, b) => a.t - b.t);
-  // solid line only between points < 45 days apart; dotted where we have no data in between
+  // solid line if points < 45 days apart, else dotted
   for (let i = 1; i < line.length; i++) {
     const a = line[i - 1], c = line[i], gap = c.t - a.t > 45 * DAY;
     s += `<path d="M${X(a.t)} ${Y(a.price)}H${X(c.t)}V${Y(c.price)}" class="c-ln${gap ? " gap" : ""}"/>`;
@@ -902,8 +903,7 @@ function renderArchiveNote() {
   let note = "";
   const ai = state.archive_meta;
   if (ai) {
-    if (ai.status !== "ok") note = `We could not get archive copies just now, so archive prices are missing. Use "Try the archive again".`;
-    if (ai.status !== "ok" && (state.cc || []).length) note = `We could not reach the Internet Archive just now, so its copies are missing. Use "Try the archive again".`;
+    if (ai.status !== "ok") note = `We could not reach the Internet Archive just now, so its copies are missing. Use "Try the archive again".`;
     else if (!(ai.captures_12mo ?? ai.captures_6mo)) note = "The Internet Archive has no copies of this page from the last twelve months" + ((state.cc || []).length ? "." : ", so older prices are missing.");
     else { const n = ai.captures_12mo ?? ai.captures_6mo; note = `Archived copies: ${n} day${n === 1 ? "" : "s"} in 12 months. We looked at ${ai.sampled}.`; }
     if (state.failed) note += ` ${state.failed} had no price we could read.`;

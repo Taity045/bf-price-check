@@ -24,8 +24,31 @@ describe("verdict", () => {
     assert.equal(W.judge(live(100), hist([100, 100, 100])).verdict, "Same old price");
     assert.equal(W.judge(live(102), hist([100, 100, 100])).verdict, "Same old price", "within 3% of the usual price");
   });
-  test("Pricier than usual: more than 3% over the usual price", () => {
-    assert.equal(W.judge(live(104), hist([100, 100, 100])).verdict, "Pricier than usual");
+  test("Pricier than usual: at least 5% and at least R5 over the usual price", () => {
+    assert.equal(W.judge(live(105), hist([100, 100, 100])).verdict, "Pricier than usual");
+    assert.equal(W.judge(live(104), hist([100, 100, 100])).verdict, "Same old price");
+  });
+  test("tiny moves are not a verdict: under R5 / £0.50 is the same old price", () => {
+    // +7.7 % but only 25p (Wickes air brick £3.25 -> £3.50)
+    assert.equal(W.judge(live(3.5, null, "GBP"), hist([3.25, 3.25, 3.25], { currency: "GBP" })).verdict, "Same old price");
+    assert.equal(W.judge(live(3.75, null, "GBP"), hist([3.25, 3.25, 3.25], { currency: "GBP" })).verdict, "Pricier than usual");
+    // -10 % but only R4 off: not a Real deal
+    assert.equal(W.judge(live(36), hist([40, 40, 40])).verdict, "Same old price");
+    assert.equal(W.judge(live(35), hist([40, 40, 40])).verdict, "Real deal");
+    // 4.8 % up on £166 (Wickes base unit £166 -> £174): under 5 %
+    assert.equal(W.judge(live(174, null, "GBP"), hist([160, 166, 166], { currency: "GBP" })).verdict, "Same old price");
+    // Decent deal also needs the minimum move
+    assert.equal(W.judge(live(97), hist([95, 102, 102, 102])).verdict, "Same old price");
+    assert.equal(W.judge(live(96), hist([90, 102, 102, 102])).verdict, "Decent deal");
+  });
+  test("one older price: 'Seen cheaper before' needs a 5 % and R5 / £0.50 gap", () => {
+    const one = (p, c = "ZAR") => ({ checks: [{ ts: ago(30), price: p, currency: c }], snaps: [] });
+    assert.equal(W.judge(live(102), one(100)).verdict, "Seen at this price before");
+    assert.equal(W.judge(live(104), one(100)).verdict, "Seen at this price before");
+    assert.equal(W.judge(live(106), one(100)).verdict, "Seen cheaper before");
+    assert.equal(W.judge(live(3.5, null, "GBP"), one(3.25, "GBP")).verdict, "Seen at this price before");
+    assert.equal(W.judge(live(97), one(100)).verdict, "Seen at this price before");
+    assert.equal(W.judge(live(80), one(100)).verdict, "Not enough history");
   });
   test("Fake discount: 'was' price above anything seen and no real saving", () => {
     const j = W.judge(live(100, 150), hist([100, 100, 100]));
