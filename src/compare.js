@@ -20,7 +20,7 @@ const CMP_SEARCH_TTL = 6 * 3600e3;    // one search on one shop (shared by all p
 const CMP_SHOP_PER_MIN = 30;          // searches per shop per minute, all visitors together
 const CMP_PER_IP_PER_MIN = 240;       // shop calls per visitor per minute (one check makes up to ~20)
 // Bump when the matching rules or identity reading change, so cached answers from older rules are not shown.
-const CMP_VER = "v3";
+const CMP_VER = "v4";
 const CMP_MAX_SEARCHES = 2;           // searches per shop per product
 const CMP_MAX_DETAILS = 3;            // product-detail reads per shop per product (to read barcodes)
 
@@ -33,20 +33,26 @@ const CMP_SHOPS = [
   { id: "matrix", name: "Matrix Warehouse", cur: "ZAR", hosts: ["matrixwarehouse.co.za"], kind: "shopify", base: "https://matrixwarehouse.co.za", sells: ["computer", "electronics"] },
   { id: "firstshop", name: "First Shop", cur: "ZAR", hosts: ["firstshop.co.za"], kind: "shopify", base: "https://www.firstshop.co.za", sells: ["computer", "electronics", "appliances"] },
   { id: "hirschs", name: "Hirsch's", cur: "ZAR", hosts: ["hirschs.co.za"], kind: "magento", gql: "special", base: "https://www.hirschs.co.za", sells: ["appliances", "electronics"] },
-  { id: "okfurniture", name: "OK Furniture", cur: "ZAR", hosts: ["okfurniture.co.za"], kind: "magento", base: "https://www.okfurniture.co.za", sells: ["appliances", "electronics", "home"] },
-  { id: "toysrus", name: "Toys R Us", cur: "ZAR", hosts: ["toysrus.co.za"], kind: "magento", base: "https://www.toysrus.co.za", sells: ["toys", "baby", "electronics"] },
-  { id: "babiesrus", name: "Babies R Us", cur: "ZAR", hosts: ["babiesrus.co.za"], kind: "magento", base: "https://www.babiesrus.co.za", sells: ["baby"] },
+  { id: "okfurniture", name: "OK Furniture", cur: "ZAR", hosts: ["okfurniture.co.za"], kind: "magento", base: "https://www.okfurniture.co.za", off: "robots", sells: ["appliances", "electronics", "home"] },
+  { id: "toysrus", name: "Toys R Us", cur: "ZAR", hosts: ["toysrus.co.za"], kind: "magento", base: "https://www.toysrus.co.za", off: "robots", sells: ["toys", "baby", "electronics"] },
+  { id: "babiesrus", name: "Babies R Us", cur: "ZAR", hosts: ["babiesrus.co.za"], kind: "magento", base: "https://www.babiesrus.co.za", off: "robots", sells: ["baby"] },
   { id: "bash", name: "Bash (TFG)", cur: "ZAR", hosts: ["bash.com", "zando.co.za", "foschini.co.za", "americanswiss.co.za", "sportscene.co.za", "totalsports.co.za", "markham.co.za", "volpes.co.za", "hi-online.co.za"], kind: "vtex", base: "https://bash.com", sells: ["fashion", "beauty", "electronics", "home"] },
-  { id: "superbalist", name: "Superbalist", cur: "ZAR", hosts: ["superbalist.com"], kind: "ldlist", search: "https://superbalist.com/search?q={q}", sells: ["fashion", "beauty", "home"] },
-  { id: "studio88", name: "Studio 88", cur: "ZAR", hosts: ["studio-88.co.za"], kind: "magento", base: "https://www.studio-88.co.za", sells: ["fashion"] },
+  { id: "superbalist", name: "Superbalist", cur: "ZAR", hosts: ["superbalist.com"], kind: "ldlist", search: "https://superbalist.com/search?q={q}", off: "robots", sells: ["fashion", "beauty", "home"] },
+  { id: "studio88", name: "Studio 88", cur: "ZAR", hosts: ["studio-88.co.za"], kind: "magento", base: "https://www.studio-88.co.za", off: "robots", sells: ["fashion"] },
   { id: "puma", name: "PUMA ZA", cur: "ZAR", hosts: ["za.puma.com"], kind: "ldlist", search: "https://za.puma.com/search?q={q}", sells: ["fashion"], brands: ["puma"] },
   { id: "edgars", name: "Edgars", cur: "ZAR", hosts: ["edgars.co.za"], kind: "shopify", base: "https://www.edgars.co.za", sells: ["fashion", "beauty", "home"] },
-  { id: "ackermans", name: "Ackermans", cur: "ZAR", hosts: ["ackermans.co.za"], kind: "shopify", base: "https://www.ackermans.co.za", sells: ["electronics", "toys", "baby"] },
-  { id: "pep", name: "Pep", cur: "ZAR", hosts: ["pepstores.com"], kind: "shopify", base: "https://www.pepstores.com", sells: ["electronics", "toys", "baby"] },
+  { id: "ackermans", name: "Ackermans", cur: "ZAR", hosts: ["ackermans.co.za"], kind: "shopify", base: "https://www.ackermans.co.za", off: "robots", sells: ["electronics", "toys", "baby"] },
+  { id: "pep", name: "Pep", cur: "ZAR", hosts: ["pepstores.com"], kind: "shopify", base: "https://www.pepstores.com", off: "robots", sells: ["electronics", "toys", "baby"] },
   { id: "exclusivebooks", name: "Exclusive Books", cur: "ZAR", hosts: ["exclusivebooks.co.za"], kind: "shopify", base: "https://exclusivebooks.co.za", sells: ["books"] },
   { id: "ngf", name: "Norman Goodfellows", cur: "ZAR", hosts: ["ngf.co.za"], kind: "shopify", base: "https://www.ngf.co.za", sells: ["liquor"] },
-  { id: "lakeland", name: "Lakeland", cur: "GBP", hosts: ["lakeland.co.uk"], kind: "shopify", base: "https://www.lakeland.co.uk", sells: ["appliances", "home"] },
+  { id: "lakeland", name: "Lakeland", cur: "GBP", hosts: ["lakeland.co.uk"], kind: "shopify", base: "https://www.lakeland.co.uk", off: "robots", sells: ["appliances", "home"] },
+  // UK
+  { id: "allbeauty", name: "allbeauty", cur: "GBP", hosts: ["allbeauty.com"], kind: "shopify", base: "https://allbeauty.com", sells: ["beauty"] },
+  { id: "escentual", name: "Escentual", cur: "GBP", hosts: ["escentual.com"], kind: "shopify", base: "https://escentual.com", sells: ["beauty"] },
+  { id: "fenwick", name: "Fenwick", cur: "GBP", hosts: ["fenwick.co.uk"], kind: "shopify", base: "https://fenwick.co.uk", sells: ["appliances", "home", "beauty", "electronics"] },
 ];
+// off: "robots" = the shop's robots.txt asks tools not to use the search we would use, so we don't search it
+// (it can still be the page someone checks). Checked again at run time (cmpRobotsOk), so new rules apply too.
 const cmpShopById = (id) => CMP_SHOPS.find((s) => s.id === id) || null;
 function cmpShopForHost(host) {
   const h = stripWww(String(host || "").toLowerCase());
@@ -205,6 +211,7 @@ function cmpPlan(id, sourceHost, currency) {
   const shops = [], skipped = [];
   for (const s of CMP_SHOPS) {
     if (from && s.id === from.id) continue;
+    if (s.off) continue;
     if (s.cur !== currency) continue;
     if (s.brands && !(id.brand && s.brands.includes(id.brand))) { skipped.push({ id: s.id, name: s.name, why: "brand" }); continue; }
     const sells = s.sells.includes("*") || (cat ? s.sells.includes(cat) : !s.sells.every((x) => ["books", "liquor", "baby"].includes(x)));
@@ -320,6 +327,17 @@ async function cmpFetch(url, { accept = "application/json", timeout = 10000, met
 }
 class CmpError extends Error { constructor(m, kind) { super(m); this.kind = kind; } }
 async function cmpJson(url, opts) { const r = await cmpFetch(url, opts); const t = await readLimitedText(r); try { return JSON.parse(t); } catch { throw new CmpError("not JSON", "error"); } }
+// Shopify shops can price for the visitor's country (Shopify Markets: another currency, or without the
+// home country's VAT). Ask for the shop's home country and currency, and refuse an answer the shop says
+// it priced in another currency.
+const CMP_COUNTRY = { GBP: "GB", ZAR: "ZA" };
+async function cmpShopifyJson(shop, url) {
+  const r = await cmpFetch(url + (url.includes("?") ? "&" : "?") + (CMP_COUNTRY[shop.cur] ? "country=" + CMP_COUNTRY[shop.cur] + "&" : "") + "currency=" + shop.cur);
+  const cc = (String(r.headers.get("set-cookie") || "").match(/cart_currency=([A-Z]{3})/) || [])[1];
+  const t = await readLimitedText(r);
+  if (cc && cc !== shop.cur) throw new CmpError("prices in another currency", "error");
+  try { return JSON.parse(t); } catch { throw new CmpError("not JSON", "error"); }
+}
 async function cmpHtml(url, opts) { const r = await cmpFetch(url, { accept: "text/html,application/xhtml+xml", ...opts }); const t = await readLimitedText(r, true); if (detectBlock(200, t)) throw new CmpError("bot check", "blocked"); return t; }
 const absUrl = (base, u) => { try { const x = new URL(u, base); x.hash = ""; return x.href; } catch { return null; } };
 
@@ -359,7 +377,7 @@ const CMP_SEARCH = {
     return out;
   },
   async shopify(shop, q) {
-    const d = await cmpJson(`${shop.base}/search/suggest.json?q=${encodeURIComponent(q)}&resources%5Btype%5D=product&resources%5Blimit%5D=10&resources%5Boptions%5D%5Bunavailable_products%5D=last`);
+    const d = await cmpShopifyJson(shop, `${shop.base}/search/suggest.json?q=${encodeURIComponent(q)}&resources%5Btype%5D=product&resources%5Blimit%5D=10&resources%5Boptions%5D%5Bunavailable_products%5D=last`);
     const ps = ((((d.resources || {}).results) || {}).products) || [];
     return ps.map((p) => ({ title: p.title, brand: p.vendor, price: parsePrice(p.price), was: parsePrice(p.compare_at_price_min) > parsePrice(p.price) ? parsePrice(p.compare_at_price_min) : null, url: p.url ? absUrl(shop.base, String(p.url).split("?")[0]) : null,
       range: !!(p.price_min && p.price_max && parsePrice(p.price_min) !== parsePrice(p.price_max)),
@@ -417,7 +435,7 @@ const CMP_DETAIL = {
   async takealot(shop, c) { const d = await takealotApi(c.id); if (d.error) return null; return { gtins: [d.gtin].filter(Boolean), price: d.price, was: d.was || null, title: d.title, brand: d.brand }; },
   async shopify(shop, c) {
     if (!c.handle) return null;
-    const d = await cmpJson(`${shop.base}/products/${encodeURIComponent(c.handle)}.js`);
+    const d = await cmpShopifyJson(shop, `${shop.base}/products/${encodeURIComponent(c.handle)}.js`);
     const vs = Array.isArray(d.variants) ? d.variants : [];
     return { gtins: vs.map((v) => v.barcode).filter(Boolean), mpn: vs.length === 1 ? vs[0].sku || null : null, single: vs.length === 1,
       variants: vs.map((v) => ({ title: v.title === "Default Title" ? "" : String(v.title || ""), price: typeof v.price === "number" ? Math.round(v.price) / 100 : parsePrice(v.price), barcode: v.barcode || null, sku: v.sku || null, available: v.available !== false })) };
@@ -444,7 +462,7 @@ function cmpApplyDetail(id, c, d) {
     }
     if (!pick && d.variants.length === 1) pick = d.variants[0];
     if (pick) {
-      if (pick.title) c.title = c.title + " " + pick.title;
+      if (pick.title && !(" " + cmpNorm(c.title) + " ").includes(" " + cmpNorm(pick.title) + " ")) c.title = c.title + " " + pick.title;
       if (pick.price) c.price = pick.price;
       c.gtins = [pick.barcode].filter(Boolean);
       if (pick.sku && !c.mpn) c.mpn = pick.sku;
@@ -460,7 +478,43 @@ function cmpApplyDetail(id, c, d) {
 }
 
 // Search one shop for one product: up to CMP_MAX_SEARCHES searches, strict matching, best match only.
+// robots.txt for the compare search (RFC 9309; our token, else "*"). Cached a day; 4xx = no rules; 5xx/no answer = not now.
+const CMP_ROBOTS_TOKEN = "DealOrDud-PriceCompare";
+function cmpRobotsTargets(shop) {
+  const ex = { takealot: ["https://api.takealot.com", "/rest/v-1-11-0/searches/products?qsearch=x"], loot: [shop.base, "/search?cat=b&terms=x"], evetech: [shop.base, "/search?query=x"],
+    shopify: [shop.base, "/search/suggest.json?q=x&resources%5Btype%5D=product"], magento: [shop.base, "/graphql?query=x"], vtex: [shop.base, "/api/catalog_system/pub/products/search?ft=x"] }[shop.kind];
+  const out = ex ? [ex] : [];
+  if (shop.kind === "ldlist" && shop.search) { const u = new URL(shop.search.replace("{q}", "x")); out.push([u.origin, u.pathname + u.search]); }
+  if (shop.kind === "shopify") out.push([shop.base, "/products/x.js"]);
+  return out;
+}
+async function cmpRobotsRules(env, origin) {
+  const key = "robots-cmp:" + origin;
+  let v = await cacheGet(env, key);
+  if (!v) {
+    try {
+      const r = await fetch(origin + "/robots.txt", { headers: { "user-agent": CMP_UA, accept: "text/plain" }, redirect: "follow", signal: AbortSignal.timeout(6000) });
+      if (r.status >= 500) { await r.body?.cancel(); v = { retry: true }; }
+      else if (!r.ok) { await r.body?.cancel(); v = { rules: [] }; }
+      else v = { rules: parseRobots(await readLimitedText(r, true), CMP_ROBOTS_TOKEN) };
+    } catch { v = { retry: true }; }
+    await cachePut(env, key, v, v.retry ? 3600e3 : 864e5);
+  }
+  return v;
+}
+async function cmpRobotsOk(env, shop) {
+  for (const [origin, path] of cmpRobotsTargets(shop)) {
+    const v = await cmpRobotsRules(env, origin);
+    if (v.retry) return "retry";
+    if (!robotsAllows(v.rules, path)) return false;
+  }
+  return true;
+}
+
 async function cmpSearchShop(env, shop, id) {
+  const rb = await cmpRobotsOk(env, shop);
+  if (rb === false) return { status: "robots", message: "robots.txt asks tools not to use this search" };
+  if (rb === "retry") return { status: "error", message: "robots.txt not available" };
   const queries = [];
   if (id.gtin && ["takealot", "shopify", "loot", "magento", "vtex"].includes(shop.kind)) queries.push(id.gtin);
   const code = id.codes.find((c) => !c.startsWith("lego")) || null;
@@ -587,7 +641,7 @@ async function apiCompareShop(req, env, ctx) {
   let r;
   try { r = await cmpSearchShop(env, shop, id); } catch (e) { r = { status: "error", message: "failed" }; }
   const out = { shop: shop.id, name: shop.name, status: r.status, match: r.match || null, checked_at: now(), message: r.status === "match" || r.status === "none" ? null : r.message || null };
-  await cachePut(env, key, out, r.status === "match" || r.status === "none" ? CMP_TTL : CMP_ERR_TTL);
+  await cachePut(env, key, out, ["match", "none", "robots"].includes(r.status) ? CMP_TTL : CMP_ERR_TTL);
   if (r.match) {
     const save = cmpSaveHistory(env, r.match).catch(() => {});
     if (ctx && ctx.waitUntil) ctx.waitUntil(save); else await save;
