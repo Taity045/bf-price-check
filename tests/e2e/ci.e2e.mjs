@@ -251,6 +251,7 @@ await step("shops list", async () => {
   await p.waitForFunction(() => document.querySelectorAll("#shoplist li").length > 5, null, { timeout: 5000 });
   const list = await p.textContent("#shoplist");
   ok("shops list has Takealot and no Amazon", /Takealot/.test(list) && !/Amazon/.test(list), list.slice(0, 200));
+  ok("shops list says how much price history each shop has", (await p.$$eval("#shoplist li > span:first-child .small", (x) => x.length)) === (await p.$$eval("#shoplist li", (x) => x.length)) && /Price history: (good|some)|History is building up/.test(list), list.slice(0, 300));
   await p.goto(BASE + "/wall");
   ok("/wall goes to the home page while the wall is off", new URL(p.url()).pathname === "/", p.url());
   await p.context().close();

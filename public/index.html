@@ -660,7 +660,7 @@ async function loadSnaps(my) {
         const d = await r.json();
         if (my !== runId) return;
         if (d.status === "ok" && d.price) state.archive.push({ t: d.t, ts: d.ts, orig: d.orig, price: d.price, was: d.was, currency: d.currency });
-        else state.failed++;
+        else if (d.status != "blocked") state.failed++;
       } catch { if (my !== runId) return; state.failed++; }
       done++; updProg(done, total); renderAll();
     }
@@ -929,8 +929,7 @@ async function openShops() {
   if (shopsLoaded) return;
   try {
     const d = await (await fetch("/api/shops")).json();
-    const cc = { ZA: "South Africa", UK: "United Kingdom", DE: "Germany" };
-    $("shoplist").innerHTML = d.shops.map((x) => `<li><span>${esc(x.name)}</span><span class="small">${esc(cc[x.cc] || x.cc)}</span></li>`).join("");
+    $("shoplist").innerHTML = d.shops.map((x) => `<li><span>${esc(x.name)}<br><span class="small">${esc(x.note)}</span></span><span class="small">${esc(x.where)}</span></li>`).join("");
     shopsLoaded = true;
   } catch { $("shoplist").innerHTML = "<li>We could not load the list. Try again.</li>"; }
 }
