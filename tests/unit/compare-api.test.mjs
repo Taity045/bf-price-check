@@ -39,6 +39,8 @@ const SHOPIFY_AIRPODS = [
   { title: "Silicone Case for AirPods 4", handle: "case", url: "/products/case", price: "199.00", available: true, vendor: "Generic" },
 ];
 const routes = () => [
+  [/computermania\.co\.za\/robots\.txt$/, () => new Response(globalThis.__cmRobots || "User-agent: *\nDisallow: /cart\n", { status: 200 })],
+  [/\/robots\.txt$/, () => new Response("", { status: 404 })],
   [/computermania\.co\.za\/search\/suggest\.json/, () => suggest(SHOPIFY_AIRPODS)],
   [/computermania\.co\.za\/products\/apple-airpods-4-white\.js/, () => json({ variants: [{ title: "Default Title", price: 199900, barcode: "195949688584", sku: "MXP63ZE/A", available: true }] })],
   [/computermania\.co\.za\/products\/apple-airpods-4-anc\.js/, () => json({ variants: [{ title: "Default Title", price: 389900, barcode: "195949688591", sku: "MXP93ZE/A", available: true }] })],
@@ -85,7 +87,7 @@ describe("compare API with mocked shops", () => {
     assert.equal(old.matches[0].shop, "Computer Mania");
   });
   test("the ANC model and the case are not offered as the same product", async (t) => {
-    const r = setup(t, [[/computermania\.co\.za\/search\/suggest\.json/, () => suggest(SHOPIFY_AIRPODS.slice(1))], [/\.js$/, () => json({ variants: [{ title: "Default Title", price: 389900, barcode: "195949688591", available: true }] })]]);
+    const r = setup(t, [[/\/robots\.txt$/, () => new Response("", { status: 404 })], [/computermania\.co\.za\/search\/suggest\.json/, () => suggest(SHOPIFY_AIRPODS.slice(1))], [/\.js$/, () => json({ variants: [{ title: "Default Title", price: 389900, barcode: "195949688591", available: true }] })]]);
     const d = await (await r.get(`/api/compare/shop?url=${encodeURIComponent(CANON)}&shop=computermania`)).json();
     assert.equal(d.status, "none");
     assert.equal(d.match, null);
@@ -116,5 +118,27 @@ describe("compare API with mocked shops", () => {
     const { env } = setup(t, routes());
     const r = await worker.fetch(new Request(`https://site.test/api/compare?url=${encodeURIComponent(CANON)}`, { headers: { "user-agent": "python-requests/2.31" } }), env, { waitUntil() {} });
     assert.equal(r.status, 403);
+  });
+  test("a shop whose robots.txt disallows the search is not searched", async (t) => {
+    globalThis.__cmRobots = "User-agent: *\nDisallow: /search\n";
+    t.after(() => { delete globalThis.__cmRobots; });
+    const { get, calls } = setup(t, routes());
+    const r = await (await get(`/api/compare/shop?url=${encodeURIComponent(CANON)}&shop=computermania`)).json();
+    assert.equal(r.status, "robots");
+    assert.ok(!calls.some((c) => /computermania\.co\.za\/search/.test(c.url)), "no search request was sent");
+  });
+  test("our robots.txt group wins over the * group", async (t) => {
+    globalThis.__cmRobots = "User-agent: *\nDisallow: /\n\nUser-agent: DealOrDud-PriceCompare\nAllow: /\n";
+    t.after(() => { delete globalThis.__cmRobots; });
+    const { get } = setup(t, routes());
+    const r = await (await get(`/api/compare/shop?url=${encodeURIComponent(CANON)}&shop=computermania`)).json();
+    assert.equal(r.status, "match");
+  });
+  test("robots.txt that does not answer (5xx): not searched now, short cache", async (t) => {
+    const rs = routes(); rs.unshift([/computermania\.co\.za\/robots\.txt$/, () => new Response("down", { status: 503 })]);
+    const { get, calls } = setup(t, rs);
+    const r = await (await get(`/api/compare/shop?url=${encodeURIComponent(CANON)}&shop=computermania`)).json();
+    assert.equal(r.status, "error");
+    assert.ok(!calls.some((c) => /computermania\.co\.za\/search/.test(c.url)));
   });
 });

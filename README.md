@@ -107,7 +107,7 @@ The home page stays clean: heading, link box, Check price, 3 example links (Take
 |---|---|---|
 | Other shops (price compare) | Result page: the same product's price today at other shops in the same country and currency. See [Other shops](#other-shops-price-compare) | Each shop's own public search |
 | Saved, Your stats, badges | Header "Saved" | Your browser only (localStorage) |
-| Deep links | `/?url=<product link>` and `/?u=<product link>` open the site and run a check (used by shared links) | — |
+| Deep links | `/?url=<product link>` and `/?u=<product link>` open the site and run a check (used by shared links). For these links the server adds `class="q"` to `<html>`, so the first paint already uses the compact result layout (no centred hero, steps or footer while the result loads): no layout shift when the result appears (CLS < 0.02 at 360–1440 px, tested in e2e) | — |
 | Link previews (WhatsApp chats and Status) | OG and Twitter tags in the first 1 KB of `/` and `/?u=` / `/?url=` | First `og:image`: `/og-home.jpg` (static 1200×630 JPEG, 50 KB). Second `og:image`: `/og-square.jpg` (600×600 JPEG, 31 KB). Both with content-length and a 7-day cache. A product card `/og.png?u=…` (PNG) replaces the first image once it is made (D1 cache). Remake the static images with `scripts/make_og_static.py`. `/robots.txt` allows all |
 | Fake discount wall and shop scores | `/wall` — **off** (`WALL = "off"`) | D1 `verdicts` |
 | Price alerts | Result "Alert me" — **off** (`ALERTS = "off"`) | D1 `alerts` |
@@ -161,9 +161,13 @@ On a result page the "Other shops" panel (under the price chart and the buttons,
 
 - ZA, all kinds: Takealot (public search API), Loot.
 - ZA electronics: Evetech, Computer Mania, Matrix Warehouse, First Shop.
-- ZA home and appliances: Hirsch's, OK Furniture. Toys: Toys R Us, Babies R Us. Books: Exclusive Books. Liquor: Norman Goodfellows.
-- ZA fashion, sport and general: Bash (TFG: Sportscene, Totalsports, Foschini…), Superbalist, Studio 88, PUMA ZA (PUMA only), Edgars, Ackermans, Pep.
-- UK: Lakeland (kitchen and home).
+- ZA home and appliances: Hirsch's. Books: Exclusive Books. Liquor: Norman Goodfellows.
+- ZA fashion, sport and general: Bash (TFG: Sportscene, Totalsports, Foschini…), PUMA ZA (PUMA only), Edgars.
+- UK beauty: allbeauty, Escentual. UK department store (beauty, kitchen, home, some electronics): Fenwick.
+
+**robots.txt is respected.** Before a shop's search (or product details) is used, the worker reads that shop's `robots.txt` (cached 24 h) and checks the exact path for our token `DealOrDud-PriceCompare` (or `*`), per RFC 9309. If the path is disallowed the shop is not searched and the page says "Not searched: … (the shop asks tools not to use its search)"; if `robots.txt` does not answer (5xx), the shop is skipped for now and asked again within an hour. Shops whose `robots.txt` disallows the search we would use are switched off in `CMP_SHOPS` (`off: "robots"`): OK Furniture, Toys R Us, Babies R Us, Superbalist, Studio 88, Ackermans, Pep and Lakeland. Products from those shops can still be checked and compared against the other shops.
+
+**Currency**: Shopify shops can price for the visitor's country (another currency, or without UK VAT). Every Shopify request asks for the shop's home country and currency (`country=GB&currency=GBP`, `country=ZA&currency=ZAR`), and an answer the shop says is priced in another currency is refused.
 
 Shops are picked by the product's kind (electronics, appliances, books, fashion…) so a book is not searched at a TV shop. The shop the product came from is not searched again.
 
@@ -177,7 +181,7 @@ Game and special editions (Fortnite, Game Pass, Zelda, limited/anniversary editi
 
 A candidate is always rejected if it is an accessory or case for the product, used/refurbished/parallel import/renewed, a bundle, or its price is far from this page's price (model matches: under ⅓ or over 3×; name matches: under ½ or over 2×). Shopify shops with several sizes or colours are read per variant, and the variant is picked by barcode or by a unique spec fit; if that is not possible the row is left out. Fashion needs a barcode or model number (names like "Air Force 1 '07" cover many colours).
 
-Each row shows the shop, price (and "was" price), the difference against this page, the match level ("Same barcode", "Same model number", "Same name and specs"), stock, a link to the shop's page and when it was checked. The cheapest in-stock offer is marked "Cheapest". Under the list: shops that did not have it, and shops we could not check (blocked or down) — never a guessed price.
+Each row shows the shop, price (and "was" price), the difference against this page, the match level ("Same barcode", "Same model number", "Same name and specs"), stock, a link to the shop's page and when it was checked. The cheapest in-stock offer is marked "Cheapest"; when two or more in-stock offers (this page included) share the lowest price, each is marked "Same lowest price", and an offer within 0.50 of this page's price shows "Same price". Under the list: shops that did not have it, shops not searched because of their robots.txt, and shops we could not check (blocked or down) — never a guessed price.
 
 **History**: every price found by the compare is saved in `checks` with source `compare-<shop>`, and barcode/model matches are added to `tracked`, so the hourly re-check and later visits build price history for the same product at more shops.
 
@@ -331,7 +335,7 @@ Cloudflare resources: Worker `bf-price-check`, D1 `bf-price-check-db`, cron `* *
 - Wayback coverage of product pages is thin, especially for South African stores (often 0–3 copies in 12 months). Common Crawl adds monthly copies for 22 shops, but not Takealot, and only for products it happened to crawl. Takealot product pages are rendered by JavaScript, so archived copies have no price. History therefore mostly grows from the prices we save: when people check, and about once a day for each product in the daily list.
 - The Internet Archive sometimes answers 503 or is slow; the tool retries and shows a "Try the archive again" button.
 - Marketplace listings (Amazon, MediaMarkt, Takealot) can change seller, so archived prices may be from a different seller.
-- Other shops: shops whose search is built by JavaScript only or that block us are not searched (Sportsmans and Outdoor Warehouse, Cycle Lab, Yuppiechef, Woolworths, Checkers/Shoprite, Bob Shop, OneDayOnly, Cashbuild, Faithful to Nature, Bargain Books, Cotton On, Sheet Street, Miladys, and most UK shops). UK coverage is Lakeland only. Fashion items match only when the other shop shows the same barcode or style code, which most ZA fashion shops do not.
+- Other shops: shops that block us, whose search is built by JavaScript only, or whose robots.txt disallows their search are not searched. Tried for the UK (November 2026): Currys, Argos, AO.com, Very, Superdrug and Dunelm block cloud requests (403/406); John Lewis, Wickes, Lookfantastic and Boots disallow their search in robots.txt; Halfords, Richer Sounds and Cult Beauty build results with JavaScript only. Tried for ZA: Checkers/Shoprite blocks (403); Woolworths, Yuppiechef and Cashbuild disallow search in robots.txt; Cycle Lab, Sportsmans and Outdoor Warehouse, Bob Shop, OneDayOnly, Faithful to Nature, Bargain Books, Cotton On, Sheet Street and Miladys have no usable server-side search. UK electronics coverage is thin (Fenwick only). Fashion items match only when the other shop shows the same barcode or style code, which most ZA fashion shops do not.
 - Free-plan Worker limits (CPU time, 50 sub-requests per call) apply; each archive copy is fetched in its own request to stay inside them, and the daily price saving works in small batches every minute.
 
 ## Private stats
