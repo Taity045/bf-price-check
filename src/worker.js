@@ -52,29 +52,56 @@ function symbolCurrency(s) {
   return null;
 }
 
-// Parse "R 1 299,00", "1.299,00 €", "£1,299.99", 1299 -> number
+const priceNum = (n) => (isFinite(n) && n > 0 && n < 1e7 ? Math.round(n * 100) / 100 : null);
+const priceDigits = (v) => decodeEntities(String(v)).replace(/[\s\u00a0\u2009\u202f']/g, "").replace(/[^\d.,]/g, "").replace(/^[.,]+|[.,]+$/g, "");
+
+// Machine-format price from structured data: JSON-LD offers.price, itemprop/meta content, og/product:price:amount,
+// shop JSON APIs, data layers. "." is ALWAYS the decimal point, whatever the digit count: "999.990" -> 999.99,
+// "1299.000" -> 1299. Also accepted, because each has one reading only: "1,299.00" / "1,299" (comma groups),
+// "1299,00" (comma + 1-2 digits = decimal), "1.299,00" (comma after dots = European). Anything else
+// (for example "1.299.000" or "1299,000") is not a machine number: null, so we never guess.
 function parsePrice(v) {
   if (v == null) return null;
-  if (typeof v === "number") return v > 0 && v < 1e7 ? Math.round(v * 100) / 100 : null;
-  let s = decodeEntities(String(v)).replace(/[\s\u00a0\u2009\u202f']/g, "");
-  s = s.replace(/[^\d.,-]/g, "");
+  if (typeof v === "number") return priceNum(v);
+  const s = priceDigits(v);
   if (!s || !/\d/.test(s)) return null;
-  s = s.replace(/^[.,-]+|[.,-]+$/g, "");
+  if (/^\d+(\.\d+)?$/.test(s)) return priceNum(parseFloat(s));
+  if (/^\d{1,3}(,\d{3})+(\.\d+)?$/.test(s)) return priceNum(parseFloat(s.replace(/,/g, "")));
+  if (/^\d+,\d{1,2}$/.test(s)) return priceNum(parseFloat(s.replace(",", ".")));
+  if (/^\d{1,3}(\.\d{3})+,\d{1,2}$/.test(s)) return priceNum(parseFloat(s.replace(/\./g, "").replace(",", ".")));
+  return null;
+}
+
+// Human-visible price text (the shop's price block, Amazon's price text, a price the user types).
+// Thousands groups are used only when the reading is clear:
+// - both marks: the last one is the decimal mark ("1.299,00", "1,299.99", "1 234 567,89");
+// - commas only: "1,299" / "1,299,000" are groups; "12,5" / "1299,00" / "1299,000" are decimals;
+// - dots only: "1.299.000" (2+ groups) is groups; "1.299" / "999.990" (one group) are groups only next to a currency
+//   sign or code, otherwise unclear -> null; "1299.000" or "12.5" is a decimal.
+function parseTextPrice(v, { currency = false } = {}) {
+  if (v == null) return null;
+  if (typeof v === "number") return priceNum(v);
+  const raw = decodeEntities(String(v));
+  const hasCur = currency || /[R$£€]|\b(?:ZAR|EUR|GBP|USD)\b/.test(raw);
+  const s = priceDigits(raw);
+  if (!s || !/\d/.test(s)) return null;
   const lc = s.lastIndexOf(","), ld = s.lastIndexOf(".");
   if (lc >= 0 && ld >= 0) {
-    if (lc > ld) s = s.replace(/\./g, "").replace(",", ".");
-    else s = s.replace(/,/g, "");
-  } else if (lc >= 0 || ld >= 0) {
-    // One kind of separator. "1,299" / "1.299.000" are thousands groups (1 to 3 digits, then groups of 3).
-    // Anything else ("12,5", "1299,000", "1299.000") has a decimal mark; more than one mark that is not a group is dropped.
-    const sep = lc >= 0 ? "," : ".";
-    const parts = s.split(sep);
-    if (/^[1-9]\d{0,2}$/.test(parts[0]) && parts.length > 1 && parts.slice(1).every((x) => x.length === 3)) s = parts.join("");
-    else if (parts.length === 2) s = parts[0] + "." + parts[1];
-    else s = parts.join("");
+    const dec = lc > ld ? "," : ".", grp = dec === "," ? "." : ",";
+    const [int, frac, extra] = s.split(dec);
+    if (extra !== undefined || !new RegExp(`^\\d{1,3}(\\${grp}\\d{3})*$`).test(int)) return null;
+    return priceNum(parseFloat(int.split(grp).join("") + "." + frac));
   }
-  const n = parseFloat(s);
-  return isFinite(n) && n > 0 && n < 1e7 ? Math.round(n * 100) / 100 : null;
+  if (lc < 0 && ld < 0) return priceNum(parseFloat(s));
+  const sep = lc >= 0 ? "," : ".";
+  const parts = s.split(sep);
+  const grouped = /^[1-9]\d{0,2}$/.test(parts[0]) && parts.slice(1).every((x) => x.length === 3);
+  if (grouped && parts.length > 2) return priceNum(parseFloat(parts.join("")));
+  if (parts.length > 2) return null;
+  if (!grouped) return priceNum(parseFloat(parts[0] + "." + parts[1]));
+  // One group of 3 after 1-3 digits ("1,299", "1.299", "999.990").
+  if (sep === "," || hasCur) return priceNum(parseFloat(parts.join("")));
+  return null;
 }
 
 // ---------- URL safety ----------
@@ -238,7 +265,10 @@ function parseMeta(html, out) {
   if (!out.image) out.image = metas["og:image"] || metas["twitter:image"];
   let src = null;
   if (!out.price) {
-    const p = parsePrice(metas["product:price:amount"] || metas["og:price:amount"] || metas["product:sale_price:amount"] || metas["twitter:data1"] && /\d/.test(metas["twitter:data1"]) && /price/i.test(metas["twitter:label1"] || "") && metas["twitter:data1"]);
+    // og/product price tags are machine format; twitter:data1 is display text ("R 1 299").
+    const tw = /\d/.test(metas["twitter:data1"] || "") && /price/i.test(metas["twitter:label1"] || "") ? metas["twitter:data1"] : null;
+    const mp = metas["product:price:amount"] || metas["og:price:amount"] || metas["product:sale_price:amount"];
+    const p = mp ? parsePrice(mp) : parseTextPrice(tw);
     if (p) { out.price = p; src = "og-meta"; }
     if (!out.currency) out.currency = metas["product:price:currency"] || metas["og:price:currency"] || metas["product:sale_price:currency"];
   }
@@ -271,12 +301,12 @@ function parseAmazon(html, out) {
   if (!block) return null;
   let p = null, was = null;
   const pay = block.match(/priceToPay[\s\S]{0,400}?class="a-offscreen">([^<]+)</) || block.match(/apexPriceToPay[\s\S]{0,400}?class="a-offscreen">([^<]+)</) || block.match(/class="a-offscreen">([^<]*\d[^<]*)</) || block.match(/id="priceblock_(?:deal|our)price"[^>]*>([^<]+)</) || block.match(/id="price_inside_buybox"[^>]*>([^<]+)</);
-  if (pay) { p = parsePrice(pay[1]); if (!out.currency) out.currency = symbolCurrency(pay[1]); }
+  if (pay) { p = parseTextPrice(pay[1]); if (!out.currency) out.currency = symbolCurrency(pay[1]); }
   const w = block.match(/(?:basisPrice|a-text-price)[\s\S]{0,300}?class="a-offscreen">([^<]+)</);
-  if (w) was = parsePrice(w[1]);
+  if (w) was = parseTextPrice(w[1]);
   if (!p) {
     const whole = block.match(/class="a-price-whole">([\d.,\s]+)/), frac = block.match(/class="a-price-fraction">(\d+)/);
-    if (whole) p = parsePrice(whole[1].replace(/[.,]\s*$/, "") + (frac ? "." + frac[1] : ""));
+    if (whole) p = parseTextPrice(whole[1].replace(/[.,]\s*$/, "").replace(/[.,\s]/g, "") + (frac ? "." + frac[1] : ""), { currency: true });
   }
   if (p) { out.price = p; if (was && was > p) out.was = was; }
   const t = html.match(/id="productTitle"[^>]*>\s*([^<]+)</);
@@ -341,12 +371,12 @@ function parseMainPriceBlock(html, out) {
   const rest = sm ? blk.replace(sm[0], " ") : blk;
   const pm = rest.replace(/<[^>]+>/g, " ").match(amt);
   if (!pm) return null;
-  const price = parsePrice(pm[2]);
+  const price = parseTextPrice(pm[2], { currency: true });
   if (!price) return null;
   out.price = price;
   if (!out.currency) out.currency = symbolCurrency(pm[0]);
   const wm = strikeTxt.replace(/<[^>]+>/g, " ").match(amt);
-  const was = wm && parsePrice(wm[2]);
+  const was = wm && parseTextPrice(wm[2], { currency: true });
   if (was && was > price) out.was = was;
   return "price-block";
 }

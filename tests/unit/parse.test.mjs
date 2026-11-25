@@ -5,14 +5,50 @@ import { fixture } from "../helpers/fixtures.mjs";
 
 const extract = (name, host) => W.extractFromHtml(fixture(name), host);
 
-describe("parsePrice", () => {
+describe("parsePrice: structured data (machine format, '.' is always the decimal point)", () => {
   const cases = [
-    ["R 1 299,00", 1299], ["1.299,00 €", 1299], ["£1,299.99", 1299.99], [1299, 1299], [12.345, 12.35],
-    ["1.299", 1299], ["12,5", 12.5], ["R1,299", 1299], ["1 234 567,89", 1234567.89], ["R&nbsp;450", 450],
-    ["1299.000", 1299], ["1299,000", 1299], ["1.299.000", 1299000], ["1,299,000", 1299000], ["999.990", 999990], ["0.299", 0.3], ["1299.99", 1299.99], ["R 12 999.000", 12999],
-    ["0", null], ["abc", null], ["", null], [null, null], [undefined, null], [-5, null], [1e8, null],
+    ["999.990", 999.99], ["1299.000", 1299], ["1299.99", 1299.99], ["1299", 1299], ["0.299", 0.3], ["12.5", 12.5], ["1.299", 1.3],
+    [1299, 1299], [12.345, 12.35], [999.99, 999.99],
+    ["1,299.00", 1299], ["1,299", 1299], ["£1,299.99", 1299.99], ["1299,00", 1299], ["12,5", 12.5], ["1.299,00", 1299], ["1.299,00 €", 1299],
+    ["R 1 299,00", 1299], ["1 234 567,89", 1234567.89], ["R&nbsp;450", 450], ["R1,299", 1299],
+    ["1.299.000", null], ["1299,000", null], ["0", null], ["abc", null], ["", null], [null, null], [undefined, null], [-5, null], [1e8, null],
   ];
   for (const [input, want] of cases) test(`${JSON.stringify(input)} -> ${want}`, () => assert.equal(W.parsePrice(input), want));
+});
+
+describe("parseTextPrice: visible text (thousands groups only when the reading is clear)", () => {
+  const cases = [
+    ["R 1.299", 1299], ["€999.990", 999990], ["1.299 EUR", 1299], ["1.299,00", 1299], ["1.299,00 €", 1299], ["1.299.000", 1299000],
+    ["1,299", 1299], ["R1,299", 1299], ["1,299,000", 1299000], ["£1,299.99", 1299.99], ["R 1 299,00", 1299], ["1 234 567,89", 1234567.89],
+    ["1299.000", 1299], ["1299,00", 1299], ["12,5", 12.5], ["12.5", 12.5], ["R 12 999.000", 12999], ["R&nbsp;450", 450],
+    ["1.299", null], ["999.990", null], ["1299,000", 1299], ["1,2,3", null], ["1.2.3,00", null], ["abc", null], [null, null],
+  ];
+  for (const [input, want] of cases) test(`${JSON.stringify(input)} -> ${want}`, () => assert.equal(W.parseTextPrice(input), want));
+  test("a currency next to the number (price block) makes one group clear", () => {
+    assert.equal(W.parseTextPrice("999.990", { currency: true }), 999990);
+    assert.equal(W.parseTextPrice("1.299", { currency: true }), 1299);
+  });
+});
+
+describe("structured price wins over the visible price", () => {
+  const page = (ld, block) => `<html><head><title>T</title>${ld}</head><body><div class="product-detail-price"><span>${block}</span></div></body></html>`;
+  const ld = (price) => `<script type="application/ld+json">${JSON.stringify({ "@type": "Product", name: "Thing", offers: { "@type": "Offer", price, priceCurrency: "EUR" } })}</script>`;
+  test("JSON-LD \"999.990\" is 999.99 even when the page shows €999.990", () => {
+    const r = W.extractFromHtml(page(ld("999.990"), "€999.990"), "shop.example");
+    assert.equal(r.price, 999.99); assert.equal(r.source, "json-ld");
+  });
+  test("JSON-LD and the visible block disagree: JSON-LD is used", () => {
+    const r = W.extractFromHtml(page(ld("1299.000"), "R 1 499,00"), "shop.example");
+    assert.equal(r.price, 1299); assert.equal(r.source, "json-ld");
+  });
+  test("og price tag \"1299.000\" is 1299; itemprop content \"999.990\" is 999.99", () => {
+    assert.equal(W.extractFromHtml(`<html><head><meta property="product:price:amount" content="1299.000"><meta property="product:price:currency" content="ZAR"></head><body><div class="pdp-price">R 1 499</div></body></html>`, "shop.example").price, 1299);
+    assert.equal(W.extractFromHtml(`<html><body><span itemprop="price" content="999.990">R 999,99</span><div class="pdp-price">R 1 499</div></body></html>`, "shop.example").price, 999.99);
+  });
+  test("no structured price: the visible block is read with the text rules", () => {
+    const r = W.extractFromHtml(page("", "R 1 299,00 <del>R 1 599,00</del>"), "shop.example");
+    assert.equal(r.price, 1299); assert.equal(r.was, 1599); assert.equal(r.source, "price-block");
+  });
 });
 
 describe("currency mapping", () => {

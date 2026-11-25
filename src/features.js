@@ -179,7 +179,7 @@ async function apiAlert(req, env, ctx) {
   if (!b || typeof b !== "object") return json({ error: "We could not read the form." }, 400);
   if (b.website) return json({ ok: true });
   if (!test && !(await verifyTurnstile(env, b.ts, ip))) return json({ error: "We could not check that you are a person. Try again." }, 403);
-  const email = String(b.email || "").trim().slice(0, 254), target = parsePrice(b.target), canon = String(b.url || "");
+  const email = String(b.email || "").trim().slice(0, 254), target = parseTextPrice(b.target, { currency: true }), canon = String(b.url || "");
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return json({ error: "Check the email address." }, 400);
   if (!target) return json({ error: "Type the price you want to pay." }, 400);
   if (await rateLimit(env, ip, "req")) return json({ error: "You sent many requests. Try again in a minute." }, 429);

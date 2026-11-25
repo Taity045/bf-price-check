@@ -525,18 +525,25 @@ const toastQ = [];
 function toast(msg) { toastQ.push(msg); if (toastQ.length === 1) nextToast(); }
 function nextToast() { const t = $("toast"); if (!toastQ.length) return; const d = document.querySelector("dialog[open]"); (d || document.body).appendChild(t); t.textContent = toastQ[0]; t.classList.add("on"); setTimeout(() => { t.classList.remove("on"); toastQ.shift(); setTimeout(nextToast, 200); }, 1800); }
 function parseNum(s) {
-  // Same rules as parsePrice in src/worker.js: "1 299,00", "1.299", "1,299.99", "1299.000" -> number.
+  // A typed price is human text next to a currency box: same rules as parseTextPrice(v, { currency: true }) in src/worker.js.
   if (!s) return null; s = String(s).replace(/[^\d.,]/g, "").replace(/^[.,]+|[.,]+$/g, "");
+  if (!/\d/.test(s)) return null;
+  const num = (n) => (isFinite(n) && n > 0 && n < 1e7 ? Math.round(n * 100) / 100 : null);
   const lc = s.lastIndexOf(","), ld = s.lastIndexOf(".");
-  if (lc >= 0 && ld >= 0) s = lc > ld ? s.replace(/\./g, "").replace(",", ".") : s.replace(/,/g, "");
-  else if (lc >= 0 || ld >= 0) {
-    const parts = s.split(lc >= 0 ? "," : ".");
-    if (/^[1-9]\d{0,2}$/.test(parts[0]) && parts.slice(1).every((x) => x.length === 3)) s = parts.join("");
-    else if (parts.length === 2) s = parts[0] + "." + parts[1];
-    else s = parts.join("");
+  if (lc >= 0 && ld >= 0) {
+    const dec = lc > ld ? "," : ".", grp = dec === "," ? "." : ",";
+    const [int, frac, extra] = s.split(dec);
+    if (extra !== undefined || !new RegExp("^\\d{1,3}(\\" + grp + "\\d{3})*$").test(int)) return null;
+    return num(parseFloat(int.split(grp).join("") + "." + frac));
   }
-  const n = parseFloat(s); return n > 0 ? Math.round(n * 100) / 100 : null;
+  if (lc < 0 && ld < 0) return num(parseFloat(s));
+  const parts = s.split(lc >= 0 ? "," : ".");
+  const grouped = /^[1-9]\d{0,2}$/.test(parts[0]) && parts.slice(1).every((x) => x.length === 3);
+  if (grouped) return num(parseFloat(parts.join("")));
+  if (parts.length > 2) return null;
+  return num(parseFloat(parts[0] + "." + parts[1]));
 }
+
 
 // examples
 EXAMPLES.forEach((e) => {

@@ -328,6 +328,9 @@ for (const [n, o] of [["390", phone()], ["1440", wide(1440)]]) {
   const pr = await p.textContent("#prices");
   ok(`${n}: "1299.000" is read as R 1 299 (not 1 299 000)`, /R\s?1\s?299(?![\s\d]*000)/.test(pr) && !/1\s?299\s?000/.test(pr), pr.replace(/\s+/g, " ").slice(0, 100));
   ok(`${n}: "1,599" is read as R 1 599`, /R\s?1\s?599/.test(pr), pr.replace(/\s+/g, " ").slice(0, 100));
+  await p.fill("#mnow", "1.299"); await p.fill("#mwas", ""); await p.click("#mapply"); await p.waitForTimeout(300);
+  const pr2 = await p.textContent("#prices");
+  ok(`${n}: typed "1.299" (next to the currency box) is R 1 299`, /R\s?1\s?299(?!\d)/.test(pr2) && !/1,3|1\.3/.test(pr2), pr2.replace(/\s+/g, " ").slice(0, 80));
   const sr = await p.textContent("#sr"), live = await p.getAttribute("#result", "aria-live");
   ok(`${n}: screen readers get one short verdict line`, /^Verdict: .+\.$/.test(sr) && live === null, `${sr} | result aria-live=${live}`);
   await p.click("#savedBtn"); await p.waitForSelector("#savedDlg[open]");
