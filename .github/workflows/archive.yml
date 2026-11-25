@@ -60,6 +60,9 @@ jobs:
       - name: Read archived product pages (stops after 4.5 hours; the next run continues)
         if: steps.crawl.outputs.id != ''
         run: node scripts/cc/archive.mjs collect --out "cc-archive/${{ steps.crawl.outputs.id }}" --crawls "${{ steps.crawl.outputs.id }}" --rate 6 --concurrency 4 --max-minutes 270
+      - name: UK check for copies read before it existed (cached from an older run)
+        if: steps.crawl.outputs.id != ''
+        run: node scripts/cc/archive.mjs recheck --out "cc-archive/${{ steps.crawl.outputs.id }}" --rate 6 --concurrency 4
       - name: Sanity filter and price rows
         if: steps.crawl.outputs.id != ''
         run: node scripts/cc/archive.mjs reduce --out "cc-archive/${{ steps.crawl.outputs.id }}"

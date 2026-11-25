@@ -14,7 +14,7 @@ export const NAMES = [
   "isPrivateIPv4", "isPrivateIPv6", "validateUrl", "resolvesPublic", "canonicalize",
   "parseJsonLd", "parseMeta", "parseAmazon", "parseDataLayer", "parseMainPriceBlock", "parseFallback",
   "pageAmount", "detectBlock", "extractFromHtml", "takealotBarcode", "takealotApi", "getCurrent",
-  "sameProduct", "matchShop", "shopFor", "blockedShopFor",
+  "sameProduct", "matchShop", "shopFor", "blockedShopFor", "archivedGeoCheck", "ukArchiveShop",
   "rateLimit", "overLimit", "softWrite", "cacheGet", "cachePut",
   "median", "historyPoints", "judge", "sparseEvidence", "cdxQueries", "publicVerdict",
   "escHtml", "apiGuard", "verdictStmt", "shopScore", "track", "cron",

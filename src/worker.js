@@ -470,6 +470,54 @@ function archivedCopyBlocked(html, ex) {
   return null;
 }
 
+// Archived copies are fetched from outside the shop's country. Shopify Markets shops then show the
+// export price: Lakeland drops UK VAT for US visitors, so its Common Crawl and Internet Archive copies
+// say GBP but are 1/1.2 of the UK price; other shops switch currency. A copy of a UK shop counts only
+// when the page itself confirms the UK price: currency GBP in its structured data, no "VAT not
+// included" flag, and on Shopify pages the buyer country "GB" with active currency GBP. Anything else
+// is "unusable": left out, never counted as a price. Returns { reason, message } or null.
+// expected: the shop's home currency (ukArchiveShop() decides it from the URL when not given).
+function ukArchiveShop(url) {
+  let u; try { u = new URL(url); } catch { return false; }
+  const host = stripWww(u.hostname.toLowerCase());
+  if (tldCurrency(host) === "GBP") return true;
+  const s = shopFor(u.href) || blockedShopFor(u.href);
+  if (s) return s.cc === "UK";
+  return typeof CMP_SHOPS !== "undefined" && CMP_SHOPS.some((c) => c.cur === "GBP" && c.hosts.includes(host));
+}
+const hostOf = (url) => { try { return new URL(url).hostname.toLowerCase(); } catch { return ""; } };
+const GEO_MSG = "The archived copy shows the price for visitors outside the UK (without UK VAT or in another currency).";
+function archivedGeoCheck(html, url, ex, expected) {
+  const ccy = expected || (ukArchiveShop(url) ? "GBP" : null);
+  if (ccy !== "GBP") return null;
+  const bad = (reason) => ({ reason, message: GEO_MSG });
+  if (/["']?valueAddedTaxIncluded["']?\s*:\s*["']?false\b/i.test(html) || /itemprop=["']valueAddedTaxIncluded["'][^>]{0,40}content=["']false/i.test(html)) return bad("ex-vat");
+  const country = html.match(/\bShopify\.country\s*=\s*["']([A-Za-z]{2})["']/);
+  const shopify = country || /\bShopify\.shop\s*=\s*["']|\bShopify\.currency\s*=/.test(html);
+  if (shopify) {
+    if (!country) return bad("geo-unconfirmed");
+    if (country[1].toUpperCase() !== "GB") return bad("geo-price");
+    const cur = html.match(/\bShopify\.currency\s*=\s*\{[^}]*?["']?active["']?\s*:\s*["']([A-Za-z]{3})["']/);
+    if (!cur) return bad("geo-unconfirmed");
+    if (cur[1].toUpperCase() !== "GBP") return bad("geo-currency");
+  }
+  let cur = ex && ex.currency;
+  if (/(^|\.)amazon\.co\.uk$/i.test(hostOf(url))) {
+    // Amazon UK prices for the delivery address in the page header: "Delivering to London E17 7" is
+    // the UK price; another country (or no address) is not confirmed. VAT note "excl. VAT": unusable.
+    const to = html.match(/Deliver(?:ing)? to\s*(?:<[^>]*>\s*)*([^<]{2,60})/i);
+    const place = to ? decodeEntities(to[1]).replace(/\s+/g, " ").trim() : "";
+    if (!place) return bad("geo-unconfirmed");
+    if (!/\bUnited Kingdom\b|\b[A-Z]{1,2}\d[A-Z\d]?(?: \d[A-Z]{0,2})?$/.test(place)) return bad("geo-price");
+    if (/id=["']vatMessage[^>]*>\s*(?:<[^>]*>\s*)*[^<]*\b(?:excl\.?|excluding|exclusive of)\s+VAT/i.test(html)) return bad("ex-vat");
+    const pref = html.match(/currencyOfPreference\s*=\s*["']([A-Z]{3})["']/);
+    if (!cur && pref) cur = pref[1];
+  }
+  // The currency must come from the page itself, not from the shop's domain.
+  if (cur !== "GBP") return bad(cur ? "currency" : "currency-unconfirmed");
+  return null;
+}
+
 function extractFromHtml(html, host) {
   const out = {};
   let source = null;
@@ -783,6 +831,8 @@ async function fetchSnapshot(ts, orig, canon) {
     const blk = archivedCopyBlocked(html, ex);
     if (blk) return { status: "blocked", reason: blk.reason, message: blk.message };
     if (!ex.price) return { status: "noprice" };
+    const geo = archivedGeoCheck(html, orig, ex);
+    if (geo) return { status: "unusable", reason: geo.reason, message: geo.message };
     return { status: "ok", price: ex.price, was: ex.was || null, currency: ex.currency || tldCurrency(host) };
   } catch (e) {
     if (e instanceof PageReadError) return { status: "error", message: e.message };
@@ -957,8 +1007,9 @@ async function apiCheck(req, env, ctx) {
     current, cached, tracked,
     history: {
       archive: hist.snaps.filter((s) => s.status === "ok").map((s) => ({ t: tsToMs(s.snap_ts), ts: s.snap_ts, orig: s.orig, price: s.price, was: s.was, currency: s.currency })),
-      archive_failed: hist.snaps.filter((s) => s.status !== "ok" && s.status !== "retry" && s.status !== "blocked").length,
+      archive_failed: hist.snaps.filter((s) => s.status !== "ok" && s.status !== "retry" && s.status !== "blocked" && s.status !== "unusable").length,
       archive_blocked: hist.snaps.filter((s) => s.status === "blocked").length,
+      archive_unusable: hist.snaps.filter((s) => s.status === "unusable").length,
       checks: hist.checks.map((c) => ({ t: c.ts, price: c.price, was: c.was, currency: c.currency })),
       cc: archivePoints(hist.cc || [], now() - HISTORY_DAYS * 864e5, current.status === "ok" ? current.price : null).map((p) => ({ t: p.t, price: p.price, was: p.was, currency: p.currency, url: p.url, link: p.link })),
     },

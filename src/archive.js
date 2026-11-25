@@ -117,6 +117,9 @@ function cleanArchiveRow(r, nowMs) {
   if (was !== null && !(Number.isFinite(was) && was > price && was <= price * 5)) return null;
   const currency = String(r.currency || "");
   if (currency !== ({ UK: "GBP", ZA: "ZAR" })[shop.cc]) return null;
+  // UK rows only when the loader read the copy's own UK signals (archivedGeoCheck passed): geo "GB".
+  // Older loaders that did not check are refused, so an ex-VAT or foreign-currency copy is never saved.
+  if (currency === "GBP" && r.geo !== "GB") return null;
   const t0 = Number(r.captured_at), t1 = Number(r.last_seen ?? r.captured_at);
   const oldest = nowMs - 2 * 366 * 864e5;
   if (!Number.isInteger(t0) || !Number.isInteger(t1) || t0 < oldest || t1 < t0 || t1 > nowMs + 864e5) return null;
