@@ -137,3 +137,27 @@ describe("price history per shop", () => {
     assert.ok(Object.values(h.shops).every((s) => s.level === "building"));
   });
 });
+
+describe("old archive copies saved as 'no price' before the bot-check detection", () => {
+  test("are marked for one more read, once, and do not count until then", async (t) => {
+    const { db, env } = testDb(t);
+    const u = "https://www.takealot.com/x/PLID1";
+    const ins = (ts, status, at) => db.prepare("INSERT INTO product_snaps (url, snap_ts, orig, status, fetched_at, price, currency) VALUES (?, ?, ?, ?, ?, ?, ?)").run(u, ts, u, status, at, status === "ok" ? 10 : null, status === "ok" ? "ZAR" : null);
+    const before = W.SNAP_DETECT_SINCE - 864e5, after = W.SNAP_DETECT_SINCE + 3600e3;
+    ins("20260101120000", "noprice", before);   // old empty shell: read again
+    ins("20260102120000", "noprice", null);     // very old row with no time: read again
+    ins("20260103120000", "noprice", after);    // read with the new check: keep
+    ins("20260104120000", "ok", before);        // a price: keep
+    ins("20260105120000", "blocked", after);    // already blocked: keep
+    assert.equal(await W.relabelOldSnaps(env), 2);
+    const st = Object.fromEntries(db.prepare("SELECT snap_ts, status, fetched_at FROM product_snaps").all().map((r) => [r.snap_ts.slice(0, 8), r.status + ":" + r.fetched_at]));
+    assert.deepEqual(st, { 20260101: "retry:0", 20260102: "retry:0", 20260103: "noprice:" + after, 20260104: "ok:" + before, 20260105: "blocked:" + after });
+    // stored history leaves the copies waiting for a new read out (not "no price")
+    const h = await W.storedHistory(env, u);
+    assert.deepEqual(h.snaps.map((s) => s.status).sort(), ["blocked", "noprice", "ok"]);
+    // runs once: a later 'no price' row from before the cutoff is not touched again
+    ins("20260106120000", "noprice", before);
+    assert.equal(await W.relabelOldSnaps(env), 0);
+    assert.equal(db.prepare("SELECT status FROM product_snaps WHERE snap_ts = '20260106120000'").get().status, "noprice");
+  });
+});
