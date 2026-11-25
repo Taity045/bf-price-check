@@ -419,7 +419,7 @@ async function loadOthers(my) {
   sec.classList.remove("hidden");
   if (!shops.length) {
     $("otherList").innerHTML = ""; $("cmpProg").classList.add("hidden"); $("cmpStatus").textContent = "";
-    $("cmpSum").textContent = "We don't search other shops for this kind of product in this country yet.";
+    $("cmpSum").textContent = plan.noun ? `We don't know other shops here that sell ${plan.noun} yet, so we didn't compare.` : "We couldn't tell what kind of product this is, so we didn't search other shops.";
     return;
   }
   const ago = (t) => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? "just now" : m < 60 ? m + " min ago" : Math.round(m / 60) + " h ago"; };
@@ -451,8 +451,11 @@ async function loadOthers(my) {
     const none = shops.filter((s) => results[s.id] && results[s.id].status === "none").map((s) => s.name);
     const failed = shops.filter((s) => results[s.id] && !["match", "none", "skipped", "robots"].includes(results[s.id].status)).map((s) => s.name);
     const asked = shops.filter((s) => results[s.id] && results[s.id].status === "robots").map((s) => s.name);
-    const parts = [];
-    if (done === shops.length && !matches.length) parts.push(`We didn't find this exact product at the ${shops.length} other shop${shops.length === 1 ? "" : "s"} we searched.`);
+    const parts = [], names = shops.map((s) => s.name).join(", "), n = shops.length, ns = `${n} shop${n === 1 ? "" : "s"}`;
+    if (plan.noun && plan.specialists) parts.push(`Checked ${ns} that sell ${plan.noun}: ${names}.`);
+    else if (plan.noun) parts.push(`We don't know shops here that specialise in ${plan.noun} yet, so we checked ${n === 1 ? "a general shop" : "general shops"}: ${names}.`);
+    else parts.push(`We couldn't tell what kind of product this is, so we only checked ${n === 1 ? "a general shop" : "general shops"}: ${names}.`);
+    if (done === shops.length && !matches.length) parts.push(n === 1 ? "No exact match there." : "No exact match at any of them.");
     if (matches.length && none.length) parts.push(`Not found at: ${none.join(", ")}.`);
     if (failed.length) parts.push(`Couldn't check: ${failed.join(", ")} (try again later).`);
     if (asked.length) parts.push(`Not searched: ${asked.join(", ")} (the shop asks tools not to use its search).`);

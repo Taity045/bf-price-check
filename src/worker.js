@@ -232,11 +232,15 @@ function walkLd(node, out, depth = 0) {
     if (!out.gtin) { const g = node.gtin13 || node.gtin || node.gtin12 || node.gtin14 || node.gtin8 || node.ean; if (g && /^\d{8,14}$/.test(String(g).trim())) out.gtin = String(g).trim(); }
     if (!out.mpn && node.mpn) out.mpn = String(node.mpn).slice(0, 60);
     if (!out.brand && node.brand) out.brand = String(typeof node.brand === "object" ? node.brand.name || "" : node.brand).slice(0, 60) || undefined;
+    if (!out.category && node.category) { const c = node.category; out.category = String(typeof c === "object" ? c.name || "" : c).slice(0, 160) || undefined; }
     if (!out.image && node.image) { const im = Array.isArray(node.image) ? node.image[0] : node.image; out.image = typeof im === "string" ? im : im && (im.url || im.contentUrl); }
     if (node.offers) readOffer(node.offers, out);
     if (!out.price && node.hasVariant) walkLd(node.hasVariant, out, depth + 1);
   } else if (typeHas(node, ["Offer", "AggregateOffer"]) && !out.price) {
     readOffer(node, out);
+  } else if (typeHas(node, ["BreadcrumbList"]) && !out.crumbs && Array.isArray(node.itemListElement)) {
+    const names = node.itemListElement.map((e) => e && (e.name || (e.item && typeof e.item === "object" && e.item.name))).filter((x) => typeof x === "string" && x.trim());
+    if (names.length > 1) out.crumbs = names.slice(0, -1).filter((x) => !/^home$/i.test(x.trim())).join(" > ").slice(0, 160);
   } else if (node.mainEntity) walkLd(node.mainEntity, out, depth + 1);
 }
 
@@ -245,9 +249,12 @@ function parseJsonLd(html, out) {
   let m, n = 0;
   while ((m = re.exec(html)) && n++ < 30) {
     let txt = m[1].trim().replace(/^<!\[CDATA\[|\]\]>$/g, "");
-    try { walkLd(JSON.parse(txt), out); }
-    catch { try { walkLd(JSON.parse(txt.replace(/[\u0000-\u001f]+/g, " ")), out); } catch {} }
-    if (out.price) return "json-ld";
+    // once the price is read, later scripts are read only for the shop's category and breadcrumbs
+    const into = out.price ? {} : out;
+    try { walkLd(JSON.parse(txt), into); }
+    catch { try { walkLd(JSON.parse(txt.replace(/[\u0000-\u001f]+/g, " ")), into); } catch {} }
+    if (into !== out) { if (!out.crumbs && into.crumbs) out.crumbs = into.crumbs; if (!out.category && into.category) out.category = into.category; }
+    if (out.price && out.crumbs) return "json-ld";
   }
   return out.price ? "json-ld" : null;
 }
@@ -546,6 +553,9 @@ function extractFromHtml(html, host) {
     const tmp = {};
     if (parseMainPriceBlock(html, tmp) && tmp.price === out.price && tmp.was) out.was = tmp.was;
   }
+  // The shop's own category for the product (used to pick which other shops to compare with).
+  if (!out.category) { const t = html.match(/var meta = \{"product":\{[^<]{0,4000}?"type":"([^"]{1,80})"/); if (t) out.category = decodeEntities(t[1]); }
+  if (out.crumbs) { out.category = [...new Set([out.category, ...out.crumbs.split(" > ")].filter(Boolean))].join(" > ").slice(0, 160); delete out.crumbs; }
   if (!out.title) { const t = html.match(/<title[^>]*>([^<]{1,300})<\/title>/i); if (t) out.title = decodeEntities(t[1].trim()); }
   if (out.title) out.title = decodeEntities(out.title).replace(/\s+/g, " ").trim().slice(0, 200);
   if (out.image && typeof out.image !== "string") out.image = null;
@@ -690,7 +700,7 @@ async function getCurrent(canonInfo, origUrl, verifiedHost, agent) {
     if (ex.price && canonInfo.kind === "amazon" && tldCur && currency !== tldCur) return { ...res, status: "noprice", http: pg.status, title: ex.title, image: ex.image, message: `Amazon showed us a price in ${currency} instead of ${tldCur} (it does this for visitors outside the country), so we can't read the local price.` };
     if (!ex.price && canonInfo.kind === "amazon") return { ...res, status: "noprice", http: pg.status, title: ex.title, image: ex.image, message: "Amazon didn't show a buy price to us. It often hides the price for visitors outside the country (our checker runs on servers abroad), or the item is unavailable." };
     if (!ex.price) return { ...res, status: "noprice", http: pg.status, title: ex.title, image: ex.image, message: "We loaded the page, but it has no price we can read. Some shops add the price later with JavaScript. Type the price you see." };
-    return { ...res, price: ex.price, was: ex.was || null, currency, currency_guessed: currencyGuessed, title: ex.title, image: ex.image, source: ex.source, http: pg.status, gtin: ex.gtin, mpn: ex.mpn, brand: ex.brand };
+    return { ...res, price: ex.price, was: ex.was || null, currency, currency_guessed: currencyGuessed, title: ex.title, image: ex.image, source: ex.source, http: pg.status, gtin: ex.gtin, mpn: ex.mpn, brand: ex.brand, category: ex.category || undefined };
   } catch (e) {
     if (e instanceof PageReadError) return { ...res, status: "error", message: e.message };
     return { ...res, status: "error", message: /timed? ?out|abort/i.test(String(e)) ? "The store took too long to answer." : "The shop did not answer." };
