@@ -740,9 +740,13 @@ function dedupeDays(list) { const m = new Map(); for (const c of list) m.set(new
 
 function points() {
   const cur = curPrice(); const ccy = cur ? cur.currency : null;
+  // A Common Crawl price on the same day and at the same price as an Internet Archive copy is the
+  // same evidence (the Internet Archive holds copies of Common Crawl's crawls): show it once.
+  const dk = (x) => new Date(x.t).toISOString().slice(0, 10) + "|" + x.currency + "|" + x.price;
+  const wbSeen = new Set(state.archive.map(dk));
   const all = [
     ...state.archive.map((a) => ({ ...a, kind: "archive" })),
-    ...(state.cc || []).map((a) => ({ ...a, kind: "cc" })),
+    ...(state.cc || []).filter((a) => !wbSeen.has(dk(a))).map((a) => ({ ...a, kind: "cc" })),
     ...state.history.checks.map((c) => ({ ...c, kind: "check" })),
   ].filter((x) => x.price && x.t >= Date.now() - 365 * DAY);
   // keep one currency only
