@@ -108,7 +108,8 @@ await step("blocked copies", async () => {
   await p.route(/\/api\/snap\?/, (r) => r.fulfill({ json: /20260101/.test(r.request().url()) ? { status: "blocked", reason: "bot-page" } : { status: "noprice" } }));
   await p.goto(BASE + "/");
   await p.fill("#u", PRODUCT); await p.click("#go");
-  await p.waitForFunction(() => /bot-check/.test(document.getElementById("archnote").textContent), null, { timeout: 15000 }).catch(() => {});
+  // wait for both archive copies (the note says "bot-check" after the first one already)
+  await p.waitForFunction(() => /had no price/.test(document.getElementById("archnote").textContent) && /bot-check/.test(document.getElementById("archnote").textContent), null, { timeout: 15000 }).catch(() => {});
   const note = await p.textContent("#archnote");
   ok("blocked: archive note counts bot-check or empty pages apart from 'no price'", /1 had no price we could read\. 2 were bot-check pages or empty pages, not the product page\./.test(note), note);
   ok("blocked: no JS errors", p._errs.length === 0, p._errs.join(" | "));
@@ -192,7 +193,8 @@ for (const [name, o] of [["1440", { viewport: { width: 1440, height: 900 } }], [
   await p.route(/\/api\/compare\/shop\?/, (r) => r.fulfill({ json: tie[new URL(r.request().url()).searchParams.get("shop")] }));
   await p.goto(BASE + "/");
   await p.fill("#u", PRODUCT); await p.click("#go");
-  await p.waitForFunction(() => document.querySelectorAll("#otherList li").length === 3, null, { timeout: 10000 });
+  // wait until both shops answered (a "Checking 1 more shop…" placeholder row also counts as a list item)
+  await p.waitForFunction(() => /2 shops checked/.test(document.querySelector("#cmpStatus").textContent) && !/ of /.test(document.querySelector("#cmpStatus").textContent) && document.querySelectorAll("#otherList li").length === 3, null, { timeout: 10000 });
   const rows = await p.$$eval("#otherList li", (ls) => ls.map((l) => l.textContent.replace(/\s+/g, " ").trim()));
   ok(`compare tie ${name}: this page and the shop at the same price are both tagged`, /Same lowest price/.test(rows[0]) && /OK Furniture/.test(rows[1]) && /Same lowest price/.test(rows[1]) && /Same price/.test(rows[1]), rows.join(" | "));
   ok(`compare tie ${name}: the dearer shop is not tagged`, !/Cheapest|Same lowest/.test(rows[2]), rows[2]);
