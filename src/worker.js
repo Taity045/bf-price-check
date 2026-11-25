@@ -999,13 +999,38 @@ async function apiRequest(req, env, ctx) {
   return json({ ok: true });
 }
 
+// Amazon share links (amzn.eu/d/…, amzn.to/…, a.co/d/…) are short links. We ask the short-link host where
+// the link goes (no redirect follow, at most 3 steps) and check the Amazon page it names. We never open
+// the Amazon page here. Returns { url } or { error }.
+const SHORT_HOSTS = ["amzn.eu", "amzn.to", "a.co", "amzn.asia"];
+const isShortHost = (h) => SHORT_HOSTS.includes(stripWww(String(h || "").toLowerCase()));
+async function expandShortLink(u) {
+  let cur = u;
+  for (let hop = 0; hop < 3; hop++) {
+    let r;
+    try { r = await fetch(cur.href, { method: "GET", headers: { "user-agent": "bf-price-check/1.0 (price history tool)" }, redirect: "manual", signal: AbortSignal.timeout(5000) }); } catch { return { error: "We could not open this short link. Try again, or paste the full Amazon link." }; }
+    try { r.body?.cancel(); } catch {}
+    const loc = r.status >= 300 && r.status < 400 ? r.headers.get("location") : null;
+    if (!loc) return { error: "This short link does not go to a product page. Paste the full Amazon link." };
+    const v = validateUrl(new URL(loc, cur).href);
+    if (v.error) return { error: "This short link does not go to a product page. Paste the full Amazon link." };
+    if (!isShortHost(v.url.hostname)) {
+      if (!/^(www\.)?amazon\.[a-z.]{2,8}$/.test(v.url.hostname.toLowerCase())) return { error: "This short link does not go to an Amazon page. Paste the full product link." };
+      return { url: v.url };
+    }
+    cur = v.url;
+  }
+  return { error: "This short link redirected too many times. Paste the full Amazon link." };
+}
+
 // ---------- API handlers ----------
 async function apiCheck(req, env, ctx) {
   const ip = req.headers.get("cf-connecting-ip") || "0";
   const params = new URL(req.url).searchParams;
-  const v = validateUrl(params.get("url"));
+  let v = validateUrl(params.get("url"));
   if (v.error) return json({ error: v.error }, 400);
   if (await rateLimit(env, ip, "check")) return json({ error: "Too many checks in one minute. Wait a minute and try again." }, 429);
+  if (isShortHost(v.url.hostname)) { v = await expandShortLink(v.url); if (v.error) return json({ error: v.error }, 400); }
   const canonInfo = canonicalize(v.url);
   const host = v.url.hostname.toLowerCase();
   const pub = await resolvesPublic(host);
@@ -1151,9 +1176,11 @@ export default {
       if (env.WALL !== "on" && (url.pathname === "/wall" || url.pathname === "/api/wall" || url.pathname === "/api/stats")) return url.pathname === "/wall" ? Response.redirect(url.origin + "/", 302) : json({ error: "off" }, 404);
       if (url.pathname === "/api/wall") return json(await wallData(env), 200, { "cache-control": "public, max-age=300" });
       if (url.pathname === "/api/stats") { const w = await wallData(env); return json({ fake_total: w.fake_total }, 200, { "cache-control": "public, max-age=300" }); }
-      const stat = url.pathname.slice(1);
+      // iPhones and Macs also ask for the "precomposed" and sized icon names (/apple-touch-icon-120x120.png):
+      // send the same icon, not a 404.
+      const stat = /^\/apple-touch-icon(-\d{2,3}x\d{2,3})?(-precomposed)?\.png$/.test(url.pathname) ? "apple-touch-icon.png" : url.pathname.slice(1);
       if (Object.prototype.hasOwnProperty.call(STATIC_IMG, stat)) { const b = Uint8Array.from(atob(STATIC_IMG[stat]), (x) => x.charCodeAt(0)); return new Response(req.method === "HEAD" ? null : b, { headers: { "content-type": stat.endsWith(".png") ? "image/png" : stat.endsWith(".ico") ? "image/x-icon" : "image/jpeg", "content-length": String(b.length), "cache-control": "public, max-age=604800", "access-control-allow-origin": "*" } }); }
-      if (url.pathname === "/robots.txt") return new Response("User-agent: *\nAllow: /\n", { headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=86400" } });
+      if (url.pathname === "/robots.txt") return new Response(`User-agent: *\nAllow: /\nSitemap: ${url.origin}/sitemap.xml\n`, { headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=86400" } });
       if (url.pathname === "/og.png") return await apiOg(req, env);
       if (url.pathname === "/alert/confirm") return await alertLink(req, env, "confirm");
       if (url.pathname === "/alert/stop") return await alertLink(req, env, "stop");
@@ -1161,6 +1188,11 @@ export default {
       if (url.pathname === "/api/snap") return await apiSnap(req, env);
       if (["/", "/index.html", "/wall", "/privacy"].includes(url.pathname) && req.method === "GET" && ctx) ctx.waitUntil(statsPageView(req, env).catch(() => {}));
       if (["/", "/index.html", "/wall", "/privacy"].includes(url.pathname)) return new Response(await pageHtml(req, env, ctx), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache", "x-content-type-options": "nosniff", "referrer-policy": "no-referrer" } });
+      // Search engines ask for a sitemap. The site has two pages.
+      if (url.pathname === "/sitemap.xml") return new Response(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>${url.origin}/</loc></url><url><loc>${url.origin}/privacy</loc></url></urlset>\n`, { headers: { "content-type": "application/xml; charset=utf-8", "cache-control": "public, max-age=86400" } });
+      // A page loaded before a deploy may ask for an older font name: send today's font (short cache), not a 404.
+      { const f = /^\/fonts\/(display|mono)\.[0-9a-f]{10}\.woff2$/.exec(url.pathname); const cur = f && !FONTS[url.pathname.slice(7)] && Object.keys(FONTS).find((k) => k.startsWith(f[1] + "."));
+        if (cur) return new Response(Uint8Array.from(atob(FONTS[cur]), (c) => c.charCodeAt(0)), { headers: { "content-type": "font/woff2", "cache-control": "no-cache", "access-control-allow-origin": "*" } }); }
       if (url.pathname.startsWith("/fonts/") && FONTS[url.pathname.slice(7)]) return new Response(Uint8Array.from(atob(FONTS[url.pathname.slice(7)]), (c) => c.charCodeAt(0)), { headers: { "content-type": "font/woff2", "cache-control": "public, max-age=31536000, immutable", "access-control-allow-origin": "*" } });
       // The page names the script by its hash. A page loaded before a deploy may ask for an older name:
       // serve the current script for it (short cache), so buttons never stop working after a deploy.

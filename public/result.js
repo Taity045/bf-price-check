@@ -79,7 +79,7 @@ async function run(url, fresh) {
     if (!r.ok || d.error) { showError(d.error || "The check stopped. Try again."); return; }
     history.replaceState(null, "", "/?u=" + encodeURIComponent(d.url));
     state = { ...d, title: d.current.title, archive_meta: null, archive: d.history.archive.slice(), cc: (d.history.cc || []).slice(), manual: null, failed: d.history.archive_failed, blocked: d.history.archive_blocked || 0, unusable: d.history.archive_unusable || 0 };
-    $("mcur").value = d.current.currency || d.tld_currency || "";
+    $("mcur").value = d.current.currency || d.tld_currency || window.pasteCur || ""; window.pasteCur = "";
     $("result").classList.remove("hidden");
     $("tip").textContent = "Tap a point to see its date and price."; $("pts").open = false;
     $("plink").href = d.url;
@@ -420,6 +420,8 @@ function setCmpHead(cls, big, line, jump) {
   $("cmpBig").textContent = big; $("cmpLine").textContent = line;
   $("cmpJump").classList.toggle("hidden", !jump);
 }
+// "Not compared": one small line, not a big card, so the history verdict leads.
+const setCmpSlim = (why) => setCmpHead("slim", "", "Not compared with other shops: " + why);
 const andList = (a, max = 4) => { a = a.length > max ? [...a.slice(0, max), `${a.length - max} more`] : a; return a.length > 1 ? a.slice(0, -1).join(", ") + " and " + a[a.length - 1] : a[0] || ""; };
 // The headline from the compare results: the cheapest exact match in stock that saves at least R5 (or 0.50).
 function cmpHeadline(plan, shops, results, herePrice, LEVEL) {
@@ -454,14 +456,14 @@ async function loadOthers(my) {
   const fail = () => { if (my === runId) setCmpHead("", "Couldn't check other shops", "Try again later with Check again."); };
   try { const r = await fetch("/api/compare?url=" + encodeURIComponent(canon)); if (!r.ok) return fail(); plan = await r.json(); } catch { return fail(); }
   if (my !== runId) return;
-  if (!plan || !plan.product) return setCmpHead("", "Not compared", "We couldn't read enough about this product to search other shops.");
+  if (!plan || !plan.product) return setCmpSlim("we couldn't read enough about this product.");
   const here = curPrice(), shops = plan.shops || [], results = Object.assign({}, plan.results || {});
   sec.classList.remove("hidden");
   if (!shops.length) {
     $("otherList").innerHTML = ""; $("cmpProg").classList.add("hidden"); $("cmpStatus").textContent = "";
     $("cmpSum").textContent = plan.reason === "own brand" ? "This is a shop's own brand. Other shops don't sell it, so we didn't compare."
       : plan.noun ? `We don't know other shops here that sell ${plan.noun} yet, so we didn't compare.` : "We couldn't tell what kind of product this is, so we didn't search other shops.";
-    setCmpHead("", "Not compared", $("cmpSum").textContent);
+    setCmpSlim(plan.reason === "own brand" ? "this is a shop's own brand." : plan.noun ? `we don't know other shops that sell ${plan.noun} yet.` : "we couldn't tell what kind of product this is.");
     return;
   }
   const ago = (t) => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? "just now" : m < 60 ? m + " min ago" : Math.round(m / 60) + " h ago"; };
