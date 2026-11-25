@@ -104,7 +104,13 @@ describe("price history per shop", () => {
     db.prepare("INSERT INTO checks (url, ts, price, currency, source) VALUES (?, ?, 100, 'ZAR', 'takealot-api')").run("https://www.takealot.com/x/PLID1", Date.now() - 3600e3);
     // Pep: one product with 1 older check
     db.prepare("INSERT INTO checks (url, ts, price, currency, source) VALUES (?, ?, 50, 'ZAR', 'json-ld')").run("https://www.pepstores.com/products/kettle-sku-a1", ago(5));
+    // Lakeland: an Internet Archive copy and a Common Crawl copy of the same day + one check = 2 days, not 3
+    const lak = "https://www.lakeland.co.uk/12345/some-pan";
+    db.prepare("INSERT INTO product_snaps (url, snap_ts, orig, price, currency, status) VALUES (?, ?, ?, 20, 'GBP', 'ok')").run(lak, ymdOf(ago(30)), lak);
+    db.prepare("INSERT INTO archive_prices (product_key, captured_at, last_seen, n, price, currency, url) VALUES (?, ?, ?, 1, 20, 'GBP', ?)").run(lak, ago(30), ago(30), lak);
+    db.prepare("INSERT INTO checks (url, ts, price, currency, source) VALUES (?, ?, 20, 'GBP', 'json-ld')").run(lak, ago(3));
     const h = await W.computeShopHistory(env);
+    assert.deepEqual(h.shops["Lakeland"], { any: 1, full: 0, level: "building" });
     assert.deepEqual(h.shops["Dunelm"], { any: 1, full: 1, level: "building" });
     assert.deepEqual(h.shops["Takealot"], { any: 0, full: 0, level: "building" });
     assert.deepEqual(h.shops["Pep"], { any: 1, full: 0, level: "building" });
@@ -116,6 +122,9 @@ describe("price history per shop", () => {
     assert.equal(r.shops.length, W.SHOP_LIST.works.length);
     const dun = r.shops.find((s) => s.name === "Dunelm");
     assert.equal(dun.history, "good"); assert.equal(dun.products_with_history, 30);
+    assert.equal(dun.note, "Price history: good");
+    assert.equal(dun.where, "United Kingdom");
+    assert.equal(r.shops.find((s) => s.name === "Takealot").note, "We read today's price. History is building up.");
     assert.ok(r.shops.every((s) => ["good", "some", "building"].includes(s.history)));
     // cached: a new row does not change the answer until the cache is rebuilt
     db.prepare("DELETE FROM checks").run();
