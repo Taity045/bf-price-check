@@ -390,7 +390,9 @@ function renderSupport() {
   const ok = state.current.status === "ok" && state.current.price;
   if (state.shop || (state.blocked_shop && ok)) { el.classList.add("hidden"); el.innerHTML = ""; return; }
   if (state.blocked_shop) {
-    el.innerHTML = `<b>${esc(state.blocked_shop.name)} often blocks our checks.</b> Type the price below.`;
+    el.innerHTML = state.blocked_shop.geo
+      ? `<b>${esc(state.blocked_shop.name)} often blocks our checks.</b> This is its global site. The price changes with your country. Type the price and choose its currency below.`
+      : `<b>${esc(state.blocked_shop.name)} often blocks our checks.</b> Type the price below.`;
     el.classList.remove("hidden"); return;
   }
   el.innerHTML = ok
