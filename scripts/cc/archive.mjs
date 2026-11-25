@@ -6,7 +6,7 @@
 //       Finds each shop's product pages in Common Crawl's public index (data.commoncrawl.org), downloads
 //       each archived page with one byte-range request, and reads its price with the site's own reader.
 //       Writes DIR/captures.jsonl (one line per page read; resumable).
-//   node scripts/cc/archive.mjs recheck --out DIR [--cdx-dir DIR] [--max N]
+//   node scripts/cc/archive.mjs recheck --out DIR [--cdx-dir DIR] [--max N] [--again REASON]
 //       UK shops: re-reads captures collected before the UK price check (archivedGeoCheck) and writes
 //       DIR/geo.jsonl. reduce keeps a UK capture only when its copy confirmed the UK GBP price.
 //   node scripts/cc/archive.mjs reduce --out DIR
@@ -290,7 +290,8 @@ async function reduce() {
 async function recheck() {
   const geo = await readGeo(), todo = new Map();
   await readJsonl(`${OUT}/captures.jsonl`, (c) => {
-    if (!c.ok || !GBP_SHOPS.has(c.shop) || c.geo === "GB" || geo.has(c.crawl + "|" + c.key)) return;
+    const g = geo.get(c.crawl + "|" + c.key);
+    if (!c.ok || !GBP_SHOPS.has(c.shop) || c.geo === "GB" || (g && !(args.again && g.unusable === args.again))) return;
     todo.set(c.crawl + "|" + c.key, c);
   });
   const max = +(args.max || 1e9), conc = +(args.concurrency || 4);
@@ -304,14 +305,16 @@ async function recheck() {
   for (const [ck] of need) {
     const [crawl, surt] = ck.split("|");
     let lines; try { lines = await cdxLines(crawl, await indexFor(crawl, surt), surt); } catch (e) { log(`index ${crawl} ${surt}: ${e.message}`); continue; }
-    for (const rec of lines) if (rec.status === "200") recs.set(crawl + "|" + rec.url, rec);
+    // One crawl can hold several copies of a link: match the copy by its capture time.
+    for (const rec of lines) if (rec.status === "200") recs.set(crawl + "|" + rec.url + "|" + rec.timestamp, rec);
   }
   const counts = {};
   let i = 0;
   await Promise.all(Array.from({ length: conc }, async () => {
     while (i < jobs.length) {
       const c = jobs[i++], shop = CC_SHOPS.find((s) => s.name === c.shop);
-      const rec = recs.get(c.crawl + "|" + c.url);
+      const ts14 = c.t ? new Date(c.t).toISOString().replace(/[-:T]/g, "").slice(0, 14) : "";
+      const rec = recs.get(c.crawl + "|" + c.url + "|" + ts14);
       let line;
       if (!rec) line = { crawl: c.crawl, key: c.key, url: c.url, price: c.price, unusable: "no-index-record" };
       else {
