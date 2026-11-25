@@ -242,14 +242,15 @@ Currency comes from the page or a supported country domain (.co.za → ZAR, .co.
 Older prices = archive points + saved checks older than 24 h, last 365 days.
 - 1 or 2 older prices → evidence verdicts, using only prices from the last 183 days (same rules in `src/features.js` `sparseEvidence` and the client mirror in `public/index.html`):
   - **Likely inflated was price**: the shop shows a "was" price above today's price, a price from at least 14 days ago is ≤ 90 % of the "was" price, and no recent older price reached 97 % of it. (A price from the last 2 weeks is not enough: a sale may have started a few days ago.)
-  - **Seen cheaper before**: the lowest recent older price is more than 2 % under today's price.
-  - **Seen at this price before**: the lowest recent older price is within 2 % of today's price.
+  - **Seen cheaper before**: the lowest recent older price is under today's price by a real move (see below).
+  - **Seen at this price before**: the lowest recent older price is at or under today's price by less than a real move, or above it by less than a real move (shown as "About the same price before").
   - The line shows the price, the date and the source ("web archive copy" links to `web.archive.org/web/<ts>/<url>`, or "our saved check"), plus "Based on N older price(s) from the last 6 months. We give a full verdict from 3 older prices." These verdicts are not counted as "judged" on the wall.
 - no usable older price → "Not enough history" (the shop's claim is shown but not confirmed, with a line that says why)
-- price ≤ 12-month low and ≥ 5 % under the median → **Real deal**
-- "was" price > 103 % of the 90-day high (or 12-month high if < 2 points in 90 days) and price not ≥ 5 % under median → **Fake discount**
-- price > 103 % of median → **Pricier than usual**
-- ≥ 5 % under median → **Decent deal**; otherwise **Same old price**
+- A **real move** is at least 5 % and at least R5 (0.50 in pounds and other currencies). Smaller moves are never called a deal or a rise.
+- price ≤ 12-month low and a real move under the median → **Real deal**
+- "was" price > 103 % of the 90-day high (or 12-month high if < 2 points in 90 days) and price not a real move under median → **Fake discount**
+- price a real move over the median → **Pricier than usual**
+- a real move under the median → **Decent deal**; otherwise **Same old price**
 - A red flag is always shown when the "was" price is higher than anything seen in 90 days / 12 months.
 
 ### Abuse protection

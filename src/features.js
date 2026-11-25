@@ -47,8 +47,13 @@ function historyPoints(hist, ccy, price) {
 // With only 1 or 2 older prices we still show real evidence: one older price from the last 6 months
 // that is clearly under the shop's "was" price, or at or under today's price. Never a guess.
 const SPARSE_DAYS = 183;
+// A move only counts when it is big enough to matter: at least 5 % and at least R5 (0.50 in pounds and
+// other currencies). Smaller moves are "Same old price" / "Seen at this price before".
+const MOVE_PCT = 0.05;
+const minMove = (ccy) => (ccy === "ZAR" ? 5 : 0.5);
+const bigMove = (from, to, ccy) => Math.abs(to - from) >= Math.max(MOVE_PCT * from, minMove(ccy));
 const SPARSE_VERDICTS = ["Likely inflated was price", "Seen cheaper before", "Seen at this price before"];
-function sparseEvidence(P, W, h) {
+function sparseEvidence(P, W, h, C) {
   const recent = h.filter((x) => x.t >= now() - SPARSE_DAYS * DAY_MS && x.price > 0);
   if (!P || !recent.length) return null;
   const pt = recent.reduce((m, x) => (x.price < m.price || (x.price === m.price && x.t > m.t) ? x : m));
@@ -59,8 +64,8 @@ function sparseEvidence(P, W, h) {
     const o = old.reduce((m, x) => (x.price < m.price ? x : m));
     if (o.price <= W * 0.9 && maxOld < W * 0.97) return { verdict: "Likely inflated was price", pt: o };
   }
-  if (pt.price < P * 0.98) return { verdict: "Seen cheaper before", pt };
-  if (pt.price <= P * 1.02) return { verdict: "Seen at this price before", pt };
+  if (pt.price < P && bigMove(pt.price, P, C)) return { verdict: "Seen cheaper before", pt };
+  if (pt.price <= P || !bigMove(pt.price, P, C)) return { verdict: "Seen at this price before", pt };
   return null;
 }
 function judge(current, hist) {
@@ -72,18 +77,19 @@ function judge(current, hist) {
   if (!cur) return out;
   Object.assign(out, { price: cur.price, was: cur.was || null, currency: cur.currency });
   if (h.length < 3) {
-    const ev = sparseEvidence(cur.price, cur.was, h);
+    const ev = sparseEvidence(cur.price, cur.was, h, cur.currency);
     if (!ev) { out.verdict = "Not enough history"; return out; }
     return Object.assign(out, { verdict: ev.verdict, low: ev.pt.price, low_t: ev.pt.t, evidence: { price: ev.pt.price, t: ev.pt.t, kind: ev.pt.kind } });
   }
   const pr = h.map((x) => x.price), p90 = h.filter((x) => x.t >= now() - 90 * DAY_MS).map((x) => x.price);
   const low = Math.min(...pr), high = Math.max(...pr), med = median(pr), high90 = p90.length >= 2 ? Math.max(...p90) : high;
   const P = cur.price, W = cur.was, vsMed = (med - P) / med, inflated = W && W > high90 * 1.03;
+  const cheaper = P < med && bigMove(med, P, cur.currency), dearer = P > med && bigMove(med, P, cur.currency);
   let v;
-  if (P <= low * 1.005 && vsMed >= 0.05) v = "Real deal";
-  else if (inflated && vsMed < 0.05) v = "Fake discount";
-  else if (P > med * 1.03) v = "Pricier than usual";
-  else if (vsMed >= 0.05) v = "Decent deal";
+  if (P <= low * 1.005 && cheaper) v = "Real deal";
+  else if (inflated && !cheaper) v = "Fake discount";
+  else if (dearer) v = "Pricier than usual";
+  else if (cheaper) v = "Decent deal";
   else v = "Same old price";
   const lowPt = h.reduce((m, x) => (x.price < m.price ? x : m));
   return Object.assign(out, { verdict: v, low, med, high, high90, gap: v === "Fake discount" ? (W - high90) / high90 : null, low_t: lowPt.t });
