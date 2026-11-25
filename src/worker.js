@@ -62,13 +62,14 @@ function parsePrice(v) {
   if (lc >= 0 && ld >= 0) {
     if (lc > ld) s = s.replace(/\./g, "").replace(",", ".");
     else s = s.replace(/,/g, "");
-  } else if (lc >= 0) {
-    const parts = s.split(",");
-    if (parts.length === 2 && parts[1].length <= 2) s = parts[0] + "." + parts[1];
-    else s = s.replace(/,/g, "");
-  } else if (ld >= 0) {
-    const parts = s.split(".");
-    if (parts.length > 2 || (parts.length === 2 && parts[1].length === 3)) s = s.replace(/\./g, "");
+  } else if (lc >= 0 || ld >= 0) {
+    // One kind of separator. "1,299" / "1.299.000" are thousands groups (1 to 3 digits, then groups of 3).
+    // Anything else ("12,5", "1299,000", "1299.000") has a decimal mark; more than one mark that is not a group is dropped.
+    const sep = lc >= 0 ? "," : ".";
+    const parts = s.split(sep);
+    if (/^[1-9]\d{0,2}$/.test(parts[0]) && parts.length > 1 && parts.slice(1).every((x) => x.length === 3)) s = parts.join("");
+    else if (parts.length === 2) s = parts[0] + "." + parts[1];
+    else s = parts.join("");
   }
   const n = parseFloat(s);
   return isFinite(n) && n > 0 && n < 1e7 ? Math.round(n * 100) / 100 : null;
@@ -114,7 +115,9 @@ function validateUrl(raw) {
 
 async function resolvesPublic(host) {
   // Literal private names are already rejected in validateUrl. Here we look the host up (DoH, with fallbacks).
-  // Every address returned must be public. If no resolver answers, we do not block (fail open).
+  // Every address returned must be public. If no resolver answers at all, we return null: callers block (fail closed).
+  // The cron treats null as "try later" and does not count it as a product failure.
+  // NXDOMAIN (Status 3) is an answer with no addresses: we allow it, because the fetch then fails anyway.
   const endpoints = ["https://1.1.1.1/dns-query", "https://dns.google/resolve"];
   const lookup = async (type) => {
     for (const ep of endpoints) {
@@ -129,6 +132,7 @@ async function resolvesPublic(host) {
     return null;
   };
   const lookups = await Promise.all([lookup("A"), lookup("AAAA")]);
+  if (lookups.every((x) => x === null)) return null;
   const ips = lookups.filter(Boolean).flat();
   if (ips.length === 0) return true;
   return ips.every((a) => a.type === 1 ? !isPrivateIPv4(a.data) : !isPrivateIPv6(a.data));
@@ -522,7 +526,7 @@ async function takealotApi(plid, agent, verifiedHost) {
   const d = JSON.parse(await readLimitedText(r));
   const items = (d.buybox && d.buybox.items) || [];
   const it = items.find((x) => x.is_selected) || items[0];
-  if (!it) return { error: "Takealot shows no offer for this product right now (maybe out of stock)." };
+  if (!it) return { error: "Takealot shows no offer for this product now. This usually means it is out of stock." };
   const price = parsePrice(it.price), was = parsePrice(it.listing_price);
   const img = d.gallery && d.gallery.images && d.gallery.images[0];
   return { price, was: was && price && was > price ? was : null, currency: "ZAR", title: (d.core && d.core.title) || d.title, image: img ? img.replace("{size}", "pdpxl") : null, source: "takealot-api", gtin: takealotBarcode(d), brand: (d.core && d.core.brand) || undefined };
@@ -549,11 +553,11 @@ async function getCurrent(canonInfo, origUrl, verifiedHost, agent) {
     if (!currency && ex.price) { currency = tldCur; currencyGuessed = !!currency && canonInfo.kind !== "amazon"; }
     if (ex.price && canonInfo.kind === "amazon" && tldCur && currency !== tldCur) return { ...res, status: "noprice", http: pg.status, title: ex.title, image: ex.image, message: `Amazon showed us a price in ${currency} instead of ${tldCur} (it does this for visitors outside the country), so we can't read the local price.` };
     if (!ex.price && canonInfo.kind === "amazon") return { ...res, status: "noprice", http: pg.status, title: ex.title, image: ex.image, message: "Amazon didn't show a buy price to us. It often hides the price for visitors outside the country (our checker runs on servers abroad), or the item is unavailable." };
-    if (!ex.price) return { ...res, status: "noprice", http: pg.status, title: ex.title, image: ex.image, message: "We loaded the page but couldn't find a machine-readable price on it (the price may be loaded by JavaScript)." };
+    if (!ex.price) return { ...res, status: "noprice", http: pg.status, title: ex.title, image: ex.image, message: "We loaded the page, but it has no price we can read. Some shops add the price later with JavaScript. Type the price you see." };
     return { ...res, price: ex.price, was: ex.was || null, currency, currency_guessed: currencyGuessed, title: ex.title, image: ex.image, source: ex.source, http: pg.status, gtin: ex.gtin, mpn: ex.mpn, brand: ex.brand };
   } catch (e) {
     if (e instanceof PageReadError) return { ...res, status: "error", message: e.message };
-    return { ...res, status: "error", message: /timed? ?out|abort/i.test(String(e)) ? "The store took too long to answer." : "We couldn't reach the store." };
+    return { ...res, status: "error", message: /timed? ?out|abort/i.test(String(e)) ? "The store took too long to answer." : "The shop did not answer." };
   }
 }
 
@@ -799,10 +803,12 @@ async function apiCheck(req, env, ctx) {
   const params = new URL(req.url).searchParams;
   const v = validateUrl(params.get("url"));
   if (v.error) return json({ error: v.error }, 400);
-  if (await rateLimit(env, ip, "check")) return json({ error: "Slow down a little — too many checks in a minute. Try again shortly." }, 429);
+  if (await rateLimit(env, ip, "check")) return json({ error: "Too many checks in one minute. Wait a minute and try again." }, 429);
   const canonInfo = canonicalize(v.url);
   const host = v.url.hostname.toLowerCase();
-  if (!(await resolvesPublic(host))) return json({ error: "That address doesn't point to a public website." }, 400);
+  const pub = await resolvesPublic(host);
+  if (pub === null) return json({ error: "We could not look up the shop's address. Try again in a minute." }, 503);
+  if (!pub) return json({ error: "That address doesn't point to a public website." }, 400);
   const fresh = params.get("fresh") === "1";
   const ckey = LIVE_CACHE_PREFIX + canonInfo.canon;
   let current = fresh ? null : await cacheGet(env, ckey);

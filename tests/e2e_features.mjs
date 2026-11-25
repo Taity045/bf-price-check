@@ -254,7 +254,7 @@ for (const [n, o] of [["1440", wide(1440)], ["390", phone()]]) {
   await p.click("#srcBtn"); await p.waitForSelector("#shopsDlg[open]");
   await p.waitForTimeout(500);
   const t = await p.innerText("#shopsDlg");
-  ok(`${n}: footer opens "Where do the prices come from?"`, /Where do the prices come from\?/.test(t) && /Internet Archive/.test(t) && /Takealot/.test(t) && /Not enough history/.test(t));
+  ok(`${n}: footer opens "Where do the prices come from?"`, /Where do the prices come from\?/.test(t) && /Internet Archive/.test(t) && /Takealot/.test(t) && /full verdict/.test(t));
   ok(`${n}: price source text is in view`, await p.evaluate(() => { const d = document.querySelector("#shopsDlg .dlg") || document.getElementById("shopsDlg"); const h = document.getElementById("priceSrc").getBoundingClientRect(); return h.top >= 0 && h.bottom <= innerHeight; }));
   ok(`${n}: no daily tracking promise`, !/every day|daily/i.test(t));
   await p.screenshot({ path: `${OUT}/price-source-${n}.png` });
@@ -264,7 +264,7 @@ for (const [n, o] of [["1440", wide(1440)], ["390", phone()]]) {
   const p = await page(phone()); await p.goto(BASE + "/?u=" + encodeURIComponent("https://www.takealot.com/apple-airpods-4/PLID95957224"));
   await p.waitForSelector("#result:not(.hidden)", { timeout: 60000 }); await waitArchive(p);
   const v = await p.innerText("#verdict");
-  ok("Not enough history explains why", !/Not enough history/.test(v) || /Why: we found few or no older copies of this page in web archives\. (We saved today's price, and we will try to check it again about once a day\.)?/.test(v), v.slice(0, 200));
+  ok("Not enough history explains why", !/Not enough history/.test(v) || /Why: we found few or no older copies of this page in web archives\. (We saved today's price\. We check it again regularly, so the history grows\.)?/.test(v), v.slice(0, 200));
   await p.screenshot({ path: `${OUT}/not-enough-history-390.png`, fullPage: true });
   await p.context().close();
 }
@@ -314,8 +314,48 @@ for (const [n, o] of [["390", phone()], ["1440", wide(1440)]]) {
   const c = await fetch(BASE + "/?u=" + encodeURIComponent(PC), { headers: { "user-agent": "facebookexternalhit/1.1" } });
   ok("preview bots can still read shared pages", c.status === 200);
 }
-await browser.close();
 if (KEY) { const r = await fetch(BASE + "/api/e2e/cleanup", { method: "POST", headers: { "x-e2e-key": KEY, "user-agent": UA } }); const d = await r.json().catch(() => ({})); ok("test rows removed from D1", r.ok && d.ok, JSON.stringify(d)); }
+// 9. reviewer fixes: price parse, screen reader line, tab keys, confident copy
+for (const [n, o] of [["390", phone()], ["1440", wide(1440)]]) {
+  const p = await page(o);
+  const fake = { ...rec, current: { ...rec.current, status: "noprice", price: null, was: null, message: "We loaded the page, but it has no price we can read." }, history: { archive: [], checks: [] } };
+  await p.route("**/api/check?**", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(fake) }));
+  await p.route("**/api/archive?**", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "ok", captures_12mo: 0, sampled: 0, pending: [] }) }));
+  await p.route("**/api/verdict?**", (r) => r.fulfill({ status: 200, contentType: "application/json", body: "{}" }));
+  await p.route("**/api/others?**", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ matches: [] }) }));
+  await p.goto(BASE + "/?u=" + encodeURIComponent(PC)); await p.waitForSelector("#manualbox:not(.hidden)", { timeout: 30000 });
+  await p.fill("#mnow", "1299.000"); await p.fill("#mwas", "1,599"); await p.selectOption("#mcur", "ZAR"); await p.click("#mapply");
+  await p.waitForTimeout(400);
+  const pr = await p.textContent("#prices");
+  ok(`${n}: "1299.000" is read as R 1 299 (not 1 299 000)`, /R\s?1\s?299(?![\s\d]*000)/.test(pr) && !/1\s?299\s?000/.test(pr), pr.replace(/\s+/g, " ").slice(0, 100));
+  ok(`${n}: "1,599" is read as R 1 599`, /R\s?1\s?599/.test(pr), pr.replace(/\s+/g, " ").slice(0, 100));
+  const sr = await p.textContent("#sr"), live = await p.getAttribute("#result", "aria-live");
+  ok(`${n}: screen readers get one short verdict line`, /^Verdict: .+\.$/.test(sr) && live === null, `${sr} | result aria-live=${live}`);
+  await p.click("#savedBtn"); await p.waitForSelector("#savedDlg[open]");
+  await p.focus("#tabSaved"); await p.keyboard.press("ArrowRight");
+  const t1 = await p.evaluate(() => [document.activeElement.id, document.getElementById("tabStats").getAttribute("aria-selected"), !document.getElementById("paneStats").classList.contains("hidden"), document.getElementById("tabSaved").tabIndex]);
+  await p.keyboard.press("ArrowRight");
+  const t2 = await p.evaluate(() => [document.activeElement.id, document.getElementById("tabSaved").getAttribute("aria-selected")]);
+  await p.keyboard.press("End"); const t3 = await p.evaluate(() => document.activeElement.id);
+  await p.keyboard.press("Home"); const t4 = await p.evaluate(() => document.activeElement.id);
+  ok(`${n}: arrow keys move between tabs`, t1.join() === "tabStats,true,true,-1" && t2.join() === "tabSaved,true" && t3 === "tabStats" && t4 === "tabSaved", JSON.stringify([t1, t2, t3, t4]));
+  ok(`${n}: no JS errors (reviewer fixes)`, p._errs.length === 0, p._errs.join(" | "));
+  await p.context().close();
+}
+{
+  const html = await (await fetch(BASE + "/", { headers: { "user-agent": UA } })).text();
+  const app = html.match(/\/app\.[0-9a-f]+\.js/);
+  const js = app ? await (await fetch(BASE + app[0], { headers: { "user-agent": UA } })).text() : "";
+  const all = html + js;
+  const hedges = ["Other shops may work too", "It may be out of date", "Something went wrong", "isn't available right now", "Slow down a little", "less certain", "can still fail", "We can't confirm that"];
+  const found = hedges.filter((h) => all.includes(h));
+  ok("no hedgy or apologetic lines in the page or app", !!js && found.length === 0, found.join(" | "));
+  ok("shops list says we read prices straight from the shops", all.includes("We read prices straight from these shops.") && all.includes("If we cannot read the price, we tell you."));
+  ok("'Where prices come from' is still there", /id="priceSrc"/.test(all) && all.includes("Where do the prices come from?"));
+  ok("no email address or full name in the page", !/[\w.+-]+@[\w-]+\.[\w.]+/.test(html.replace(/<script[\s\S]*?<\/script>/g, "").replace(/you@example\.com/g, "")) && !/Magondo|Tatenda/i.test(all));
+}
+
+await browser.close();
 const failed = results.filter((r) => !r.pass);
 console.log(`\n${results.length - failed.length}/${results.length} passed`);
 process.exit(failed.length ? 1 : 0);

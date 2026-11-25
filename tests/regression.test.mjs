@@ -85,7 +85,7 @@ test('redirects are checked before download and cron revalidates DNS', async (t)
 });
 
 test('a redirect destination that resolves to a private address is never downloaded', async (t) => {
-  // An empty or failed DNS answer is allowed on purpose (fail open, see resolvesPublic); a private answer is not.
+  // An empty DNS answer (NXDOMAIN) is allowed; no answer at all or a private answer is not (see resolvesPublic).
   const visits = [];
   const { api } = fixture(t, url => {
     visits.push(url.hostname);

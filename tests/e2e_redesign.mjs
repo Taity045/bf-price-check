@@ -107,9 +107,9 @@ for (const i of [0, 1, 2]) {
   const big = (await p.textContent("#verdict .big")).trim();
   ok("Takealot check shows a price and a clear status", /R\s?[\d ,]+/.test(await p.textContent("#prices")) && big.length > 3, big);
   ok("Takealot check no JS errors", p._errs.length === 0, p._errs.join(" | "));
-  await p.route("**/api/check**", (r) => r.fulfill({ status: 429, contentType: "application/json", body: JSON.stringify({ error: "Slow down a little — too many checks in a minute. Try again shortly." }) }));
+  await p.route("**/api/check**", (r) => r.fulfill({ status: 429, contentType: "application/json", body: JSON.stringify({ error: "Too many checks in one minute. Wait a minute and try again." }) }));
   await p.click("#go"); await p.waitForFunction(() => !document.getElementById("error").classList.contains("hidden"), null, { timeout: 10000 });
-  ok("rate limit message shown", /Slow down/.test(await p.textContent("#error")));
+  ok("rate limit message shown", /Too many checks in one minute/.test(await p.textContent("#error")));
   await p.route("**/api/check**", (r) => r.abort());
   await p.click("#go"); await p.waitForFunction(() => /connection/.test(document.getElementById("error").textContent), null, { timeout: 10000 });
   ok("offline message shown", true);

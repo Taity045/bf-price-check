@@ -165,6 +165,18 @@ describe("runDaily (whole runs)", () => {
     assert.equal(db.prepare("SELECT COUNT(*) AS n FROM cache WHERE k LIKE 'robots:%'").get().n, 2, "robots.txt cached per site");
   });
 
+  test("DNS lookup with no answer: product not read, no failure counted, again in an hour", async (t) => {
+    const { db, env } = testDb(t);
+    addTracked(db, "https://www.evetech.co.za/a", { next_check_at: 1, fails: 1 });
+    const calls = [];
+    t.mock.method(globalThis, "fetch", async (raw) => { const url = new URL(raw); if (DOH.has(url.hostname)) throw new TypeError("resolver down"); calls.push(url); return htmlPage(250); });
+    await W.runDaily(env, minute0());
+    const r = row(db, "https://www.evetech.co.za/a");
+    assert.equal(calls.length, 0, "the shop page is not fetched");
+    assert.equal(r.fails, 1, "fails unchanged");
+    assert.ok(Math.abs(r.next_check_at - (Date.now() + H)) < 5000);
+  });
+
   test("the next run takes the rest; nothing is checked twice in a day", async (t) => {
     const { db, env } = testDb(t);
     for (let i = 0; i < 6; i++) addTracked(db, tk(i), { seed: 1, next_check_at: 1 + i });

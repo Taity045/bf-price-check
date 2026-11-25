@@ -44,6 +44,7 @@ a{color:inherit;text-underline-offset:3px}
 button{font:inherit;color:inherit;cursor:pointer;touch-action:manipulation;min-height:44px}
 :focus-visible{outline:2px solid var(--ink);outline-offset:2px}
 .hidden{display:none!important}
+.sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 .num{font-variant-numeric:tabular-nums}
 .small{font-size:13px;color:var(--mut)}
 .note{font-size:14px;color:var(--mut);margin:10px 0 0}
@@ -293,8 +294,9 @@ footer{border-top:2px dashed var(--ink)}
 
   <!--NOSCRIPT-->
   <div id="error" class="err hidden" role="alert"></div>
+  <p id="sr" class="sr" role="status" aria-live="polite"></p>
 
-  <section id="result" class="hidden" aria-live="polite">
+  <section id="result" class="hidden" aria-label="Result">
     <div class="card">
       <div class="prod">
         <img id="pimg" alt="" class="hidden">
@@ -394,12 +396,12 @@ footer{border-top:2px dashed var(--ink)}
   <div class="dlg">
     <div class="dlghead"><h2 id="shopsTitle">Shops we check</h2><button type="button" class="x" data-close aria-label="Close">×</button></div>
     <ul class="shoplist" id="shoplist"><li>Loading…</li></ul>
-    <p class="note">We check these shops. Other shops may work too. Try a link.</p>
+    <p class="note">We read prices straight from these shops. Have a link from another shop? Paste it. If we cannot read the price, we tell you.</p>
     <h3 id="priceSrc" tabindex="-1" style="margin-top:16px">Where do the prices come from?</h3>
     <ul class="note" style="padding-left:18px;margin-top:4px">
       <li>Today's price comes from the shop's product page.</li>
       <li>Older prices come from public web archive copies of that page (the Internet Archive), and from prices we save when people check a product here.</li>
-      <li>Many products have few or no archive copies. This is true for most Takealot products. So you will often see "Not enough history".</li>
+      <li>Many products have few or no archive copies, for example most Takealot products. With 1 or 2 older prices, we show what we found, with the date and the source. From 3 older prices, we give a full verdict.</li>
       <li>After someone checks a product here, we check its price again about once a day and save it. We do the same for some popular Takealot products. So the history grows each day.</li>
       <li>Some shops do not let automatic checks read their pages. For those products, we save the price only when someone checks it here.</li>
     </ul>
@@ -437,13 +439,13 @@ footer{border-top:2px dashed var(--ink)}
     <div class="dlghead"><h2 id="savedTitle">Saved</h2><button type="button" class="x" data-close aria-label="Close">×</button></div>
     <div class="tabs" role="tablist">
       <button type="button" role="tab" id="tabSaved" aria-selected="true" aria-controls="paneSaved">Saved</button>
-      <button type="button" role="tab" id="tabStats" aria-selected="false" aria-controls="paneStats">Your stats</button>
+      <button type="button" role="tab" id="tabStats" aria-selected="false" aria-controls="paneStats" tabindex="-1">Your stats</button>
     </div>
-    <div id="paneSaved" role="tabpanel">
+    <div id="paneSaved" role="tabpanel" aria-labelledby="tabSaved">
       <ul class="olist" id="savedList"></ul>
       <p class="note" id="savedNote"></p>
     </div>
-    <div id="paneStats" role="tabpanel" class="hidden">
+    <div id="paneStats" role="tabpanel" aria-labelledby="tabStats" class="hidden">
       <div class="statrow stats num" id="myStats"></div>
       <div class="badges" id="badges"></div>
       <p class="note">Your stats stay on this device only.</p>
@@ -499,7 +501,19 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const toastQ = [];
 function toast(msg) { toastQ.push(msg); if (toastQ.length === 1) nextToast(); }
 function nextToast() { const t = $("toast"); if (!toastQ.length) return; const d = document.querySelector("dialog[open]"); (d || document.body).appendChild(t); t.textContent = toastQ[0]; t.classList.add("on"); setTimeout(() => { t.classList.remove("on"); toastQ.shift(); setTimeout(nextToast, 200); }, 1800); }
-function parseNum(s) { if (!s) return null; s = String(s).replace(/[^\d.,]/g, ""); if (/,\d{2}$/.test(s)) s = s.replace(/\./g, "").replace(",", "."); else if (/^[1-9]\d{0,2}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, ""); else s = s.replace(/,/g, ""); const n = parseFloat(s); return n > 0 ? n : null; }
+function parseNum(s) {
+  // Same rules as parsePrice in src/worker.js: "1 299,00", "1.299", "1,299.99", "1299.000" -> number.
+  if (!s) return null; s = String(s).replace(/[^\d.,]/g, "").replace(/^[.,]+|[.,]+$/g, "");
+  const lc = s.lastIndexOf(","), ld = s.lastIndexOf(".");
+  if (lc >= 0 && ld >= 0) s = lc > ld ? s.replace(/\./g, "").replace(",", ".") : s.replace(/,/g, "");
+  else if (lc >= 0 || ld >= 0) {
+    const parts = s.split(lc >= 0 ? "," : ".");
+    if (/^[1-9]\d{0,2}$/.test(parts[0]) && parts.slice(1).every((x) => x.length === 3)) s = parts.join("");
+    else if (parts.length === 2) s = parts[0] + "." + parts[1];
+    else s = parts.join("");
+  }
+  const n = parseFloat(s); return n > 0 ? Math.round(n * 100) / 100 : null;
+}
 
 // examples
 EXAMPLES.forEach((e) => {
@@ -565,9 +579,9 @@ async function run(url, fresh) {
   const go = $("go"); go.disabled = true; go.innerHTML = '<span class="spin"></span>Checking…';
   try {
     const r = await fetch("/api/check?url=" + encodeURIComponent(url) + (fresh ? "&fresh=1" : ""));
-    const d = await r.json().catch(() => ({ error: "Unexpected answer from the server." }));
+    const d = await r.json().catch(() => ({ error: "The checker sent an answer we cannot read. Try again." }));
     if (my !== runId) return;
-    if (!r.ok || d.error) { showError(d.error || "Something went wrong."); return; }
+    if (!r.ok || d.error) { showError(d.error || "The check stopped. Try again."); return; }
     history.replaceState(null, "", "/?u=" + encodeURIComponent(d.url));
     state = { ...d, title: d.current.title, archive_meta: null, archive: d.history.archive.slice(), manual: null, failed: d.history.archive_failed };
     $("mcur").value = d.current.currency || d.tld_currency || "";
@@ -662,7 +676,7 @@ function renderPrices() {
     const arch = state.archive.slice().sort((a, b) => b.t - a.t)[0];
     if (arch) {
       box.innerHTML = `<span class="now dim num">${esc(money(arch.price, arch.currency))}</span>` + (arch.was ? `<span class="was num">${esc(money(arch.was, arch.currency))}</span>` : "") + `<span class="claim">Latest archived price</span>`;
-      src.textContent = `From an archived copy of ${fmtDate(arch.t)}. It may be out of date.`;
+      src.textContent = `From an archived copy of ${fmtDate(arch.t)}. Check today's price on the shop's page.`;
     } else {
       box.innerHTML = `<span class="now none">We could not read the price</span>`;
       src.textContent = "";
@@ -706,6 +720,8 @@ function setVerdict(cls, big, html) {
   el.className = "card verdict " + cls;
   el.innerHTML = `<div class="big">${esc(big)}</div>${html}`;
   if (cls !== "unk" && state.revealed !== big) { state.revealed = big; void el.offsetWidth; el.classList.add("reveal"); }
+  // Screen readers hear one short line when the verdict changes, not the whole result on each redraw.
+  if (state.said !== big) { state.said = big; $("sr").textContent = "Verdict: " + big + "."; }
   el.dataset.revealed = state.revealed || "";
   if (cls === "unk") state.v = null;
 }
@@ -768,8 +784,8 @@ function renderVerdict() {
       state.verdictText = ev.verdict; return;
     }
     body = pr.length >= 1 ? `We found only ${pr.length} older price${pr.length === 1 ? "" : "s"} in ${C} (latest ${money(pr[pr.length - 1], C)} on ${fmtDate(hist[hist.length - 1].t)}). We need at least 3 to judge.` : `We found no older prices in ${C} for this product yet.`;
-    body += state.tracked ? " Why: we found few or no older copies of this page in web archives. We saved today's price, and we will try to check it again about once a day." : " Why: we found few or no older copies of this page in web archives.";
-    if (W) body += ` The shop claims ${Math.round((W - P) / W * 100)}% off ${money(W, C)}. We can't confirm that.`;
+    body += state.tracked ? " Why: we found few or no older copies of this page in web archives. We saved today's price. We check it again regularly, so the history grows." : " Why: we found few or no older copies of this page in web archives.";
+    if (W) body += ` The shop claims ${Math.round((W - P) / W * 100)}% off ${money(W, C)}. We need more history to confirm it.`;
     setVerdict("unk", "Not enough history", `<p class="vbody">${esc(body)}</p>`); state.verdictText = null; return;
   }
   const low = Math.min(...pr), high = Math.max(...pr), med = median(pr);
@@ -844,7 +860,7 @@ function renderArchiveNote() {
   let note = "";
   const ai = state.archive_meta;
   if (ai) {
-    if (ai.status !== "ok") note = `Price history from the Internet Archive isn't available right now: ${ai.message || "unknown error"}.`;
+    if (ai.status !== "ok") note = `We could not get archive copies just now, so archive prices are missing. Use "Try the archive again".`;
     else if (!(ai.captures_12mo ?? ai.captures_6mo)) note = "The Internet Archive has no copies of this page from the last twelve months, so older prices are missing.";
     else { const n = ai.captures_12mo ?? ai.captures_6mo; note = `Archived copies: ${n} day${n === 1 ? "" : "s"} in 12 months. We looked at ${ai.sampled}.`; }
     if (state.failed) note += ` ${state.failed} had no price we could read.`;
@@ -983,11 +999,22 @@ async function recheckSaved() {
 function showTab(which) {
   const s = which === "stats";
   $("tabSaved").setAttribute("aria-selected", !s); $("tabStats").setAttribute("aria-selected", s);
+  $("tabSaved").tabIndex = s ? -1 : 0; $("tabStats").tabIndex = s ? 0 : -1;
   $("paneSaved").classList.toggle("hidden", s); $("paneStats").classList.toggle("hidden", !s);
   if (s) renderStats();
 }
 $("tabSaved").addEventListener("click", () => showTab("saved"));
 $("tabStats").addEventListener("click", () => showTab("stats"));
+// Arrow keys, Home and End move between the tabs (WAI-ARIA tabs pattern).
+document.querySelector("#savedDlg [role=tablist]").addEventListener("keydown", (e) => {
+  const tabs = ["tabSaved", "tabStats"], i = tabs.indexOf(document.activeElement.id);
+  if (i < 0) return;
+  const k = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabs.length - 1 }[e.key];
+  if (k === undefined) return;
+  e.preventDefault();
+  const id = tabs[(k + tabs.length) % tabs.length];
+  showTab(id === "tabStats" ? "stats" : "saved"); $(id).focus();
+});
 $("savedBtn").addEventListener("click", () => { showTab("saved"); renderSavedList(); $("savedNote").textContent = ""; $("savedDlg").showModal(); recheckSaved(); });
 
 // ---------- your stats and badges (this device only) ----------

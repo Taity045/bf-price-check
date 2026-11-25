@@ -258,7 +258,8 @@ async function checkOne(env, job, alerts, memo, sum) {
     const checkHost = target.hostname.toLowerCase();
     // 1) The shop's address must be public (checked again on every run: DNS can change).
     if (!memo.dns.has(checkHost)) memo.dns.set(checkHost, await resolvesPublic(checkHost));
-    if (!memo.dns.get(checkHost)) cur = { ...cur, message: "Couldn't verify a public address for the store." };
+    if (memo.dns.get(checkHost) === null) note = "dns-unavailable";
+    else if (!memo.dns.get(checkHost)) cur = { ...cur, message: "Couldn't verify a public address for the store." };
     else {
       // 2) robots.txt must allow the page, 3) then read the price.
       const robots = await robotsRules(env, target.origin, memo.robots);
@@ -271,8 +272,8 @@ async function checkOne(env, job, alerts, memo, sum) {
     }
   }
   const ok = cur.status === "ok" && !!cur.price;
-  if (note === "robots-unavailable") {
-    // Not the product's fault: try again in an hour, without counting a failure.
+  if (note === "robots-unavailable" || note === "dns-unavailable") {
+    // Not the product's fault (robots.txt or DNS lookup did not answer): try again in an hour, without counting a failure.
     await env.DB.prepare("UPDATE tracked SET next_check_at = ?, fails = ? WHERE url = ?").bind(t + HOUR_MS, row.fails || 0, row.url).run();
     sum.skipped++; return;
   }

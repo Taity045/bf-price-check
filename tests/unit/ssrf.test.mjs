@@ -69,12 +69,16 @@ describe("DNS check (DoH)", () => {
     assert.equal(await W.resolvesPublic("evil.example.com"), false);
     assert.ok(calls.some((c) => c.startsWith("https://dns.google/")));
   });
-  test("fails open when no resolver answers (documented behaviour)", async (t) => {
+  test("fails closed when no resolver answers", async (t) => {
     mockNet(t, () => { throw new TypeError("network down"); });
-    assert.equal(await W.resolvesPublic("shop.co.za"), true);
+    assert.equal(await W.resolvesPublic("shop.co.za"), null);
   });
-  test("fails open on resolver errors like SERVFAIL", async (t) => {
+  test("fails closed on resolver errors like SERVFAIL", async (t) => {
     mockNet(t, () => Response.json({ Status: 2 }));
+    assert.equal(await W.resolvesPublic("shop.co.za"), null);
+  });
+  test("one answered lookup is enough (A answers, AAAA resolver down)", async (t) => {
+    mockNet(t, (u) => (u.searchParams.get("type") === "AAAA" ? new Response("down", { status: 502 }) : Response.json({ Status: 0, Answer: [{ type: 1, data: "104.18.0.1" }] })));
     assert.equal(await W.resolvesPublic("shop.co.za"), true);
   });
   test("NXDOMAIN with no addresses passes the DNS check (the fetch then fails)", async (t) => {
@@ -90,6 +94,13 @@ describe("live check flow (no network)", () => {
     const r = await worker.fetch(new Request("https://site.test/api/check?url=" + encodeURIComponent("https://intranet-shop.co.za/p"), { headers: { "user-agent": "Mozilla/5.0" } }), env, { waitUntil() {} });
     assert.equal(r.status, 400);
     assert.match((await r.json()).error, /public website/);
+  });
+  test("/api/check answers 503 (not 'not public') when no DNS resolver answers", async (t) => {
+    const { env } = testDb(t);
+    mockNet(t, () => { throw new TypeError("network down"); });
+    const r = await worker.fetch(new Request("https://site.test/api/check?url=" + encodeURIComponent("https://shop-dns-down.co.za/p"), { headers: { "user-agent": "Mozilla/5.0" } }), env, { waitUntil() {} });
+    assert.equal(r.status, 503);
+    assert.match((await r.json()).error, /look up the shop's address/);
   });
   test("a store redirect to a private address is refused", async (t) => {
     let hits = 0;
