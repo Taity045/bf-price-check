@@ -280,7 +280,6 @@ footer{border-top:2px dashed var(--ink)}
   main{max-width:900px;display:flex;flex-direction:column;min-height:100vh;padding-bottom:0}
   .hero{padding:24px 0}
   .hero:has(~#result.hidden){min-height:64vh;display:flex;flex-direction:column;justify-content:center}
-  /* a link with ?u= opens straight into a result: lay the top out as a result page from the first paint (no jump) */
   html.q .hero:has(~#result.hidden){min-height:0;display:block}
   html.q .hero .steps{display:none}
   h1{font-size:clamp(56px,5.4vw,76px)}
@@ -499,7 +498,6 @@ footer{border-top:2px dashed var(--ink)}
 <script>
 (() => {
 const $ = (id) => document.getElementById(id);
-// Older browsers (before Safari 15.4) have no <dialog>: give it the few methods we use.
 if (typeof HTMLDialogElement !== "function") document.querySelectorAll("dialog").forEach((d) => {
   Object.defineProperty(d, "open", { get() { return this.hasAttribute("open"); } });
   d.showModal = function () { this.setAttribute("open", ""); this.classList.add("dlg-fb"); };
@@ -508,7 +506,6 @@ if (typeof HTMLDialogElement !== "function") document.querySelectorAll("dialog")
 const EXAMPLES = /*EXAMPLES*/[];
 const LOC = { ZAR: "en-ZA", GBP: "en-GB", EUR: "en-IE", USD: "en-US" };
 const DAY = 864e5;
-// Links use the address this page came from, so they always match the live site.
 const SITE = location.origin;
 const store = {
   get(k, d) { try { const v = JSON.parse(localStorage.getItem("dod:" + k)); return v == null ? d : v; } catch { return d; } },
@@ -763,7 +760,6 @@ function setVerdict(cls, big, html) {
   el.className = "card verdict " + cls;
   el.innerHTML = `<div class="big">${esc(big)}</div>${html}`;
   if (cls !== "unk" && state.revealed !== big) { state.revealed = big; void el.offsetWidth; el.classList.add("reveal"); }
-  // Screen readers hear one short line when the verdict changes, not the whole result on each redraw.
   if (state.said !== big) { state.said = big; $("sr").textContent = "Verdict: " + big + "."; }
   el.dataset.revealed = state.revealed || "";
   if (cls === "unk") state.v = null;
@@ -797,7 +793,6 @@ function renderVerdict() {
   let cur = curPrice(); const { pts, other, ccy } = points();
   let hist = pts.filter((x) => x.t < Date.now() - DAY);
   let archivedAt = null;
-  // Shop blocks live checks: judge the latest archived copy against the older ones, and say so.
   if (!cur?.currency && !state.manual && ccy && hist.length >= 4) {
     const last = hist[hist.length - 1];
     cur = { price: last.price, was: last.was, currency: ccy };
@@ -1008,7 +1003,6 @@ async function loadOthers(my) {
     const inStock = matches.filter((r) => r.match.in_stock).map((r) => r.match.price);
     const herePrice = here && here.currency === plan.product.currency ? here.price : null;
     const low = Math.min(...inStock, herePrice ?? Infinity);
-    // every in-stock offer at the lowest price gets the tag; on a tie it says so
     const isLow = (p) => p != null && Math.abs(p - low) < 0.5;
     const nLow = inStock.filter(isLow).length + (isLow(herePrice) ? 1 : 0);
     const lowTag = matches.length && nLow ? `<span class="tag cheap">${nLow > 1 ? "Same lowest price" : "Cheapest"}</span>` : "";

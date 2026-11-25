@@ -23,6 +23,8 @@ app_name = "app." + hashlib.sha1(APP_JS.encode()).hexdigest()[:10] + ".js"
 html = html[:m.start()] + f'<script src="/{app_name}" defer></script>' + html[m.end():]
 m = re.search(r"<style>([\s\S]*?)</style>", html)
 html = html[:m.start(1)] + esbuild(m.group(1), "css") + html[m.end(1):]
+# Drop the indentation at the start of each HTML line (the page has no <pre> or <textarea>): smaller first view, same rendering.
+html = re.sub(r"\n[ \t]+", "\n", html)
 fonts = {}
 for f in sorted((root / "public/fonts").glob("*.woff2")):
     data = f.read_bytes(); h = hashlib.sha1(data).hexdigest()[:10]
