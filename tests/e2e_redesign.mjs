@@ -44,7 +44,7 @@ for (const [name, o] of [["desktop", desktop], ["mobile", mobile]]) {
   await p.context().close();
 }
 // 3. examples
-const shots = { 0: "example-takealot.png", 1: "example-evetech.png", 2: "example-cyclelab.png" };
+const shots = { 0: "example-takealot.png", 1: "example-evetech.png", 2: "example-takealot-ps5.png" };
 for (const i of [0, 1, 2]) {
   const p = await page(mobile); await p.goto(BASE + "/");
   const label = await p.locator("#chips a").nth(i).textContent();
@@ -53,7 +53,7 @@ for (const i of [0, 1, 2]) {
   await waitArchive(p);
   const big = (await p.textContent("#verdict .big"))?.trim();
   const n = await pointCount(p);
-  ok(`example "${label}" is a South African shop`, /Takealot|Evetech|Cycle Lab/.test(label), label);
+  ok(`example "${label}" is a South African shop`, /Takealot|Evetech/.test(label), label);
   ok(`example "${label}" shows a price and a verdict box`, !!big && /R\s?\d/.test(await p.textContent("#prices")), big);
   ok(`example "${label}" chart has >= 1 point`, n >= 1, String(n));
   ok(`example "${label}" URL updated`, p.url().includes("?u="));
