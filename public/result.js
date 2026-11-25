@@ -78,7 +78,7 @@ async function run(url, fresh) {
     if (my !== runId) return;
     if (!r.ok || d.error) { showError(d.error || "The check stopped. Try again."); return; }
     history.replaceState(null, "", "/?u=" + encodeURIComponent(d.url));
-    state = { ...d, title: d.current.title, archive_meta: null, archive: d.history.archive.slice(), cc: (d.history.cc || []).slice(), manual: null, failed: d.history.archive_failed };
+    state = { ...d, title: d.current.title, archive_meta: null, archive: d.history.archive.slice(), cc: (d.history.cc || []).slice(), manual: null, failed: d.history.archive_failed, blocked: d.history.archive_blocked || 0 };
     $("mcur").value = d.current.currency || d.tld_currency || "";
     $("result").classList.remove("hidden");
     $("tip").textContent = "Tap a point to see its date and price."; $("pts").open = false;
@@ -122,7 +122,8 @@ async function loadSnaps(my) {
         const d = await r.json();
         if (my !== runId) return;
         if (d.status === "ok" && d.price) state.archive.push({ t: d.t, ts: d.ts, orig: d.orig, price: d.price, was: d.was, currency: d.currency });
-        else if (d.status != "blocked") state.failed++;
+        else if (d.status === "blocked") state.blocked++;
+        else state.failed++;
       } catch { if (my !== runId) return; state.failed++; }
       done++; updProg(done, total); renderAll();
     }
@@ -369,6 +370,7 @@ function renderArchiveNote() {
     else if (!(ai.captures_12mo ?? ai.captures_6mo)) note = "The Internet Archive has no copies of this page from the last twelve months" + ((state.cc || []).length ? "." : ", so older prices are missing.");
     else { const n = ai.captures_12mo ?? ai.captures_6mo; note = `Archived copies: ${n} day${n === 1 ? "" : "s"} in 12 months. We looked at ${ai.sampled}.`; }
     if (state.failed) note += ` ${state.failed} had no price we could read.`;
+    if (state.blocked) note += ` ${state.blocked} ${state.blocked === 1 ? "was a bot-check page or an empty page" : "were bot-check pages or empty pages"}, not the product page.`;
   }
   const ccN = points().pts.filter((x) => x.kind === "cc").length; // after same-day duplicates are dropped
   if (ccN) note = `Common Crawl web archive: ${ccN} older price${ccN === 1 ? "" : "s"}. ` + note;

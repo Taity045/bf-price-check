@@ -100,6 +100,21 @@ for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`r
   await p.context().close();
 });
 
+// 3b. archive copies that are bot-check or empty pages: the note says so, they are not "no price"
+await step("blocked copies", async () => {
+  const p = await open(desktop);
+  await p.route(/\/api\/check\?/, (r) => r.fulfill({ json: { ...checkAnswer(), history: { ...checkAnswer().history, archive_blocked: 1 } } }));
+  await p.route(/\/api\/archive\?/, (r) => r.fulfill({ json: { status: "ok", captures_12mo: 3, sampled: 3, pending: [{ ts: "20260101120000", orig: PRODUCT }, { ts: "20260201120000", orig: PRODUCT }] } }));
+  await p.route(/\/api\/snap\?/, (r) => r.fulfill({ json: /20260101/.test(r.request().url()) ? { status: "blocked", reason: "bot-page" } : { status: "noprice" } }));
+  await p.goto(BASE + "/");
+  await p.fill("#u", PRODUCT); await p.click("#go");
+  await p.waitForFunction(() => /bot-check/.test(document.getElementById("archnote").textContent), null, { timeout: 15000 }).catch(() => {});
+  const note = await p.textContent("#archnote");
+  ok("blocked: archive note counts bot-check or empty pages apart from 'no price'", /1 had no price we could read\. 2 were bot-check pages or empty pages, not the product page\./.test(note), note);
+  ok("blocked: no JS errors", p._errs.length === 0, p._errs.join(" | "));
+  await p.context().close();
+});
+
 // 3a. one older price from a Common Crawl web archive copy (answer faked): evidence verdict with its source link
 await step("common crawl evidence", async () => {
   const p = await open(desktop);
