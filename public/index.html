@@ -908,7 +908,7 @@ function renderArchiveNote() {
     else { const n = ai.captures_12mo ?? ai.captures_6mo; note = `Archived copies: ${n} day${n === 1 ? "" : "s"} in 12 months. We looked at ${ai.sampled}.`; }
     if (state.failed) note += ` ${state.failed} had no price we could read.`;
   }
-  const ccN = (state.cc || []).length;
+  const ccN = points().pts.filter((x) => x.kind === "cc").length; // after same-day duplicates are dropped
   if (ccN) note = `Common Crawl web archive: ${ccN} older price${ccN === 1 ? "" : "s"}. ` + note;
   $("archnote").textContent = note;
 }
