@@ -121,8 +121,8 @@ describe("compare: helpers", () => {
     assert.deepEqual(book.shops.map((s) => s.id).sort(), ["exclusivebooks", "loot"]);
     assert.ok(W.cmpPlan(id("Puma Speedcat OG", { brand: "Puma" }), "superbalist.com", "ZAR").shops.some((s) => s.id === "puma"));
     assert.ok(!W.cmpPlan(id("Nike Air Force 1", { brand: "Nike" }), "superbalist.com", "ZAR").shops.some((s) => s.id === "puma"));
-    assert.deepEqual(W.cmpPlan(id("Kettle 1.7L", { brand: "Smeg" }), "www.lakeland.co.uk", "GBP").shops.map((s) => s.id), ["fenwick"]);
-    assert.deepEqual(W.cmpPlan(id("Air fryer 5L", { brand: "Ninja" }), "www.dunelm.com", "GBP").shops.map((s) => s.id), ["fenwick"]);
+    assert.deepEqual(W.cmpPlan(id("Kettle 1.7L", { brand: "Smeg" }), "www.lakeland.co.uk", "GBP").shops.map((s) => s.id), ["fenwick", "robertdyas", "petertyson"]);
+    assert.deepEqual(W.cmpPlan(id("Air fryer 5L", { brand: "Ninja" }), "www.dunelm.com", "GBP").shops.map((s) => s.id), ["fenwick", "robertdyas", "petertyson"]);
     assert.deepEqual(W.cmpPlan(id("Dior Sauvage 100ml Eau de Parfum", { brand: "Dior" }), "allbeauty.com", "GBP").shops.map((s) => s.id), ["escentual", "fenwick"]);
     assert.ok(!W.cmpPlan(id("LEGO Technic 42213", { brand: "LEGO" }), "www.takealot.com", "ZAR").shops.some((s) => s.id === "toysrus"), "shops whose robots.txt disallows the search are not planned");
     assert.deepEqual(W.cmpPlan(id("AirPods 4", { brand: "Apple" }), "www.mediamarkt.de", "EUR").shops, []);
