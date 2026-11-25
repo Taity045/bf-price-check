@@ -270,7 +270,9 @@ async function upload() {
   const state = existsSync(stateFile) ? JSON.parse(readFileSync(stateFile, "utf8")) : { written: 0, per_shop: {}, sent: [] };
   const sent = new Set(state.sent || []);
   const products = [];
-  await readJsonl(`${OUT}/rows.jsonl`, (p) => { if (!sent.has(p.key)) products.push(p); });
+  // --shops: only these shops (for example the ones whose collection is complete).
+  const only = args.shops ? new Set(args.shops.split(",")) : null;
+  await readJsonl(`${OUT}/rows.jsonl`, (p) => { if (!sent.has(p.key) && (!only || only.has(p.shop))) products.push(p); });
   let written = 0, i = 0, stop = null;
   const BATCH = +(args.batch || 150);
   const save = () => { state.sent = [...sent]; writeFileSync(stateFile, JSON.stringify(state)); };
