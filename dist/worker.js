@@ -2481,7 +2481,7 @@ const CMP_SHOP_PER_MIN = 30;          // searches per shop per minute, all visit
 const CMP_SLOW_PER_MIN = 6;           // shops whose robots.txt asks for 10 s between requests (slow: true)
 const CMP_PER_IP_PER_MIN = 240;       // shop calls per visitor per minute (one check makes up to ~20)
 // Bump when the matching rules or identity reading change, so cached answers from older rules are not shown.
-const CMP_VER = "v8";
+const CMP_VER = "v9";
 const CMP_MAX_SEARCHES = 2;           // searches per shop per product
 const CMP_MAX_DETAILS = 3;            // product-detail reads per shop per product (to read barcodes)
 
@@ -3257,7 +3257,7 @@ async function cmpSearchShop(env, shop, id) {
   if (grocery) queries.push(cmpShortQuery(id));
   const fashion = cat === "fashion";
   const mopts = { noNameMatch: fashion, grocery };
-  let best = null, searched = 0, details = 0, lastErr = null, candidates = 0;
+  let best = null, searched = 0, details = 0, lastErr = null, candidates = 0, skippedBusy = false;
   const tried = new Set();
   for (const q of queries) {
     if (!q || tried.has(q) || searched >= CMP_MAX_SEARCHES) continue;
@@ -3285,7 +3285,7 @@ async function cmpSearchShop(env, shop, id) {
       const byBarcodeSearch = q === id.gtin && list.indexOf(c) < 2;
       const soft = !m.level && (m.why === "missing spec" || c.range);
       const worth = detail && details < CMP_MAX_DETAILS && !c.detailed && ((!(c.gtins || []).length && ((m.level && (id.gtin || c.range)) || byBarcodeSearch || (close && close.has(c)))) || (soft && !/brand|accessory|bundle|used|variant|model/.test(m.why || "")));
-      if (worth && shop.slow && await cmpShopBusy(env, shop)) continue;
+      if (worth && shop.slow && await cmpShopBusy(env, shop)) { skippedBusy = true; continue; }
       if (worth) {
         details++;
         try {
@@ -3301,6 +3301,8 @@ async function cmpSearchShop(env, shop, id) {
     if (best && best.level !== "name") break;
   }
   if (best) return { status: "match", match: best, candidates };
+  // a close candidate's barcode could not be read (the shop's slow limit): "busy", asked again later, not "none"
+  if (skippedBusy) return { status: "busy", message: "busy", candidates };
   if (lastErr && !candidates) return { status: lastErr.kind === "blocked" ? "blocked" : lastErr.kind === "busy" ? "busy" : "error", message: lastErr.message };
   return { status: "none", candidates };
 }
