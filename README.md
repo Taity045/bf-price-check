@@ -7,6 +7,7 @@ Live:
 
 Paste a product link from an online shop. The site shows:
 
+1. **Cheaper somewhere else?** (first, under the product): the cheapest exact match at another shop we searched, with the saving, or "No cheaper exact match found" with how many shops we checked and which we can't search. See [Other shops](#other-shops-price-compare).
 1. **Today's price and the "was" price**, read on the server from the shop's product page.
 2. **A price history chart**, made from public web archive copies of the page (Internet Archive and Common Crawl) and from prices we save when people check the product.
 3. **A verdict**: Real deal, Decent deal, Same old price, Pricier than usual, Fake discount (from 3 or more older prices). With only 1 or 2 older prices from the last 6 months: Likely inflated was price, Seen cheaper before, or Seen at this price before, each with the date, the source and a link to the archived copy. Otherwise: Not enough history.
@@ -41,6 +42,13 @@ The site never invents prices. If a shop blocks the check, or there is no histor
 node scripts/cc/archive.mjs collect --out cc-archive --crawls CC-MAIN-2026-47 --shops "Dunelm,Wickes" --concurrency 4
 node scripts/cc/archive.mjs reduce --out cc-archive
 ARCHIVE_LOAD_KEY=… node scripts/cc/archive.mjs upload --out cc-archive --max-writes 30000
+```
+
+**Load the products people check first** (Black Friday 2026). `collect --keys FILE` reads only the product links in FILE (one per line), and `upload --first FILE` (JSON `{ "keys": [...], "shops": [...] }`) sends those products first (whatever their `--min-pri`), then the listed shops in that order, then the usual order. The daily cap and every row check stay the same. For 26 Nov 2026 the list was the products people checked on the site (from `tracked`), then product links on the shops' home and Black Friday pages (only pages that robots.txt allows, with no bot check; no other price trackers), then shops by how often people check them (Loot last, because its 15,000+ waiting products would use the whole day).
+
+```
+node scripts/cc/archive.mjs collect --out cc-archive --cdx-dir cdx --keys keys.txt
+ARCHIVE_LOAD_KEY=… node scripts/cc/archive.mjs upload --out cc-archive --min-pri 1 --first first.json
 ```
 
 Common Crawl's terms of use apply; crawled content may be subject to the shops' own terms. We store only the price facts (price, was price, date, link), not page content.
@@ -156,6 +164,12 @@ API readers replace the page download, so these checks are faster than a normal 
 **Shops list**: `src/shops.js` is made by `scripts/make_shops.py` from `research/retailers.json`, with `data/live_status.json` applied on top (newer live checks). Run `RESEARCH=<path to retailers.json> python3 scripts/make_shops.py` if the research folder is not in your checkout.
 
 ## Other shops (price compare)
+
+**Headline: "Cheaper somewhere else?"** A card right under the product, above the history verdict, so the compare leads when history is thin (Black Friday week). It shows from the first render (with room kept for the answer, so the verdict does not move when it fills in), and the compare starts at once, while the archive copies load. It says one of:
+- "Cheaper at <shop>: R…" with "Save R… (…%)", the match level ("Same barcode / Same model number / Same name and specs as this product"; for name matches also "Check the model and colour on the shop's page"), other shops that are also cheaper, and "Delivery not included". Only exact matches that are in stock and at least R5 (or 0.50) cheaper count.
+- "No cheaper exact match found" with "We checked N shops. M sell the exact same product, but not for less." or "None has the exact same product in stock.", plus the shops we couldn't check and the shops we can't search.
+- "Checking N shops…" while answers arrive, or "Not compared" with the reason (own brand, unknown kind of product, no shops for it).
+It only shows when the compare runs (we read today's price at the shop). The history verdict follows under it.
 
 On a result page the "Other shops" panel (under the price chart and the buttons, so rows that arrive later never push the chart or buttons down) shows the same product's price today at other shops we support, in the same country and currency. The page asks the worker which shops to search (`/api/compare`), then asks each shop in parallel (`/api/compare/shop`, 4 at a time), so rows appear as shops answer and one slow shop does not hold up the rest. Each answer is one Worker call with a few sub-requests, well inside the Free plan's 50.
 

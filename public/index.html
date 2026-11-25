@@ -89,6 +89,8 @@ html.q main:has(#result.hidden) footer{display:none}
 .verdict .big{font-size:28px;font-weight:700;letter-spacing:-.02em;color:var(--v);line-height:1.15}
 .verdict.unk .big{color:var(--ink)}
 .vbody{margin:6px 0 0}
+.cmphead{border-left:4px solid var(--line);min-height:150px}@media(max-width:520px){.cmphead{min-height:178px}}.cmphead.good{border-left-color:var(--good)}
+.cbig{font-size:22px;font-weight:700;letter-spacing:-.01em;line-height:1.2;margin-top:4px;overflow-wrap:anywhere}.cmphead.good .cbig{color:var(--good)}
 .flag{margin-top:12px;padding:10px 12px;border-radius:10px;background:color-mix(in srgb,var(--bad) 9%,var(--bg));color:var(--bad);font-size:14px;font-weight:600}
 .flag.ok{background:color-mix(in srgb,var(--good) 9%,var(--bg));color:var(--good)}
 .stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:14px}
@@ -299,7 +301,7 @@ footer{border-top:2px dashed var(--ink)}
 
   <section class="hero">
     <h1>You think you found a <mark>good deal</mark>? Let's find out!</h1>
-    <p class="sub">Paste a product link. We compare today's price with older prices from the same shop, up to 12 months back.</p>
+    <p class="sub">Paste a product link. We look for the same product for less at other shops, and compare today's price with older prices, up to 12 months back.</p>
     <form id="f" action="/" method="get" autocomplete="off" novalidate>
       <label for="u" class="hidden">Product link</label>
       <input id="u" name="u" type="url" inputmode="url" placeholder="Paste a product link" aria-label="Product link" enterkeyhint="go">
@@ -336,6 +338,12 @@ footer{border-top:2px dashed var(--ink)}
         <button type="button" class="btn2" id="mapply">Use these prices</button>
       </div>
     </div>
+
+    <section class="card cmphead hidden" id="cmpHead" aria-labelledby="cmpHeadT">
+      <span class="lab" id="cmpHeadT">Cheaper somewhere else?</span>
+      <div class="cbig" id="cmpBig" aria-live="polite"></div>
+      <p class="vbody small"><span id="cmpLine"></span> <a class="hidden" href="#others" id="cmpJump">See all shops ↓</a></p>
+    </section>
 
     <section class="card verdict unk" id="verdict"></section>
 
