@@ -11,6 +11,9 @@
 const TFG_HOSTS = ["bash.com", "foschini.co.za", "markham.co.za", "sportscene.co.za", "totalsports.co.za", "americanswiss.co.za", "volpes.co.za", "hi-online.co.za", "athome.co.za", "zando.co.za", "exactonline.co.za", "jet.co.za", "fabiani.co.za", "dueloutdoor.co.za", "sterns.co.za"];
 const MRP_STORES = { "mrp.com": ["en_za", "01_"], "mrphome.com": ["mrphome_en_za", "02_"], "mrpsport.com": ["mrpsport_en_za", "07_"] };
 const SFCC_RSC_HOSTS = ["capeunionmart.co.za", "poetry.co.za", "trenery.co.za", "countryroad.co.za", "witchery.co.za", "politix.co.za", "mimco.co.za", "oldkhaki.co.za"];
+// WooCommerce shops whose product pages have no readable price (variable products): the shop's public
+// Store API (read-only, the one its own blocks call), looked up by the page's slug.
+const WOO_HOSTS = ["dvillecyclery.co.za", "evobikes.co.za", "bicyclepower.co.za"];
 const MRP_GRAPHQL = "https://apiprd.omni.mrpg.com/graphql";
 const PNP_STORE = "WC44";   // one fixed store: the price can differ a little per region
 
@@ -33,6 +36,10 @@ function readerFor(u) {
   if (onHost(host, ["pnp.co.za"])) {
     const m = path.match(/\/p\/(\d{6,20}_[A-Z]{1,4})\/?$/);
     if (m) return { id: "pnp-occ", code: m[1], api: `https://www.pnp.co.za/pnphybris/v2/pnp-spa/products/${m[1]}?fields=FULL&storeCode=${PNP_STORE}` };
+  }
+  if (onHost(host, WOO_HOSTS)) {
+    const m = path.match(/\/([a-z0-9][a-z0-9-]{1,200})\/?$/i);
+    if (m && /^\/(product|shop)\//.test(path)) return { id: "woo-store", api: `https://${onHost(host, WOO_HOSTS)}/wp-json/wc/store/v1/products?slug=${m[1].toLowerCase()}` };
   }
   if (onHost(host, SFCC_RSC_HOSTS)) return { id: "sfcc-rsc", code: (path.match(/\/(\d{6,12}(?:-C\d{1,3})?)\.html$/i) || [])[1] || null };
   if (onHost(host, ["netflorist.co.za"])) return { id: "netflorist" };
@@ -66,7 +73,27 @@ async function readApi(rd, agent, verifiedHost) {
     if (!r.ok) { await r.body?.cancel(); return { error: `The shop's product data answered HTTP ${r.status}.` }; }
     return pnpProduct(JSON.parse(await readLimitedText(r)));
   }
+  if (rd.id === "woo-store") {
+    const r = await fetchStore(rd.api, headers, 10000, verifiedHost);
+    if (!r.ok) { await r.body?.cancel(); return { error: `The shop's product data answered HTTP ${r.status}.` }; }
+    return wooProduct(JSON.parse(await readLimitedText(r)));
+  }
   return { error: "No reader." };
+}
+
+// WooCommerce Store API: prices in minor units. Options at different prices: no single price to read.
+function wooProduct(d) {
+  const p = Array.isArray(d) && d.length === 1 ? d[0] : null;
+  const pr = p && p.prices;
+  if (!pr) return { error: "The shop has no product at this link now." };
+  const unit = 10 ** (Number.isInteger(pr.currency_minor_unit) ? pr.currency_minor_unit : 2);
+  const amt = (v) => (/^\d+$/.test(String(v ?? "")) && +v > 0 ? Math.round((+v / unit) * 100) / 100 : null);
+  const rg = pr.price_range;
+  if (rg && amt(rg.min_amount) !== amt(rg.max_amount)) return { error: "This product has options at different prices. Pick one on the shop's page and type the price you see." };
+  const price = amt(pr.price);
+  if (!price) return { error: "The shop shows no price for this product now." };
+  const img = Array.isArray(p.images) && p.images[0] && p.images[0].src;
+  return { price, was: wasIf(amt(pr.regular_price), price), currency: pr.currency_code || "ZAR", title: decodeEntities(String(p.name || "")).trim(), image: img && /^https:\/\//.test(img) ? img : null, source: "woo-store-api", in_stock: p.is_in_stock !== false };
 }
 
 // VTEX catalog answer: the lowest price of a size/colour in stock (else of any), and its list price as "was".

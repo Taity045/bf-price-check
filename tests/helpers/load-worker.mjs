@@ -10,7 +10,7 @@ const read = (p) => readFileSync(new URL(p, root), "utf8");
 
 export const NAMES = [
   "SHOP_LIST", "RL", "MAX_TRACKED", "LIVE_CACHE_PREFIX",
-  "parsePrice", "parseTextPrice", "readerFor", "readerTarget", "readApi", "readPage", "vtexProduct", "mrpProduct", "pnpProduct", "sfccRsc", "netflorist", "clicksPage", "absolutePets", "decodeEntities", "symbolCurrency", "tldCurrency",
+  "parsePrice", "parseTextPrice", "readerFor", "readerTarget", "readApi", "readPage", "vtexProduct", "mrpProduct", "pnpProduct", "wooProduct", "sfccRsc", "netflorist", "clicksPage", "absolutePets", "decodeEntities", "symbolCurrency", "tldCurrency",
   "isPrivateIPv4", "isPrivateIPv6", "validateUrl", "resolvesPublic", "canonicalize",
   "parseJsonLd", "parseMeta", "parseAmazon", "parseDataLayer", "parseMainPriceBlock", "parseFallback",
   "pageAmount", "detectBlock", "extractFromHtml", "takealotBarcode", "takealotApi", "getCurrent",
