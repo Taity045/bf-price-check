@@ -278,14 +278,22 @@ for (const base of [...new Set([BASE, "https://eish.veldwire.com", "https://bf-p
 {
   const html = await (await fetch(BASE + "/?u=" + encodeURIComponent(PC), { headers: { "user-agent": "WhatsApp/2.24.1 A" } })).text();
   const img = (html.match(/property="og:image" content="([^"]+)"/) || [])[1] || "";
-  ok("shared link has og:image for previews", img.includes("/og.png?u="), img.slice(0, 100));
+  ok("shared link has an absolute og:image (product card when ready, else the fixed card)", /^https:\/\/[^/]+\/(og\.png\?u=|og-home\.png$)/.test(img), img.slice(0, 100));
+  for (const t of ["og:url", "og:site_name", "og:image:width", "og:image:height", "og:image:type", "og:description"]) ok(`shared link has ${t}`, html.includes(`property="${t}"`));
+  ok("shared link has twitter:card summary_large_image", html.includes('name="twitter:card" content="summary_large_image"'));
   ok("shared link og:title has product", /og:title" content="[^"]{8,}/.test(html));
   const r = await fetch(img.replace(/&amp;/g, "&"), { headers: { "user-agent": "facebookexternalhit/1.1" } });
   const buf = Buffer.from(await r.arrayBuffer());
   ok("share card is a PNG", r.headers.get("content-type") === "image/png" && buf.slice(1, 4).toString() === "PNG" && buf.length > 5000, buf.length + " bytes");
   fs.writeFileSync(`${OUT}/feature-og.png`, buf);
-  const home = await (await fetch(BASE + "/")).text();
-  ok("home has absolute og:image", /og:image" content="https:\/\/[^"]+\/og\.png"/.test(home));
+  for (const ua of ["WhatsApp/2.23.20.0 A", "facebookexternalhit/1.1"]) {
+    const hr = await fetch(BASE + "/", { headers: { "user-agent": ua }, redirect: "manual" }); const home = await hr.text();
+    ok(`${ua}: home is 200 with OG tags early`, hr.status === 200 && home.indexOf('property="og:image"') > 0 && home.indexOf('property="og:image"') < 2000);
+    const hi = (home.match(/property="og:image" content="([^"]+)"/) || [])[1] || "";
+    ok(`${ua}: home og:image is absolute og-home.png`, /^https:\/\/[^/]+\/og-home\.png$/.test(hi), hi);
+    const ir = await fetch(hi, { headers: { "user-agent": ua }, redirect: "manual" }); const ib = Buffer.from(await ir.arrayBuffer());
+    ok(`${ua}: home card is a static PNG under 100 KB with length and long cache`, ir.status === 200 && ir.headers.get("content-type") === "image/png" && Number(ir.headers.get("content-length")) === ib.length && ib.length < 100000 && /max-age=\d{5,}/.test(ir.headers.get("cache-control") || ""), ib.length + " bytes");
+  }
 }
 // 7. wall, counter, privacy, footer
 {

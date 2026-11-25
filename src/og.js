@@ -189,10 +189,10 @@ async function apiOg(req, env) {
     let s = ""; for (let i = 0; i < png.length; i += 0x8000) s += String.fromCharCode(...png.subarray(i, i + 0x8000));
     if (png.length < 700000) await cachePut(env, key, { b64: btoa(s) }, 7 * DAY_MS).catch(() => {});
   }
-  return new Response(png, { headers: { "content-type": "image/png", "cache-control": "public, max-age=3600", "access-control-allow-origin": "*" } });
+  return new Response(png, { headers: { "content-type": "image/png", "content-length": String(png.length), "cache-control": "public, max-age=86400", "access-control-allow-origin": "*" } });
 }
 // Server-side meta tags for shared links (/?u=...), so chat apps show the verdict and price.
-async function homeWithMeta(req, env, html) {
+async function homeWithMeta(req, env, html, ctx) {
   const url = new URL(req.url);
   const u = url.searchParams.get("u") || url.searchParams.get("url");
   if (!u) return html;
@@ -204,8 +204,13 @@ async function homeWithMeta(req, env, html) {
   const money = (v) => ogMoney(v, info.currency);
   const title = `${info.verdict ? info.verdict + ": " : ""}${info.title || info.host}`.slice(0, 120);
   const desc = [info.price ? `Now ${money(info.price)}` : "", info.was ? `the shop says it was ${money(info.was)}` : "", info.verdict === "Fake discount" && info.high90 ? `but the highest price in 90 days was ${money(info.high90)}` : info.low ? `lowest we found ${money(info.low)}` : ""].filter(Boolean).join(", ") + ".";
-  const img = `${url.origin}/og.png?u=${encodeURIComponent(canon)}&v=${info.updated_at || 0}`;
-  const meta = `<meta property="og:title" content="${escHtml(title)}">\n<meta property="og:description" content="${escHtml(desc)}">\n<meta property="og:image" content="${escHtml(img)}">\n<meta property="og:image:width" content="1200">\n<meta property="og:image:height" content="630">\n<meta property="og:type" content="website">\n<meta property="og:url" content="${escHtml(url.origin + "/?u=" + encodeURIComponent(u))}">\n<meta name="twitter:card" content="summary_large_image">`;
+  // Chat apps wait only a short time for the image. Use the product card only when it is already made; else use the fixed card and make it now.
+  const dyn = `${url.origin}/og.png?u=${encodeURIComponent(canon)}&v=${info.updated_at || 0}`;
+  const ready = await cacheGet(env, "og-v3:" + canon + ":" + (info.updated_at || 0)).catch(() => null);
+  if (!ready && ctx) ctx.waitUntil(apiOg(new Request(dyn), env).catch(() => {}));
+  const img = ready ? dyn : `${url.origin}/og-home.png`;
+  const pageUrl = url.origin + "/?u=" + encodeURIComponent(u);
+  const meta = `<!--OG--><meta property="og:type" content="website">\n<meta property="og:site_name" content="Deal or Dud?">\n<meta property="og:title" content="${escHtml(title)}">\n<meta property="og:description" content="${escHtml(desc)}">\n<meta property="og:url" content="${escHtml(pageUrl)}">\n<meta property="og:image" content="${escHtml(img)}">\n<meta property="og:image:secure_url" content="${escHtml(img)}">\n<meta property="og:image:type" content="image/png">\n<meta property="og:image:width" content="1200">\n<meta property="og:image:height" content="630">\n<meta name="twitter:card" content="summary_large_image">\n<meta name="twitter:image" content="${escHtml(img)}"><!--/OG-->`;
   const ns = `<noscript><div class="card" style="margin-top:20px"><p class="small">${escHtml(info.host || "")}</p><h2>${escHtml(info.title || "")}</h2>${info.verdict ? `<p><b>${escHtml(info.verdict)}</b></p>` : ""}<p class="num">${escHtml(desc)}</p><p class="small">Turn on JavaScript to see the full price history.</p></div></noscript>`;
-  return html.replace(/<meta property="og:title"[^>]*>\s*<meta property="og:description"[^>]*>\s*<meta property="og:image"[^>]*>/, meta).replace("<!--NOSCRIPT-->", ns);
+  return html.replace(/<!--OG-->[\s\S]*?<!--\/OG-->/, () => meta).replace("<!--NOSCRIPT-->", ns);
 }

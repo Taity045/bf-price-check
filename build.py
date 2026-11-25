@@ -30,7 +30,8 @@ for f in sorted((root / "public/fonts").glob("*.woff2")):
     fonts[hashed] = base64.b64encode(data).decode()
     html = html.replace(f"/fonts/{f.name}", f"/fonts/{hashed}")
 font = (root / "src/og_font.js").read_text().replace("export const OG_FONT", "const OG_FONT")
-worker = "const FONTS = " + json.dumps(fonts) + ";\nconst APP = " + json.dumps({"name": app_name, "js": APP_JS}) + ";\n" + (root / "src/shops.js").read_text() + "\n" + (root / "src/worker.js").read_text() + "\n" + (root / "src/features.js").read_text() + "\n" + (root / "src/og.js").read_text() + "\n" + font + "\nconst HTML = " + json.dumps(html) + ";\n"
+og_home = base64.b64encode((root / "public/og-home.png").read_bytes()).decode()
+worker = "const OG_HOME = " + json.dumps(og_home) + ";\nconst FONTS = " + json.dumps(fonts) + ";\nconst APP = " + json.dumps({"name": app_name, "js": APP_JS}) + ";\n" + (root / "src/shops.js").read_text() + "\n" + (root / "src/worker.js").read_text() + "\n" + (root / "src/features.js").read_text() + "\n" + (root / "src/og.js").read_text() + "\n" + font + "\nconst HTML = " + json.dumps(html) + ";\n"
 (root / "dist").mkdir(exist_ok=True)
 (root / "dist/worker.js").write_text(worker)
 schema = (root / "schema.sql").read_text()

@@ -870,12 +870,12 @@ async function cron(env, scheduledTime) {
   await env.DB.prepare("DELETE FROM tracked WHERE last_viewed < ?").bind(now() - 120 * 864e5).run();
 }
 
-async function pageHtml(req, env) {
+async function pageHtml(req, env, ctx) {
   const origin = new URL(req.url).origin;
-  let html = HTML.replace('content="/og.png"', `content="${origin}/og.png"`).replace("<!--CANONICAL-->", `<link rel="canonical" href="${origin}/">`);
+  let html = HTML.split("__ORIGIN__").join(origin).replace("<!--CANONICAL-->", `<link rel="canonical" href="${origin}/">`);
   const bm = `javascript:void(location.href='${origin}/?url='+encodeURIComponent(location.href))`;
   html = html.split("__BM__").join(bm);
-  if (new URL(req.url).pathname === "/") { try { html = await homeWithMeta(req, env, html); } catch {} }
+  if (new URL(req.url).pathname === "/") { try { html = await homeWithMeta(req, env, html, ctx); } catch {} }
   return html.replace("<!--NOSCRIPT-->", '<noscript><p class="note" style="text-align:center">Turn on JavaScript to see price history. You can still paste a link and press Check price.</p></noscript>');
 }
 
@@ -898,12 +898,13 @@ export default {
       if (env.WALL !== "on" && (url.pathname === "/wall" || url.pathname === "/api/wall" || url.pathname === "/api/stats")) return url.pathname === "/wall" ? Response.redirect(url.origin + "/", 302) : json({ error: "off" }, 404);
       if (url.pathname === "/api/wall") return json(await wallData(env), 200, { "cache-control": "public, max-age=300" });
       if (url.pathname === "/api/stats") { const w = await wallData(env); return json({ fake_total: w.fake_total }, 200, { "cache-control": "public, max-age=300" }); }
+      if (url.pathname === "/og-home.png") { const b = Uint8Array.from(atob(OG_HOME), (x) => x.charCodeAt(0)); return new Response(b, { headers: { "content-type": "image/png", "content-length": String(b.length), "cache-control": "public, max-age=604800", "access-control-allow-origin": "*" } }); }
       if (url.pathname === "/og.png") return await apiOg(req, env);
       if (url.pathname === "/alert/confirm") return await alertLink(req, env, "confirm");
       if (url.pathname === "/alert/stop") return await alertLink(req, env, "stop");
       if (url.pathname === "/api/archive") return await apiArchive(req, env);
       if (url.pathname === "/api/snap") return await apiSnap(req, env);
-      if (["/", "/index.html", "/wall", "/privacy"].includes(url.pathname)) return new Response(await pageHtml(req, env), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache", "x-content-type-options": "nosniff", "referrer-policy": "no-referrer" } });
+      if (["/", "/index.html", "/wall", "/privacy"].includes(url.pathname)) return new Response(await pageHtml(req, env, ctx), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache", "x-content-type-options": "nosniff", "referrer-policy": "no-referrer" } });
       if (url.pathname.startsWith("/fonts/") && FONTS[url.pathname.slice(7)]) return new Response(Uint8Array.from(atob(FONTS[url.pathname.slice(7)]), (c) => c.charCodeAt(0)), { headers: { "content-type": "font/woff2", "cache-control": "public, max-age=31536000, immutable", "access-control-allow-origin": "*" } });
       // The page names the script by its hash. A page loaded before a deploy may ask for an older name:
       // serve the current script for it (short cache), so buttons never stop working after a deploy.
