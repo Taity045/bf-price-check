@@ -973,8 +973,24 @@ async function apiSnap(req, env) {
   return json({ ts, orig, t: tsToMs(ts), ...r });
 }
 
+// Archive copies read before the bot-check / empty-page check existed (PR #17, 25 Nov 2026) were saved as
+// "no price". We do not keep the page, so we cannot test it again from D1: mark these copies for one
+// more read instead. The next time someone opens the product, /api/archive lists them again and
+// /api/snap reads them with today's check (blocked, no price, or a price). Until then they count as
+// nothing, not as "no price". Runs once (flag in the cache table).
+const SNAP_DETECT_SINCE = Date.UTC(2026, 10, 25, 2, 45);
+const SNAP_RELABEL_KEY = "snap-relabel-v1";
+async function relabelOldSnaps(env) {
+  if (await cacheGet(env, SNAP_RELABEL_KEY)) return 0;
+  const r = await env.DB.prepare("UPDATE product_snaps SET status = 'retry', fetched_at = 0 WHERE status = 'noprice' AND COALESCE(fetched_at, 0) < ?").bind(SNAP_DETECT_SINCE).run();
+  const n = (r && r.meta && r.meta.changes) || 0;
+  await cachePut(env, SNAP_RELABEL_KEY, { at: now(), n }, 400 * 864e5);
+  return n;
+}
+
 async function cron(env, scheduledTime) {
   await ensureFeatureTables(env);
+  try { await relabelOldSnaps(env); } catch {}
   await archiveProbe(env);
   await runDaily(env, scheduledTime);
   // Housekeeping: the cron runs every minute; clean up once every 6 hours, at minute 15.
