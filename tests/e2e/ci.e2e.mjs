@@ -225,6 +225,17 @@ for (const [name, o] of [["1440", { viewport: { width: 1440, height: 900 } }], [
   await p.context().close();
 });
 
+// 3d. The home page must not move when the example links fill in (they wrap to two lines on phones)
+for (const [name, o] of [["1440", { viewport: { width: 1440, height: 900 } }], ["412", { ...mobile, viewport: { width: 412, height: 823 } }], ["360", mobile]]) await step(`home CLS ${name}`, async () => {
+  const p = await open(o, { fake: false });
+  await p.addInitScript(() => { window.__cls = 0; window.__src = []; new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput) { window.__cls += e.value; window.__src.push((e.sources || []).map((x) => x.node && (x.node.id || x.node.nodeName)).join(",") + ":" + e.value.toFixed(3)); } }).observe({ type: "layout-shift", buffered: true }); });
+  await p.goto(BASE + "/", { waitUntil: "networkidle" });
+  await p.waitForTimeout(800);
+  const cls = await p.evaluate(() => window.__cls), src = await p.evaluate(() => window.__src);
+  ok(`home CLS ${name}: layout shift under 0.02 while the page loads`, cls < 0.02, cls.toFixed(4) + " " + src.join(" | "));
+  await p.context().close();
+});
+
 // 4. "Ask us to add a shop" form, sent to the real worker and local D1
 for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`shop request ${name}`, async () => {
   const p = await open(o);
