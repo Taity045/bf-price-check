@@ -295,6 +295,26 @@ for (const base of [...new Set([BASE, "https://eish.veldwire.com", "https://bf-p
     ok(`${ua}: home card is a static PNG under 100 KB with length and long cache`, ir.status === 200 && ir.headers.get("content-type") === "image/png" && Number(ir.headers.get("content-length")) === ib.length && ib.length < 100000 && /max-age=\d{5,}/.test(ir.headers.get("cache-control") || ""), ib.length + " bytes");
   }
 }
+// where prices come from
+for (const [n, o] of [["1440", wide(1440)], ["390", phone()]]) {
+  const p = await page(o); await p.goto(BASE + "/");
+  await p.click("#srcBtn"); await p.waitForSelector("#shopsDlg[open]");
+  await p.waitForTimeout(500);
+  const t = await p.innerText("#shopsDlg");
+  ok(`${n}: footer opens "Where do the prices come from?"`, /Where do the prices come from\?/.test(t) && /Internet Archive/.test(t) && /Takealot/.test(t) && /Not enough history/.test(t));
+  ok(`${n}: price source text is in view`, await p.evaluate(() => { const d = document.querySelector("#shopsDlg .dlg") || document.getElementById("shopsDlg"); const h = document.getElementById("priceSrc").getBoundingClientRect(); return h.top >= 0 && h.bottom <= innerHeight; }));
+  ok(`${n}: no daily tracking promise`, !/every day|daily/i.test(t));
+  await p.screenshot({ path: `${OUT}/price-source-${n}.png` });
+  await p.context().close();
+}
+{
+  const p = await page(phone()); await p.goto(BASE + "/?u=" + encodeURIComponent("https://www.takealot.com/apple-airpods-4/PLID95957224"));
+  await p.waitForSelector("#result:not(.hidden)", { timeout: 60000 }); await waitArchive(p);
+  const v = await p.innerText("#verdict");
+  ok("Not enough history explains why", !/Not enough history/.test(v) || /Why: we found few or no older copies of this page in web archives\. We saved today's price, so the next check will have more history\./.test(v), v.slice(0, 200));
+  await p.screenshot({ path: `${OUT}/not-enough-history-390.png`, fullPage: true });
+  await p.context().close();
+}
 // 7. wall, counter, privacy, footer
 {
   const p = await page(phone());

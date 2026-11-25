@@ -379,6 +379,7 @@ footer{border-top:2px dashed var(--ink)}
     <p id="counter" class="hidden"><a href="/wall"><b id="counterN"></b> fake discounts caught so far</a></p>
     <nav class="flinks" aria-label="More">
       <button type="button" class="linkbtn" id="shopsBtn">Shops we check</button>
+      <button type="button" class="linkbtn" id="srcBtn">Where prices come from</button>
       <a href="/wall" id="wallLink" class="hidden">Fake discount wall</a>
       <button type="button" class="linkbtn" id="bmBtn">Bookmark button</button>
       <button type="button" class="linkbtn" id="askBtn">Ask us to add a shop</button>
@@ -393,6 +394,13 @@ footer{border-top:2px dashed var(--ink)}
     <div class="dlghead"><h2 id="shopsTitle">Shops we check</h2><button type="button" class="x" data-close aria-label="Close">×</button></div>
     <ul class="shoplist" id="shoplist"><li>Loading…</li></ul>
     <p class="note">We can read prices on these shops' pages. Some products can still fail. Other shops can work too, but the result is less certain.</p>
+    <h3 id="priceSrc" tabindex="-1" style="margin-top:16px">Where do the prices come from?</h3>
+    <ul class="note" style="padding-left:18px;margin-top:4px">
+      <li>Today's price comes from the shop's product page.</li>
+      <li>Older prices come from public web archive copies of that page (the Internet Archive), and from prices we save when people check a product here.</li>
+      <li>Many products have few or no archive copies. This is true for most Takealot products. So you will often see "Not enough history".</li>
+      <li>The history grows over time, because we save the price each time someone checks the product.</li>
+    </ul>
     <div class="formrow"><button type="button" class="sec" id="shopsAsk">Ask us to add a shop</button><button type="button" class="go" data-close>Close</button></div>
   </div>
 </dialog>
@@ -750,7 +758,7 @@ function renderVerdict() {
   const P = cur.price, W = cur.was, C = cur.currency;
   if (pr.length < 3) {
     body = pr.length >= 1 ? `We found only ${pr.length} older price${pr.length === 1 ? "" : "s"} in ${C} (latest ${money(pr[pr.length - 1], C)} on ${fmtDate(hist[hist.length - 1].t)}). We need at least 3 to judge.` : `We found no older prices in ${C} for this product yet.`;
-    if (state.tracked) body += " We'll keep checking for new prices.";
+    body += " Why: we found few or no older copies of this page in web archives. We saved today's price, so the next check will have more history.";
     if (W) body += ` The shop claims ${Math.round((W - P) / W * 100)}% off ${money(W, C)}. We can't confirm that.`;
     setVerdict("unk", "Not enough history", `<p class="vbody">${esc(body)}</p>`); state.verdictText = null; return;
   }
@@ -862,6 +870,7 @@ function openRequest(host, url) {
   $("reqDlg").showModal(); (host ? $("rEmail") : $("rShop")).focus(); tsPrepare("rTs");
 }
 $("shopsBtn").addEventListener("click", openShops);
+if ($("srcBtn")) $("srcBtn").addEventListener("click", async () => { await openShops(); const h = $("priceSrc"); h.scrollIntoView({ block: "start" }); h.focus({ preventScroll: true }); });
 ["rShop", "rUrl", "rEmail"].forEach((id) => $(id).addEventListener("input", () => { $("rMsg").textContent = ""; $("rMsg").className = "fmsg"; }));
 $("askBtn").addEventListener("click", () => openRequest(state && !state.shop ? state.host : "", state && !state.shop ? state.url : ""));
 $("shopsAsk").addEventListener("click", () => openRequest("", ""));
