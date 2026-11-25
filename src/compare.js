@@ -244,6 +244,8 @@ function cmpCategory(id) {
   return null;
 }
 // How to name the shops we searched for a kind of product.
+// What to call the specialist shops for a kind of product ("5 bike shops"); others: "shops that sell …".
+const CMP_CAT_SHOP = { cycling: "bike shop", books: "book shop", toys: "toy shop", beauty: "beauty shop", computer: "computer shop" };
 const CMP_CAT_NOUN = { cycling: "bikes and cycling gear", computer: "computer gear", electronics: "electronics", appliances: "appliances", toys: "toys", baby: "baby products", fashion: "fashion and sportswear", beauty: "beauty products", home: "homeware", books: "books", liquor: "drinks" };
 
 // Which shops to search for this product (same currency, not the shop it came from).
@@ -266,7 +268,7 @@ function cmpPlan(id, sourceHost, currency) {
   // Specialist shops first: they are the most likely to have it.
   shops.sort((a, b) => a.general - b.general);
   const specialists = shops.filter((s) => !s.general).length;
-  return { category: cat, noun: cat ? CMP_CAT_NOUN[cat] || null : null, specialists, shops: shops.map(({ id, name, general }) => ({ id, name, general })), skipped };
+  return { category: cat, noun: cat ? CMP_CAT_NOUN[cat] || null : null, shopNoun: cat ? CMP_CAT_SHOP[cat] || null : null, specialists, shops: shops.map(({ id, name, general }) => ({ id, name, general })), skipped };
 }
 
 // Search words: brand + the words that name the product (no colours, no filler), at most 7 words.
@@ -697,7 +699,7 @@ async function apiCompare(req, env) {
     const rows = await env.DB.prepare(`SELECT k, v, exp FROM cache WHERE k IN (${keys.map(() => "?").join(",")})`).bind(...keys).all();
     for (const r of rows.results || []) if (r.exp > now()) { try { const v = JSON.parse(r.v); results[v.shop] = v; } catch {} }
   }
-  return json({ product: { title: id.title, brand: id.brand, gtin: id.gtin, codes: id.codes, currency: id.currency, category: plan.category }, noun: plan.noun, specialists: plan.specialists, shops: plan.shops, skipped: plan.skipped, results, reason: plan.shops.length ? null : "no shops" });
+  return json({ product: { title: id.title, brand: id.brand, gtin: id.gtin, codes: id.codes, currency: id.currency, category: plan.category }, noun: plan.noun, shopNoun: plan.shopNoun, specialists: plan.specialists, shops: plan.shops, skipped: plan.skipped, results, reason: plan.shops.length ? null : "no shops" });
 }
 
 // GET /api/compare/shop?url=&shop=  -> one shop's answer
