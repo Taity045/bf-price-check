@@ -102,7 +102,7 @@ Re-make it: `python3 scripts/make_shops.py --add "MediaMarkt Germany,DE,mediamar
 
 ## Features
 
-The home page stays clean: heading, link box, Check price, 3 example links (Takealot, Evetech, Cycle Lab), and a short 3-step line on desktop. Everything else is behind small links or on the result page.
+The home page stays clean: heading, link box, Check price, 3 example links (Takealot AirPods 4, Evetech gaming PC, Takealot PS5 Slim), and a short 3-step line on desktop. Everything else is behind small links or on the result page.
 
 | Feature | Where | Data |
 |---|---|---|
