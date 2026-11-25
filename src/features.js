@@ -27,9 +27,11 @@ async function ensureFeatureTables(env) {
 
 // ---------- verdict (same rules as the page) ----------
 function median(a) { const s = [...a].sort((x, y) => x - y), n = s.length; return n ? (n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2) : null; }
-function historyPoints(hist, ccy) {
+function historyPoints(hist, ccy, price) {
   const since = now() - HISTORY_DAYS * DAY_MS;
-  const arch = hist.snaps.filter((s) => s.status === "ok" && s.price).map((s) => ({ t: tsToMs(s.snap_ts), price: s.price, was: s.was, currency: s.currency, kind: "archive" }));
+  const arch = hist.snaps.filter((s) => s.status === "ok" && s.price).map((s) => ({ t: tsToMs(s.snap_ts), price: s.price, was: s.was, currency: s.currency, kind: "archive" }))
+    // Common Crawl copies (src/archive.js): first and last copy of each run of the same price.
+    .concat(archivePoints(hist.cc || [], since, price).map((p) => ({ t: p.t, price: p.price, was: p.was, currency: p.currency, kind: "cc", link: p.link })));
   const byDay = new Map();
   for (const c of hist.checks) if (c.price) byDay.set(new Date(c.ts).toISOString().slice(0, 10), { t: c.ts, price: c.price, was: c.was, currency: c.currency, kind: "check" });
   const all = arch.concat([...byDay.values()]).filter((x) => x.t >= since);
@@ -57,7 +59,7 @@ function sparseEvidence(P, W, h) {
 }
 function judge(current, hist) {
   let cur = current && current.status === "ok" && current.price && current.currency ? { price: current.price, was: current.was, currency: current.currency } : null;
-  const { pts, ccy } = historyPoints(hist, cur && cur.currency);
+  const { pts, ccy } = historyPoints(hist, cur && cur.currency, cur && cur.price);
   let h = pts.filter((x) => x.t < now() - DAY_MS), archived = 0;
   if (!cur && ccy && h.length >= 4) { const last = h[h.length - 1]; cur = { price: last.price, was: last.was, currency: ccy }; h = h.slice(0, -1); archived = 1; }
   const out = { verdict: null, n: h.length, pts, archived };

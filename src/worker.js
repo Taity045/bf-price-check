@@ -781,9 +781,13 @@ async function track(env, canon, origUrl, cur) {
 async function storedHistory(env, canon) {
   const since = now() - HISTORY_DAYS * 864e5;
   // Old page-data rows did not retain the unit, so their amounts cannot be rescaled reliably.
-  const checks = await env.DB.prepare("SELECT ts, price, was, currency FROM checks WHERE url = ? AND ts >= ? AND source IS NOT 'page-data' ORDER BY ts").bind(canon, since).all();
-  const snaps = await env.DB.prepare("SELECT snap_ts, orig, price, was, currency, status FROM product_snaps WHERE url = ? AND snap_ts >= ? AND status NOT IN ('pending', 'retry')").bind(canon, ymd(new Date(since))).all();
-  return { checks: checks.results || [], snaps: snaps.results || [] };
+  // Saved checks, Wayback copies and Common Crawl rows (src/archive.js), read from D1 at the same time.
+  const [checks, snaps, cc] = await Promise.all([
+    env.DB.prepare("SELECT ts, price, was, currency FROM checks WHERE url = ? AND ts >= ? AND source IS NOT 'page-data' ORDER BY ts").bind(canon, since).all(),
+    env.DB.prepare("SELECT snap_ts, orig, price, was, currency, status FROM product_snaps WHERE url = ? AND snap_ts >= ? AND status NOT IN ('pending', 'retry')").bind(canon, ymd(new Date(since))).all(),
+    archiveRows(env, archiveLookupKeys(canon), since),
+  ]);
+  return { checks: checks.results || [], snaps: snaps.results || [], cc };
 }
 
 // ---------- supported shops ----------
@@ -870,6 +874,7 @@ async function apiCheck(req, env, ctx) {
       archive: hist.snaps.filter((s) => s.status === "ok").map((s) => ({ t: tsToMs(s.snap_ts), ts: s.snap_ts, orig: s.orig, price: s.price, was: s.was, currency: s.currency })),
       archive_failed: hist.snaps.filter((s) => s.status !== "ok" && s.status !== "retry").length,
       checks: hist.checks.map((c) => ({ t: c.ts, price: c.price, was: c.was, currency: c.currency })),
+      cc: archivePoints(hist.cc || [], now() - HISTORY_DAYS * 864e5, current.status === "ok" ? current.price : null).map((p) => ({ t: p.t, price: p.price, was: p.was, currency: p.currency, url: p.url, link: p.link })),
     },
     history_days: HISTORY_DAYS, verdict,
     ids: { gtin: current.gtin || null, mpn: current.mpn || null },
@@ -950,11 +955,13 @@ export default {
       if (url.pathname === "/api/e2e/stats-probe") return await statsProbe(req, env);
       if (url.pathname === "/api/alert") return await apiAlert(req, env, ctx);
       if (url.pathname === "/api/e2e/cleanup") return await apiE2ECleanup(req, env);
+      if (url.pathname === "/api/admin/archive-load") return await apiArchiveLoad(req, env);
       if (url.pathname === "/api/e2e/mail-test") return await apiMailTest(req, env);
       if (req.method !== "GET" && req.method !== "HEAD") return json({ error: "method not allowed" }, 405);
       if (url.pathname === "/api/shops") return json({ shops: SHOPS.map(({ name, cc, d }) => ({ name, cc, host: d[0] })) }, 200, { "cache-control": "public, max-age=3600" });
       if (url.pathname === "/api/check") return statsTap(req, env, ctx, "check", await apiCheck(req, env, ctx));
       if (url.pathname === "/api/daily-status") return await apiDailyStatus(env);
+      if (url.pathname === "/api/archive-stats") return await apiArchiveStats(env);
       if (url.pathname === "/api/config") return json({ wall: env.WALL === "on", alerts: alertsOn(env), min_judged: WALL_MIN_JUDGED, turnstile: turnstileOn(env) ? env.TURNSTILE_SITEKEY : null }, 200, { "cache-control": "public, max-age=300" });
       if (url.pathname === "/api/verdict") return await apiVerdict(req, env);
       if (url.pathname === "/api/compare") return statsTap(req, env, ctx, "compare", await apiCompare(req, env));

@@ -169,9 +169,9 @@ async function ogInfo(env, canon) {
   const v = await env.DB.prepare("SELECT * FROM verdicts WHERE url = ?").bind(canon).first();
   const host = stripWww(new URL(canon).hostname.toLowerCase());
   const hist = await storedHistory(env, canon);
-  if (v) return { ...v, host, pts: historyPoints(hist, v.currency).pts, verdict: v.verdict === "Not enough history" ? null : v.verdict };
+  if (v) return { ...v, host, pts: historyPoints(hist, v.currency, v.price).pts, verdict: v.verdict === "Not enough history" ? null : v.verdict };
   const cur = await latestCurrent(env, canon);
-  if (cur && cur.price) return { host, title: cur.title, price: cur.price, was: cur.was, currency: cur.currency, pts: historyPoints(hist, cur.currency).pts, updated_at: cur.checked_at };
+  if (cur && cur.price) return { host, title: cur.title, price: cur.price, was: cur.was, currency: cur.currency, pts: historyPoints(hist, cur.currency, cur.price).pts, updated_at: cur.checked_at };
   return null;
 }
 async function apiOg(req, env) {

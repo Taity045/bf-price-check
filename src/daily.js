@@ -216,7 +216,9 @@ async function runDaily(env, scheduledTime, opts = {}) {
       ...batch.map((r) => env.DB.prepare("SELECT snap_ts, orig, price, was, currency, status FROM product_snaps WHERE url = ? AND snap_ts >= ? AND status NOT IN ('pending', 'retry')").bind(r.url, ymd(new Date(since)))),
     ]);
     const k = batch.length, memo = { robots: new Map(), dns: new Map() };
-    const jobs = batch.map((r, i) => ({ row: r, claimed: (res[i].results || []).length > 0, hist: { checks: res[k + i].results || [], snaps: res[2 * k + i].results || [] } })).filter((j) => j.claimed);
+    const jobs = batch.map((r, i) => ({ row: r, claimed: (res[i].results || []).length > 0, hist: { checks: res[k + i].results || [], snaps: res[2 * k + i].results || [], cc: [] } })).filter((j) => j.claimed);
+    // Common Crawl rows for these products (src/archive.js), one query for the whole batch.
+    await archiveForJobs(env, jobs, since);
     sum.picked = jobs.length;
     // Takealot products one after another (polite to one host); the page product at the same time.
     const lanes = ["takealot", "page"].map((lane) => jobs.filter((j) => (j.row.lane === "takealot" ? "takealot" : "page") === lane));
@@ -284,7 +286,7 @@ async function checkOne(env, job, alerts, memo, sum) {
   if (ok) {
     stmts.push(checkStmt(env, row.url, cur, "daily"));
     stmts.push(env.DB.prepare("INSERT INTO cache (k, v, exp) VALUES (?, ?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v, exp = excluded.exp").bind(LIVE_CACHE_PREFIX + row.url, JSON.stringify(cur), t + CHECK_TTL_MS));
-    const hist = { checks: [...job.hist.checks, { ts: cur.checked_at, price: cur.price, was: cur.was, currency: cur.currency }], snaps: job.hist.snaps };
+    const hist = { checks: [...job.hist.checks, { ts: cur.checked_at, price: cur.price, was: cur.was, currency: cur.currency }], snaps: job.hist.snaps, cc: job.hist.cc || [] };
     try { j = judge(cur, hist); } catch { j = null; }
     if (j && j.verdict) stmts.push(verdictStmt(env, row.url, cur.title || row.title, j));
     stmts.push(env.DB.prepare("UPDATE tracked SET last_checked = ?, last_status = ?, check_count = check_count + 1, fails = 0, next_check_at = ?, days = ?, title = COALESCE(?, title) WHERE url = ?")

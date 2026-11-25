@@ -1,0 +1,83 @@
+name: Common Crawl archive prices
+
+# Adds prices from each new Common Crawl crawl (about one a month) to archive_prices.
+# Runs daily: it does nothing until a crawl newer than the last loaded one is out, then reads it over a
+# few days (polite to data.commoncrawl.org, and inside the D1 free plan's daily writes). Progress is kept
+# in the Actions cache. The first 12 months (up to CC-MAIN-2026-47) were loaded from the box.
+on:
+  schedule:
+    - cron: "40 3 * * *"
+  workflow_dispatch:
+    inputs:
+      crawl:
+        description: "Crawl id (e.g. CC-MAIN-2026-51); empty = newest"
+        required: false
+        default: ""
+      max_writes:
+        description: "Most D1 rows to write in this run"
+        required: false
+        default: "20000"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cc-archive
+  cancel-in-progress: false
+
+env:
+  WRANGLER_SEND_METRICS: "false"
+  LOADED_UP_TO: CC-MAIN-2026-47
+  ENDPOINT: https://eish.veldwire.com/api/admin/archive-load
+
+jobs:
+  archive:
+    name: Read the newest crawl and load its prices
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install
+        run: npm ci --no-audit --no-fund
+      - name: Which crawl
+        id: crawl
+        run: |
+          id="${{ inputs.crawl }}"
+          if [ -z "$id" ]; then id=$(node scripts/cc/archive.mjs latest --after "$LOADED_UP_TO"); fi
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          if [ -z "$id" ]; then echo "No crawl newer than $LOADED_UP_TO yet." >> "$GITHUB_STEP_SUMMARY"; fi
+      - name: Restore progress
+        if: steps.crawl.outputs.id != ''
+        uses: actions/cache/restore@v4
+        with:
+          path: cc-archive
+          key: cc-archive-${{ steps.crawl.outputs.id }}-${{ github.run_id }}
+          restore-keys: cc-archive-${{ steps.crawl.outputs.id }}-
+      - name: Read archived product pages (stops after 4.5 hours; the next run continues)
+        if: steps.crawl.outputs.id != ''
+        run: node scripts/cc/archive.mjs collect --out "cc-archive/${{ steps.crawl.outputs.id }}" --crawls "${{ steps.crawl.outputs.id }}" --rate 6 --concurrency 4 --max-minutes 270
+      - name: Sanity filter and price rows
+        if: steps.crawl.outputs.id != ''
+        run: node scripts/cc/archive.mjs reduce --out "cc-archive/${{ steps.crawl.outputs.id }}"
+      - name: Load into D1 (append to each product's history)
+        if: steps.crawl.outputs.id != ''
+        env:
+          ARCHIVE_LOAD_KEY: ${{ secrets.ARCHIVE_LOAD_KEY }}
+        run: |
+          if [ -z "$ARCHIVE_LOAD_KEY" ]; then echo "::warning::ARCHIVE_LOAD_KEY secret is not set; skipping the load."; exit 0; fi
+          node scripts/cc/archive.mjs upload --out "cc-archive/${{ steps.crawl.outputs.id }}" --endpoint "$ENDPOINT" --mode append --max-writes "${{ inputs.max_writes || '20000' }}"
+      - name: Summary
+        if: always() && steps.crawl.outputs.id != ''
+        run: |
+          d="cc-archive/${{ steps.crawl.outputs.id }}"
+          { echo "### Common Crawl ${{ steps.crawl.outputs.id }}"; echo '```'; [ -f "$d/reduce_summary.json" ] && node -e "const s=require('./$d/reduce_summary.json');console.log(JSON.stringify({products:s.products,rows:s.rows,page_reads:s.page_reads},null,1))"; [ -f "$d/upload_state.json" ] && node -e "const s=require('./$d/upload_state.json');console.log(JSON.stringify({written:s.written,sent_products:(s.sent||[]).length,per_shop:s.per_shop},null,1))"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Save progress
+        if: always() && steps.crawl.outputs.id != ''
+        uses: actions/cache/save@v4
+        with:
+          path: cc-archive
+          key: cc-archive-${{ steps.crawl.outputs.id }}-${{ github.run_id }}
