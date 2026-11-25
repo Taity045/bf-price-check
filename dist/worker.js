@@ -979,8 +979,24 @@ async function apiSnap(req, env) {
   return json({ ts, orig, t: tsToMs(ts), ...r });
 }
 
+// Archive copies read before the bot-check / empty-page check existed (PR #17, 25 Nov 2026) were saved as
+// "no price". We do not keep the page, so we cannot test it again from D1: mark these copies for one
+// more read instead. The next time someone opens the product, /api/archive lists them again and
+// /api/snap reads them with today's check (blocked, no price, or a price). Until then they count as
+// nothing, not as "no price". Runs once (flag in the cache table).
+const SNAP_DETECT_SINCE = Date.UTC(2026, 10, 25, 2, 45);
+const SNAP_RELABEL_KEY = "snap-relabel-v1";
+async function relabelOldSnaps(env) {
+  if (await cacheGet(env, SNAP_RELABEL_KEY)) return 0;
+  const r = await env.DB.prepare("UPDATE product_snaps SET status = 'retry', fetched_at = 0 WHERE status = 'noprice' AND COALESCE(fetched_at, 0) < ?").bind(SNAP_DETECT_SINCE).run();
+  const n = (r && r.meta && r.meta.changes) || 0;
+  await cachePut(env, SNAP_RELABEL_KEY, { at: now(), n }, 400 * 864e5);
+  return n;
+}
+
 async function cron(env, scheduledTime) {
   await ensureFeatureTables(env);
+  try { await relabelOldSnaps(env); } catch {}
   await archiveProbe(env);
   await runDaily(env, scheduledTime);
   // Housekeeping: the cron runs every minute; clean up once every 6 hours, at minute 15.
@@ -1018,6 +1034,7 @@ export default {
       if (url.pathname === "/api/alert") return await apiAlert(req, env, ctx);
       if (url.pathname === "/api/e2e/cleanup") return await apiE2ECleanup(req, env);
       if (url.pathname === "/api/admin/archive-load") return await apiArchiveLoad(req, env);
+      if (url.pathname === "/api/admin/price-fix") return await apiPriceFix(req, env);
       if (url.pathname === "/api/e2e/mail-test") return await apiMailTest(req, env);
       if (req.method !== "GET" && req.method !== "HEAD") return json({ error: "method not allowed" }, 405);
       if (url.pathname === "/api/shops") return await apiShops(env, ctx);
@@ -1782,6 +1799,75 @@ async function apiArchiveStats(env) {
   out.updated_at = now();
   await cachePut(env, "archive-stats-v1", out, 3600e3);
   return json(out);
+}
+
+// ---------- one-off price fix: geo-priced Shopify reads saved before PR #14 ----------
+// Before #14 (deployed 2026-11-25 02:20:56 UTC) our servers abroad read Lakeland without UK VAT (exactly
+// 1/1.2 of the UK price) and Escentual in USD. POST /api/admin/price-fix (same key as the archive load)
+// with {"apply": false} lists what would go; {"apply": true} deletes those rows, the verdicts built on them
+// and the cached checks, identities, compare answers and share images for those products.
+const PRICE_FIX_BEFORE = Date.UTC(2026, 10, 25, 2, 20, 56);
+const PRICE_FIX_EXVAT_HOSTS = ["lakeland.co.uk"];
+function priceFixHome(url) {
+  let host; try { host = stripWww(new URL(url).hostname.toLowerCase()); } catch { return null; }
+  const sh = cmpShopForHost(host);
+  return sh ? sh.cur : tldCurrency(host);
+}
+async function priceFixPlan(env) {
+  const { results } = await env.DB.prepare("SELECT id, url, ts, price, currency, source, via FROM checks WHERE ts < ? ORDER BY url, ts").bind(PRICE_FIX_BEFORE).all();
+  const bad = [];
+  for (const r of results) {
+    let host = ""; try { host = stripWww(new URL(r.url).hostname.toLowerCase()); } catch {}
+    const home = priceFixHome(r.url);
+    if (home && r.currency && r.currency !== home) bad.push({ ...r, why: `priced in ${r.currency}, shop sells in ${home}` });
+    else if (PRICE_FIX_EXVAT_HOSTS.includes(host)) bad.push({ ...r, exvat: true, why: "read without UK VAT (shop priced for a visitor abroad)" });
+  }
+  // evidence: the same product read after the fix
+  const urls = [...new Set(bad.map((r) => r.url))];
+  const after = {};
+  for (const u of urls) {
+    const a = await env.DB.prepare("SELECT price, currency, ts FROM checks WHERE url = ? AND ts >= ? ORDER BY ts DESC LIMIT 1").bind(u, PRICE_FIX_BEFORE).first();
+    if (a) after[u] = a;
+  }
+  // no read after the fix: ask the shop now, for its home country (Shopify product .js)
+  for (const u of urls) {
+    if (after[u]) continue;
+    const sh = cmpShopForHost(new URL(u).hostname.toLowerCase()); const h = new URL(u).pathname.match(/\/products\/([^/?#]+)/);
+    if (!sh || sh.kind !== "shopify" || !h) continue;
+    try { const d = await cmpShopifyJson(sh, `${sh.base}/products/${h[1]}.js`); const ps = (d.variants || []).map((v) => v.price / 100); if (ps.length) after[u] = { prices: ps, currency: sh.cur, live: true }; } catch {}
+  }
+  for (const r of bad) {
+    const a = after[r.url]; if (!a) continue;
+    r.after = a.live ? { prices: a.prices, currency: a.currency, read: "live now" } : { price: a.price, currency: a.currency };
+    if (a.currency === r.currency && r.price) { const ps = a.live ? a.prices : [a.price]; r.ratio_after = ps.map((p) => Math.round((p / r.price) * 10000) / 10000).sort((x, y) => Math.abs(x - 1.2) - Math.abs(y - 1.2))[0]; }
+  }
+  // ex-VAT rows go only with evidence: the UK price is 1.2x (19-21 %) the saved one
+  return { bad: bad.filter((r) => !r.exvat || (r.ratio_after >= 1.19 && r.ratio_after <= 1.21)), kept: bad.filter((r) => r.exvat && !(r.ratio_after >= 1.19 && r.ratio_after <= 1.21)).map((r) => ({ id: r.id, url: r.url, price: r.price, ratio_after: r.ratio_after || null })), urls };
+}
+async function apiPriceFix(req, env) {
+  if (!env.ARCHIVE_LOAD_KEY || String(env.ARCHIVE_LOAD_KEY).length < 32) return json({ error: "not found" }, 404);
+  const auth = req.headers.get("authorization") || "";
+  if (!auth.startsWith("Bearer ") || !timingSafeEq(auth.slice(7), env.ARCHIVE_LOAD_KEY)) return json({ error: "not found" }, 404);
+  if (req.method !== "POST") return json({ error: "method not allowed" }, 405);
+  let body = {}; try { body = JSON.parse((await req.text()) || "{}"); } catch { return json({ error: "bad json" }, 400); }
+  const { bad, kept } = await priceFixPlan(env);
+  const urls = [...new Set(bad.map((r) => r.url))];
+  const out = { before: new Date(PRICE_FIX_BEFORE).toISOString(), rows: bad.map((r) => ({ id: r.id, url: r.url, at: new Date(r.ts).toISOString(), price: r.price, currency: r.currency, source: r.source, via: r.via, why: r.why, after: r.after || null, ratio_after: r.ratio_after || null })), products: urls.length, kept_no_evidence: kept, applied: false };
+  if (body.apply !== true || !bad.length) return json(out);
+  const del = { checks: 0, verdicts: 0, cache: 0 };
+  for (let i = 0; i < bad.length; i += 50) {
+    const ids = bad.slice(i, i + 50).map((r) => r.id);
+    const r = await env.DB.prepare(`DELETE FROM checks WHERE id IN (${ids.map(() => "?").join(",")}) AND ts < ?`).bind(...ids, PRICE_FIX_BEFORE).run();
+    del.checks += r.meta.changes || 0;
+  }
+  for (const u of urls) {
+    del.verdicts += (await env.DB.prepare("DELETE FROM verdicts WHERE url = ?").bind(u).run()).meta.changes || 0;
+    // check-*:<url>, cmpid-*:<url>, cmp-*:<shop>:<url>, og-*:<url>:<ts>
+    del.cache += (await env.DB.prepare("DELETE FROM cache WHERE (k LIKE 'check-%' OR k LIKE 'cmpid-%' OR k LIKE 'cmp-%' OR k LIKE 'og-%') AND (substr(k, -length(?1)) = ?1 OR instr(k, ':' || ?1 || ':') > 0)").bind(u).run()).meta.changes || 0;
+  }
+  // compare answers that used a Lakeland page as the other shop
+  del.cache += (await env.DB.prepare("DELETE FROM cache WHERE k LIKE 'cmp-%:lakeland:%'").run()).meta.changes || 0;
+  return json({ ...out, applied: true, deleted: del });
 }
 
 // ---------- Daily price saving ----------

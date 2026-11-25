@@ -1028,6 +1028,7 @@ export default {
       if (url.pathname === "/api/alert") return await apiAlert(req, env, ctx);
       if (url.pathname === "/api/e2e/cleanup") return await apiE2ECleanup(req, env);
       if (url.pathname === "/api/admin/archive-load") return await apiArchiveLoad(req, env);
+      if (url.pathname === "/api/admin/price-fix") return await apiPriceFix(req, env);
       if (url.pathname === "/api/e2e/mail-test") return await apiMailTest(req, env);
       if (req.method !== "GET" && req.method !== "HEAD") return json({ error: "method not allowed" }, 405);
       if (url.pathname === "/api/shops") return await apiShops(env, ctx);
