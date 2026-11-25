@@ -290,6 +290,8 @@ D1 counts every row and every index entry a query changes, and the count resets 
 
 See where writes come from (GraphQL Analytics API, dataset `d1QueriesAdaptiveGroups`, `sum { rowsWritten }` by `dimensions.query`, filtered by `databaseId` and `datetime`), or Cloudflare dashboard → D1 → `bf-price-check-db` → Metrics.
 
+Writes that change nothing are skipped (every changed row and every changed index entry counts): `track()` writes nothing for a cached answer seen again within 12 hours, a verdict is written only when a value changed (`updated_at` = last change), a seed product's `last_viewed` moves at most once in 20 hours, and the daily check does not fill the check cache. Indexes that nothing reads (`idx_tracked_last`, `idx_checks_via_ts`) are dropped in `schema.sql`.
+
 Read shop requests:
 
 ```

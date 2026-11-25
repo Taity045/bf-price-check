@@ -163,6 +163,7 @@ describe("runDaily (whole runs)", () => {
     assert.ok(n.queries <= 15, `D1 queries: ${n.queries}`);
     assert.ok(products.every((c) => c.ua === W.BOT_UA), "the daily check says who it is");
     assert.equal(db.prepare("SELECT COUNT(*) AS n FROM cache WHERE k LIKE 'robots:%'").get().n, 2, "robots.txt cached per site");
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM cache WHERE k LIKE ?").get(W.LIVE_CACHE_PREFIX + "%").n, 0, "the daily check does not fill the check cache (saves D1 rows written)");
   });
 
   test("DNS lookup with no answer: product not read, no failure counted, again in an hour", async (t) => {
