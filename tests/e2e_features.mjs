@@ -264,7 +264,7 @@ for (const [n, o] of [["1440", wide(1440)], ["390", phone()]]) {
   const p = await page(phone()); await p.goto(BASE + "/?u=" + encodeURIComponent("https://www.takealot.com/apple-airpods-4/PLID95957224"));
   await p.waitForSelector("#result:not(.hidden)", { timeout: 60000 }); await waitArchive(p);
   const v = await p.innerText("#verdict");
-  ok("Not enough history explains why", !/Not enough history/.test(v) || /Why: we found few or no older copies of this page in web archives\. We saved today's price, so the next check will have more history\./.test(v), v.slice(0, 200));
+  ok("Not enough history explains why", !/Not enough history/.test(v) || /Why: we found few or no older copies of this page in web archives\. (We saved today's price, and we will try to check it again about once a day\.)?/.test(v), v.slice(0, 200));
   await p.screenshot({ path: `${OUT}/not-enough-history-390.png`, fullPage: true });
   await p.context().close();
 }

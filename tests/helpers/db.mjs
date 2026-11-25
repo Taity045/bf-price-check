@@ -21,10 +21,19 @@ export function testDb(t) {
         first: async () => stmt.get(...args) ?? null,
         run: async () => { const r = stmt.run(...args); return { success: true, meta: { changes: Number(r.changes) } }; },
         all: async () => ({ results: stmt.all(...args) }),
+        // Like D1's batch(): every statement gives { results, meta }; results is empty for writes.
+        exec: () => {
+          if (stmt.columns().length) return { success: true, results: stmt.all(...args), meta: {} };
+          const r = stmt.run(...args); return { success: true, results: [], meta: { changes: Number(r.changes) } };
+        },
       });
       return bound();
     },
-    async batch(list) { return Promise.all(list.map((s) => s.run())); },
+    // D1 runs a batch as one transaction: all statements or none.
+    async batch(list) {
+      db.exec("BEGIN");
+      try { const out = list.map((s) => s.exec()); db.exec("COMMIT"); return out; } catch (e) { db.exec("ROLLBACK"); throw e; }
+    },
   };
   if (t) t.after(() => db.close());
   return { db, env: { DB: D1 } };
