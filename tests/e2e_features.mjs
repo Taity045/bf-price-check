@@ -59,7 +59,7 @@ for (const w of WIDTHS) for (const scheme of ["light", "dark"]) {
   }
   // modals
   if (scheme === "light") {
-    for (const [btn, dlg] of [["#shopsBtn", "#shopsDlg"], ["#bmBtn", "#bmDlg"], ["#savedBtn", "#savedDlg"], ["#askBtn", "#reqDlg"], ["#share", "#shareDlg"]]) {
+    for (const [btn, dlg] of [["#shopsBtn", "#shopsDlg"], ["#savedBtn", "#savedDlg"], ["#askBtn", "#reqDlg"], ["#share", "#shareDlg"]]) {
       await p.click(btn); await p.waitForSelector(dlg + "[open]");
       ok(`${tag} modal ${dlg} fits the screen`, await fitsViewport(p, dlg));
       const small = await smallTargets(p); ok(`${tag} modal ${dlg} tap targets`, small.length === 0, small.join(", "));
@@ -76,7 +76,7 @@ for (const w of WIDTHS) for (const scheme of ["light", "dark"]) {
     await p.goto(BASE + path); await p.waitForTimeout(400);
     ok(`landscape phone ${path.slice(0, 12)}: no sideways scroll`, await noOverflow(p));
   }
-  await p.click("#bmBtn"); ok("landscape phone: bookmark modal fits (scrolls inside)", await p.evaluate(() => { const d = document.getElementById("bmDlg"); const r = d.getBoundingClientRect(); return r.height <= innerHeight + 1; }));
+  await p.click("#shopsBtn"); ok("landscape phone: shops modal fits (scrolls inside)", await p.evaluate(() => { const d = document.getElementById("shopsDlg"); const r = d.getBoundingClientRect(); return r.height <= innerHeight + 1; }));
   await p.screenshot({ path: `${OUT}/feature-landscape.png` });
   await p.context().close();
 }
@@ -182,7 +182,7 @@ for (const [n, o] of [["1440", wide(1440)], ["1280", wide(1280)], ["390", phone(
   const blockedOk = await p.evaluate(() => !document.getElementById("unsup").classList.contains("hidden"));
   const t = await p.textContent("#unsup");
   const priceRead = await p.evaluate(() => !document.querySelector("#prices .none"));
-  ok("Amazon shows 'often blocks our checks' when no price", priceRead || (blockedOk && /Amazon South Africa often blocks our checks\. You can type the price below\./.test(t)), t);
+  ok("Amazon shows 'often blocks our checks' when no price", priceRead || (blockedOk && /Amazon South Africa often blocks our checks\. Type the price below\./.test(t)), t);
   ok("blocked shop has no ask-us button", !(await p.isVisible("#unsupAsk")));
   ok("blocked shop shows the manual price box", priceRead || await p.isVisible("#manualbox"));
   await p.screenshot({ path: `${OUT}/feature-blocked-shop.png`, fullPage: true });
@@ -193,63 +193,15 @@ for (const [n, o] of [["1440", wide(1440)], ["1280", wide(1280)], ["390", phone(
 }
 // a page loaded before a deploy asks for an older script name: it must still get the script
 { const r = await fetch(BASE + "/app.0123456789.js"); ok("old script name still works after a deploy", r.ok && /javascript/.test(r.headers.get("content-type"))); }
-{
-  const p = await page(phone());
-  await p.goto(BASE + "/"); await p.click("#bmBtn"); await p.waitForTimeout(300);
-  await p.click("#bmCopy"); await p.waitForTimeout(300);
-  ok("390: bookmark copy shows feedback", /Copied/.test(await p.textContent("#bmCopy")));
-  await p.screenshot({ path: `${OUT}/hotfix-bookmark-390.png` });
-  await p.click("#bmDlg .x"); ok("390: bookmark modal closes", !(await p.isVisible("#bmDlg")));
-  await p.context().close();
-}
-// 4. bookmark button and ?url=
+// 4. no bookmark feature; ?url= links (used by shares) still run a check, on both domains
 for (const base of [...new Set([BASE, "https://eish.veldwire.com", "https://bf-price-check.tm-deal-lab.workers.dev"])]) {
   const html = await (await fetch(base + "/", { headers: { "user-agent": UA } })).text();
-  const want = `href="javascript:void(location.href='${base}/?url='+encodeURIComponent(location.href))"`;
-  ok(`${base}: bookmark link is in the HTML without JS`, html.includes(want), (html.match(/id="bmLink"[^>]*/) || [""])[0].slice(0, 160));
+  ok(`${base}: no bookmark feature in the page`, !/bmBtn|bmDlg|Bookmark button|javascript:void/.test(html));
+  ok(`${base}: footer note text`, html.includes("We show only real prices from the shop and price archives. If we find no history, we tell you. Always check the shop's page before you buy."));
   const p = await page(wide(1280));
-  await p.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: base });
-  await p.goto(base + "/"); await p.click("#bmBtn"); await p.waitForSelector("#bmDlg[open]");
-  const href = await p.getAttribute("#bmLink", "href");
-  ok(`${base}: dialog link is the javascript: code`, href === `javascript:void(location.href='${base}/?url='+encodeURIComponent(location.href))`, href);
-  ok(`${base}: copy source has the same code`, (await p.inputValue("#bmCode")) === href);
-  ok(`${base}: the javascript code is not shown`, !(await p.evaluate(() => { const r = document.getElementById("bmCode").getBoundingClientRect(); return r.right > 0 && r.width > 2; })) && !/javascript:/.test(await p.innerText("#bmDlg")));
-  ok(`${base}: footer note text`, (await p.innerText("footer")).includes("We show only real prices from the shop and price archives. If we find no history, we tell you. Always check the shop's page before you buy."));
-  await p.click("#bmCopy"); await p.waitForTimeout(300);
-  ok(`${base}: copy works`, (await p.evaluate(() => navigator.clipboard.readText().catch(() => ""))) === href && /Copied/.test(await p.textContent("#bmCopy")));
-  await p.screenshot({ path: `${OUT}/bookmark-dialog-${new URL(base).hostname.split(".")[0]}.png` });
-  await p.goto(PC, { waitUntil: "domcontentloaded", timeout: 45000 }).catch(() => {});
-  await Promise.all([p.waitForURL((u) => u.href.startsWith(base + "/?url="), { timeout: 30000 }).catch(() => {}), p.evaluate(href.replace(/^javascript:/, "")).catch(() => {})]);
-  ok(`${base}: bookmarklet on Evetech lands on the site with ?url=`, p.url().startsWith(base + "/?url=" + encodeURIComponent(PC).slice(0, 20)), p.url().slice(0, 120));
-  await p.waitForSelector("#result:not(.hidden)", { timeout: 60000 }).catch(() => {});
+  await p.goto(base + "/?url=" + encodeURIComponent(PC)); await p.waitForSelector("#result:not(.hidden)", { timeout: 60000 });
   await p.waitForFunction(() => /R\s?\d/.test(document.getElementById("prices").textContent), null, { timeout: 60000 }).catch(() => {});
-  ok(`${base}: bookmarklet runs a check with a price`, /R\s?\d/.test(await p.textContent("#prices")));
-  await p.waitForTimeout(800); await p.screenshot({ path: `${OUT}/bookmark-run-${new URL(base).hostname.split(".")[0]}.png` });
-  await p.context().close();
-}
-
-{
-  const p = await page(wide(1280));
-  await p.goto(BASE + "/"); await p.click("#bmBtn");
-  const code = await p.inputValue("#bmCode");
-  ok("bookmark code uses this site's address with ?url=", code.startsWith("javascript:") && code.includes(BASE + "/?url="), code);
-  ok("bookmark link has the same javascript: code", (await p.getAttribute("#bmLink", "href")) === code);
-  ok("bookmark link can be dragged", await p.evaluate(() => { const a = document.getElementById("bmLink"); return a.draggable !== false && a.tagName === "A"; }));
-  await p.click("#bmCopy"); await p.waitForTimeout(300);
-  ok("copy the code copies it", (await p.evaluate(() => navigator.clipboard.readText().catch(() => ""))) === code);
-  ok("copy shows feedback", /Copied/.test(await p.textContent("#bmCopy")) && /copied/i.test(await p.textContent("#toast")));
-  await p.screenshot({ path: `${OUT}/hotfix-bookmark-1280.png` });
-  await p.click("#bmLink"); ok("clicking the drag button explains what to do", /Drag it/.test(await p.textContent("#bmHint")));
-  await p.click("#bmDlg .x"); ok("bookmark modal closes", !(await p.isVisible("#bmDlg")));
-  // run the bookmarklet on a real product page: it must open this site with ?url= and run a check
-  await p.goto(PC, { waitUntil: "domcontentloaded", timeout: 45000 }).catch(() => {});
-  await Promise.all([p.waitForURL((u) => u.href.startsWith(BASE + "/"), { timeout: 30000 }).catch(() => {}), p.evaluate(code.replace(/^javascript:/, "")).catch(() => {})]);
-  ok("bookmarklet opens the site with ?url=", p.url().startsWith(BASE + "/?") , p.url().slice(0, 100));
-  await p.waitForSelector("#result:not(.hidden)", { timeout: 60000 }).catch(() => {});
-  ok("bookmarklet runs a check", await p.isVisible("#result"));
-  await p.waitForTimeout(1500); await p.screenshot({ path: `${OUT}/hotfix-bookmarklet-run-1280.png` });
-  await p.goto(BASE + "/?url=" + encodeURIComponent(PC)); await p.waitForSelector("#result:not(.hidden)", { timeout: 60000 });
-  ok("?url= link runs a check", (await p.textContent("#prices")).includes("R"));
+  ok(`${base}: ?url= link runs a check with a price`, /R\s?\d/.test(await p.textContent("#prices")));
   await p.context().close();
 }
 // 5. price alerts (hidden until email to anyone works)
@@ -290,9 +242,10 @@ for (const base of [...new Set([BASE, "https://eish.veldwire.com", "https://bf-p
     const hr = await fetch(BASE + "/", { headers: { "user-agent": ua }, redirect: "manual" }); const home = await hr.text();
     ok(`${ua}: home is 200 with OG tags early`, hr.status === 200 && home.indexOf('property="og:image"') > 0 && home.indexOf('property="og:image"') < 2000);
     const hi = (home.match(/property="og:image" content="([^"]+)"/) || [])[1] || "";
-    ok(`${ua}: home og:image is absolute og-home.png`, /^https:\/\/[^/]+\/og-home\.png$/.test(hi), hi);
+    ok(`${ua}: home og:image is absolute og-home.jpg`, /^https:\/\/[^/]+\/og-home\.jpg$/.test(hi), hi);
+    ok(`${ua}: home has a square second og:image`, /property="og:image" content="https:\/\/[^"]+\/og-square\.jpg"/.test(home));
     const ir = await fetch(hi, { headers: { "user-agent": ua }, redirect: "manual" }); const ib = Buffer.from(await ir.arrayBuffer());
-    ok(`${ua}: home card is a static PNG under 100 KB with length and long cache`, ir.status === 200 && ir.headers.get("content-type") === "image/png" && Number(ir.headers.get("content-length")) === ib.length && ib.length < 100000 && /max-age=\d{5,}/.test(ir.headers.get("cache-control") || ""), ib.length + " bytes");
+    ok(`${ua}: home card is a static JPG under 100 KB with length and long cache`, ir.status === 200 && ir.headers.get("content-type") === "image/jpeg" && Number(ir.headers.get("content-length")) === ib.length && ib.length < 100000 && /max-age=\d{5,}/.test(ir.headers.get("cache-control") || ""), ib.length + " bytes");
   }
 }
 // where prices come from

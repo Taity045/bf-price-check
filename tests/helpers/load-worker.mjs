@@ -22,6 +22,7 @@ export const NAMES = [
 
 const source = [
   "const FONTS = {};",
+  "const STATIC_IMG = {};",
   'const APP = { name: "app.0123456789.js", js: "" };',
   read("src/shops.js"),
   read("src/worker.js"),

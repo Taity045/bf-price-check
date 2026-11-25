@@ -36,8 +36,8 @@ The home page stays clean: heading, link box, Check price, 3 example links (Take
 |---|---|---|
 | Other shops | Result page, only for a strong match (same barcode or model number) | Takealot public API |
 | Saved, Your stats, badges | Header "Saved" | Your browser only (localStorage) |
-| Bookmark button | Footer "Bookmark button": drag button for computers, "Copy the bookmark" for phones | Opens `/?url=<page>` on the same site address. The `javascript:` link is put in the HTML by the server |
-| Link previews (WhatsApp etc.) | OG and Twitter tags on `/` and `/?u=` / `/?url=` | `/og-home.png` (static 1200×630 PNG, about 30 KB, 7-day cache). A product card `/og.png?u=…` is used once it is made (D1 cache), else the static card |
+| Deep links | `/?url=<product link>` and `/?u=<product link>` open the site and run a check (used by shared links) | — |
+| Link previews (WhatsApp chats and Status) | OG and Twitter tags in the first 1 KB of `/` and `/?u=` / `/?url=` | First `og:image`: `/og-home.jpg` (static 1200×630 JPEG, 50 KB). Second `og:image`: `/og-square.jpg` (600×600 JPEG, 31 KB). Both with content-length and a 7-day cache. A product card `/og.png?u=…` (PNG) replaces the first image once it is made (D1 cache). Remake the static images with `scripts/make_og_static.py`. `/robots.txt` allows all |
 | Fake discount wall and shop scores | `/wall` — **off** (`WALL = "off"`) | D1 `verdicts` |
 | Price alerts | Result "Alert me" — **off** (`ALERTS = "off"`) | D1 `alerts` |
 | Ask us to add a shop | Footer, and on results for unknown shops | D1 `shop_requests`, plus an email to the owner |
@@ -66,7 +66,7 @@ Set a secret: `npx wrangler secret put OWNER_EMAIL`.
 | `src/og.js`, `src/og_font.js` | Share card PNG renderer and server meta tags |
 | `src/shops.js` | Shops we check / known blocked (generated) |
 | `public/index.html` | The app (plain HTML/CSS/JS, inline SVG chart, mobile first; desktop layout from 900 px) |
-| `public/fonts/`, `public/og-home.png` | Self-hosted font subsets, static share card |
+| `public/fonts/`, `public/og-home.*`, `public/og-square.jpg` | Self-hosted font subsets, static share cards |
 | `examples.json` | Example links on the home page |
 | `schema.sql` | D1 tables |
 | `build.py` | Minifies JS/CSS (esbuild, Chrome 70 / Safari 12 targets), embeds fonts, script, card and HTML into `dist/worker.js` |
@@ -77,7 +77,7 @@ Set a secret: `npx wrangler secret put OWNER_EMAIL`.
 - `GET /api/archive?url=<canonical>&orig=<pasted url>` → archive index (last 365 days). Cached 12 h.
 - `GET /api/snap?url=…&ts=…&orig=…` → price from one archive copy, kept in D1.
 - `GET /api/shops`, `/api/config`, `/api/others`, `POST /api/verdict`, `POST /api/request`, `POST /api/alert`.
-- `GET /og-home.png`, `/og.png?u=…`.
+- `GET /og-home.jpg`, `/og-square.jpg`, `/og-home.png`, `/og.png?u=…`, `/robots.txt`.
 
 ### Price extraction (in order)
 
@@ -139,9 +139,8 @@ npx wrangler d1 execute bf-price-check-db --remote --command "SELECT id, datetim
 | `npm test` | Unit and integration tests (`tests/unit/*.test.mjs`, `tests/regression.test.mjs`) | none |
 | `npm run test:e2e -- http://127.0.0.1:8787` | Browser tests (desktop and phone) against `wrangler dev` with a local D1 | local only |
 | `npm run test:smoke -- URL` | Post-deploy check of a live site | live site |
-| `node tests/e2e_features.mjs [BASE] [SHOTDIR]` | Full live suite: layout at 360–1920 px light/dark, forms, bookmark (runs it on a real Evetech page on both domains), share tags, privacy | live site |
+| `node tests/e2e_features.mjs [BASE] [SHOTDIR]` | Full live suite: layout at 360–1920 px light/dark, forms, `?url=` links on both domains, share tags, privacy | live site |
 | `node tests/e2e_redesign.mjs [BASE]`, `node tests/e2e_review.mjs [BASE]` | Live click-through suites | live site |
-| `node tests/bookmarklet_real.mjs [BASE] [SHOTDIR] [chromium\|firefox]` | Runs the bookmark the way a browser does on Takealot, Woolworths, Cycle Lab, Evetech | live site |
 | `node scripts/cf_token_check.mjs` | What the Cloudflare API token can do (never prints it) | Cloudflare API |
 
 The live suites read the test key from `$E2E_KEY` and remove their test rows at the end.

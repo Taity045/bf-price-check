@@ -873,8 +873,6 @@ async function cron(env, scheduledTime) {
 async function pageHtml(req, env, ctx) {
   const origin = new URL(req.url).origin;
   let html = HTML.split("__ORIGIN__").join(origin).replace("<!--CANONICAL-->", `<link rel="canonical" href="${origin}/">`);
-  const bm = `javascript:void(location.href='${origin}/?url='+encodeURIComponent(location.href))`;
-  html = html.split("__BM__").join(bm);
   if (new URL(req.url).pathname === "/") { try { html = await homeWithMeta(req, env, html, ctx); } catch {} }
   return html.replace("<!--NOSCRIPT-->", '<noscript><p class="note" style="text-align:center">Turn on JavaScript to see price history. You can still paste a link and press Check price.</p></noscript>');
 }
@@ -898,7 +896,9 @@ export default {
       if (env.WALL !== "on" && (url.pathname === "/wall" || url.pathname === "/api/wall" || url.pathname === "/api/stats")) return url.pathname === "/wall" ? Response.redirect(url.origin + "/", 302) : json({ error: "off" }, 404);
       if (url.pathname === "/api/wall") return json(await wallData(env), 200, { "cache-control": "public, max-age=300" });
       if (url.pathname === "/api/stats") { const w = await wallData(env); return json({ fake_total: w.fake_total }, 200, { "cache-control": "public, max-age=300" }); }
-      if (url.pathname === "/og-home.png") { const b = Uint8Array.from(atob(OG_HOME), (x) => x.charCodeAt(0)); return new Response(b, { headers: { "content-type": "image/png", "content-length": String(b.length), "cache-control": "public, max-age=604800", "access-control-allow-origin": "*" } }); }
+      const stat = url.pathname.slice(1);
+      if (Object.prototype.hasOwnProperty.call(STATIC_IMG, stat)) { const b = Uint8Array.from(atob(STATIC_IMG[stat]), (x) => x.charCodeAt(0)); return new Response(req.method === "HEAD" ? null : b, { headers: { "content-type": stat.endsWith(".png") ? "image/png" : "image/jpeg", "content-length": String(b.length), "cache-control": "public, max-age=604800", "access-control-allow-origin": "*" } }); }
+      if (url.pathname === "/robots.txt") return new Response("User-agent: *\nAllow: /\n", { headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=86400" } });
       if (url.pathname === "/og.png") return await apiOg(req, env);
       if (url.pathname === "/alert/confirm") return await alertLink(req, env, "confirm");
       if (url.pathname === "/alert/stop") return await alertLink(req, env, "stop");

@@ -48,18 +48,6 @@ for (const [name, o] of [["360", { ...mobile, viewport: { width: 360, height: 74
   await p.click("#reqDlg [data-close].sec"); ok(`${name} cancel closes`, (await openDlg(p)) === "");
   // backdrop click
   await p.click("#askBtn"); await p.mouse.click(5, 5); ok(`${name} backdrop click closes`, (await openDlg(p)) === "");
-  // bookmark
-  await p.click("#bmBtn"); ok(`${name} bookmark dialog opens`, (await openDlg(p)) === "bmDlg");
-  const href = await p.getAttribute("#bmLink", "href");
-  ok(`${name} bookmarklet href ok`, href.startsWith("javascript:") && href.includes(new URL(BASE).origin), href);
-  await p.click("#bmLink"); ok(`${name} bookmark click shows hint`, /Drag it/.test(await p.textContent("#bmHint")));
-  await p.click("#bmCopy"); await p.waitForTimeout(300);
-  const clip = await p.evaluate(() => navigator.clipboard.readText()).catch((e) => "ERR " + e);
-  ok(`${name} copy code -> clipboard`, clip === href, clip.slice(0, 60));
-  ok(`${name} toast visible in dialog`, await p.evaluate(() => { const t = document.getElementById("toast"); return t.classList.contains("on") && !!t.closest("dialog[open]"); }));
-  await p.screenshot({ path: `${OUT}/bm-${name}.png` });
-  await p.click("#bmDlg .x"); ok(`${name} X closes`, (await openDlg(p)) === "");
-  ok(`${name} focus back on opener`, await p.evaluate(() => document.activeElement.id) === "bmBtn", await p.evaluate(() => document.activeElement.id || document.activeElement.tagName));
   // saved
   await p.click("#savedBtn"); ok(`${name} saved opens`, (await openDlg(p)) === "savedDlg");
   await p.click("#tabStats"); ok(`${name} stats tab`, !(await p.isHidden("#paneStats")));
@@ -127,19 +115,6 @@ for (const [name, o] of [["390", mobile], ["1280", desk(1280)]]) {
   await p.context().close();
 }
 
-// bookmarklet on a real product page
-{
-  const p = await page(desk(1280)); await p.goto(BASE + "/");
-  const href = await p.getAttribute("#bmLink", "href");
-  await p.goto(TK, { waitUntil: "domcontentloaded", timeout: 60000 }).catch(() => {});
-  const shopUrl = p.url();
-  await Promise.all([p.waitForURL(new RegExp("^" + new URL(BASE).origin.replace(/\./g, "\\.")), { timeout: 30000 }).catch(() => {}), p.evaluate(decodeURIComponent(href.replace(/^javascript:/, ""))).catch((e) => console.log("eval err", e.message))]);
-  ok("bookmarklet navigates to site", p.url().startsWith(new URL(BASE).origin), p.url());
-  await p.waitForSelector("#result:not(.hidden), #error:not(.hidden)", { timeout: 60000 }).catch(() => {});
-  ok("bookmarklet runs a check", await p.isVisible("#result"), (await p.isVisible("#error")) ? await p.textContent("#error") : (await p.textContent("#ptitle")) + " from " + shopUrl);
-  await p.screenshot({ path: `${OUT}/bookmarklet-result.png` });
-  await p.context().close();
-}
 // pages
 {
   const p = await page(mobile); await p.goto(BASE + "/privacy");

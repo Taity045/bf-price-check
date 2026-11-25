@@ -140,7 +140,7 @@ for (const i of [0, 1, 2]) {
   await p.click("#unsupAsk");
   ok("form prefilled with host", (await p.inputValue("#rShop")) === "example.com");
   ok("form prefilled with product link", (await p.inputValue("#rUrl")).includes("example.com/some-product"));
-  ok("form has the best-effort note", (await p.textContent("#reqDlg")).includes("Some shops block price checks"));
+  ok("form has the request note", (await p.textContent("#reqDlg")).includes("We look at every request"));
   await p.fill("#rShop", ""); await p.click("#rSend"); ok("form needs shop", /Type the shop/.test(await p.textContent("#rMsg")));
   await p.fill("#rShop", "example.com"); await p.fill("#rEmail", "not-an-email"); await p.click("#rSend"); ok("form checks email", /email/.test(await p.textContent("#rMsg")));
   await p.fill("#rEmail", ""); await p.fill("#rShop", process.env.E2E_SHOP || "e2e-test example.com");

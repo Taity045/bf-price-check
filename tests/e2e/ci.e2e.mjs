@@ -121,27 +121,15 @@ for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`s
   await p.context().close();
 });
 
-// 5. bookmark button: the code points at this site and really starts a check
-await step("bookmark button", async () => {
+// 5. no bookmark feature; a ?url= link (used by shares) starts a check
+await step("?url= link", async () => {
   const p = await open(desktop);
   await p.goto(BASE + "/");
-  await p.click("#bmBtn");
-  await p.waitForSelector("#bmDlg[open]");
-  const code = await p.inputValue("#bmCode");
-  const href = await p.getAttribute("#bmLink", "href");
-  ok("bookmark code uses this site's address", code.startsWith("javascript:") && code.includes(BASE + "/?url="), code);
-  ok("drag button and copy box have the same code", href === code, href);
-  // run the bookmarklet on a (fake) shop page
-  await p.route("https://shop.example.co.za/**", (r) => r.fulfill({ contentType: "text/html", body: "<title>Shop</title><h1>Product</h1>" }));
-  await p.goto(SHOP_PAGE);
-  const [nav] = await Promise.all([
-    p.waitForRequest((r) => r.isNavigationRequest() && r.url().startsWith(BASE + "/"), { timeout: 10000 }),
-    p.evaluate(code.replace(/^javascript:/, "")),
-  ]);
-  ok("bookmarklet opens this site with the product link", new URL(nav.url()).searchParams.get("url") === SHOP_PAGE, nav.url());
+  ok("no bookmark button", !(await p.$("#bmBtn")) && !(await p.$("#bmDlg")));
+  await p.goto(BASE + "/?url=" + encodeURIComponent(SHOP_PAGE));
   await p.waitForSelector("#result:not(.hidden)", { timeout: 15000 }).catch(() => {});
-  ok("bookmarklet starts a price check", await p.isVisible("#result"));
-  ok("bookmark button: no JS errors", p._errs.length === 0, p._errs.join(" | "));
+  ok("?url= link starts a price check", await p.isVisible("#result"));
+  ok("?url= link: no JS errors", p._errs.length === 0, p._errs.join(" | "));
   await p.context().close();
 });
 
