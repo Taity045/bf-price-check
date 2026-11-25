@@ -39,3 +39,22 @@ describe("matched option title", () => {
     assert.equal(c2.title, "Libre Eau De Parfum 50ml");
   });
 });
+describe("checking a page at a Shopify shop we know", () => {
+  test("asks for the shop's home country and currency (Lakeland with UK VAT, not an export price)", async (t) => {
+    const urls = [];
+    t.mock.method(globalThis, "fetch", async (raw) => {
+      const u = new URL(raw);
+      if (["1.1.1.1", "dns.google"].includes(u.hostname)) return Response.json({ Status: 0, Answer: u.searchParams.get("type") === "A" ? [{ type: 1, data: "104.16.0.1" }] : [] });
+      urls.push(u.href);
+      return new Response('<html><script type="application/ld+json">{"@type":"Product","name":"Ninja AF300UK","offers":{"price":"199.99","priceCurrency":"GBP"}}</script></html>', { headers: { "content-type": "text/html" } });
+    });
+    const u = "https://www.lakeland.co.uk/products/ninja-foodi-dual-air-fryer-7-6l-af300uk";
+    const r = await W.getCurrent(W.canonicalize(new URL(u)), u, "www.lakeland.co.uk");
+    assert.equal(r.price, 199.99);
+    assert.equal(urls[0], u + "?country=GB&currency=GBP");
+    urls.length = 0;
+    const o = "https://www.example.co.uk/products/x";
+    await W.getCurrent(W.canonicalize(new URL(o)), o, "www.example.co.uk");
+    assert.equal(urls[0], o);
+  });
+});

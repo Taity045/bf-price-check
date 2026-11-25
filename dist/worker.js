@@ -584,6 +584,15 @@ async function takealotApi(plid, agent, verifiedHost) {
   return { price, was: was && price && was > price ? was : null, currency: "ZAR", title: (d.core && d.core.title) || d.title, image: img ? img.replace("{size}", "pdpxl") : null, source: "takealot-api", gtin, mpn, brand: (d.core && d.core.brand) || undefined };
 }
 
+// Shopify shops can price for the visitor's country: our servers abroad saw Lakeland without UK VAT and
+// Escentual in USD. For the Shopify shops we know (CMP_SHOPS in src/compare.js), ask for the home country and currency.
+function shopifyHomeUrl(url, host) {
+  const sh = cmpShopForHost(host);
+  if (!sh || sh.kind !== "shopify" || !CMP_COUNTRY[sh.cur]) return url;
+  const u = new URL(url); u.searchParams.set("country", CMP_COUNTRY[sh.cur]); u.searchParams.set("currency", sh.cur);
+  return u.href;
+}
+
 async function getCurrent(canonInfo, origUrl, verifiedHost, agent) {
   const host = new URL(canonInfo.canon).hostname.toLowerCase();
   const tldCur = tldCurrency(host);
@@ -601,7 +610,7 @@ async function getCurrent(canonInfo, origUrl, verifiedHost, agent) {
       if (t.error) return { ...res, status: "noprice", message: t.error };
       return { ...res, ...t };
     }
-    const target = canonInfo.kind === "amazon" ? canonInfo.canon : origUrl;
+    const target = canonInfo.kind === "amazon" ? canonInfo.canon : shopifyHomeUrl(origUrl, host);
     const pg = await fetchPage(target, tldCur, verifiedHost, agent);
     const blocked = detectBlock(pg.status, pg.html);
     if (blocked) return { ...res, status: "blocked", http: pg.status, message: blocked };
@@ -2047,7 +2056,7 @@ const CMP_SEARCH_TTL = 6 * 3600e3;    // one search on one shop (shared by all p
 const CMP_SHOP_PER_MIN = 30;          // searches per shop per minute, all visitors together
 const CMP_PER_IP_PER_MIN = 240;       // shop calls per visitor per minute (one check makes up to ~20)
 // Bump when the matching rules or identity reading change, so cached answers from older rules are not shown.
-const CMP_VER = "v4";
+const CMP_VER = "v5";
 const CMP_MAX_SEARCHES = 2;           // searches per shop per product
 const CMP_MAX_DETAILS = 3;            // product-detail reads per shop per product (to read barcodes)
 
