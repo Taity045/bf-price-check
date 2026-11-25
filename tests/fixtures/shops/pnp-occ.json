@@ -1,0 +1,158 @@
+{
+"code": "000000000000110557_EA",
+"name": "Rhodes Peach Halves in Syrup 410g",
+"price": {
+"average": false,
+"currencyIso": "ZAR",
+"formattedValue": "R29.99",
+"oldPrice": 0,
+"oldPriceFormattedValue": "R0.00",
+"onlineOnlyPrice": false,
+"priceDisplayType": "SELLING",
+"priceType": "BUY",
+"savings": 0,
+"savingsFormattedValue": "R0.00",
+"value": 29.99
+},
+"images": [
+{
+"altText": "Rhodes Peach Halves in Syrup 410g",
+"format": "zoom",
+"imageType": "PRIMARY",
+"url": "https://cdn-prd-02.pnp.co.za/sys-master/images/h3f/haa/81786547404830/silo-product-image-v2-15Oct2026-060029-6005044003103-Straight_on-475484-28_515Wx515H"
+},
+{
+"altText": "Rhodes Peach Halves in Syrup 410g",
+"format": "product",
+"imageType": "PRIMARY",
+"url": "https://cdn-prd-02.pnp.co.za/sys-master/images/h72/h70/81786549960734/silo-product-image-v2-15Oct2026-060029-6005044003103-Straight_on-475484-28_400Wx400H"
+},
+{
+"altText": "Rhodes Peach Halves in Syrup 410g",
+"format": "carousel",
+"imageType": "PRIMARY",
+"url": "https://cdn-prd-02.pnp.co.za/sys-master/images/h8d/hb8/81786547863582/silo-product-image-v2-15Oct2026-060029-6005044003103-Straight_on-475484-28_300Wx300H"
+},
+{
+"altText": "Rhodes Peach Halves in Syrup 410g",
+"format": "listing",
+"imageType": "PRIMARY",
+"url": "https://cdn-prd-02.pnp.co.za/sys-master/images/hf5/h95/81786550452254/silo-product-image-v2-15Oct2026-060029-6005044003103-Straight_on-475484-28_140Wx140H"
+},
+{
+"altText": "Rhodes Peach Halves in Syrup 410g",
+"format": "thumbnail",
+"imageType": "PRIMARY",
+"url": "https://cdn-prd-02.pnp.co.za/sys-master/images/h11/heb/81786548486174/silo-product-image-v2-15Oct2026-060029-6005044003103-Straight_on-475484-28_96Wx96H"
+},
+{
+"altText": "Rhodes Peach Halves in Syrup 410g",
+"format": "cartIcon",
+"imageType": "PRIMARY",
+"url": "https://cdn-prd-02.pnp.co.za/sys-master/images/hb6/h8f/81786549010462/silo-product-image-v2-15Oct2026-060029-6005044003103-Straight_on-475484-28_65Wx65H"
+},
+{
+"altText": "Rhodes Peach Halves in Syrup 410g",
+"format": "zoom",
+"galleryIndex": 0,
+"imageType": "GALLERY",
+"url": "https://cdn-prd-02.pnp.co.za/sys-master/images/h3f/haa/81786547404830/silo-product-image-v2-15Oct2026-060029-6005044003103-Straight_on-475484-28_515Wx515H"
+},
+{
+"altText": "Rhodes Peach Halves in Syrup 410g",
+"format": "product",
+"galleryIndex": 0,
+"imageType": "GALLERY",
+"url": "https://cdn-prd-02.pnp.co.za/sys-master/images/h72/h70/81786549960734/silo-product-image-v2-15Oct2026-060029-6005044003103-Straight_on-475484-28_400Wx400H"
+},
+{
+"altText": "Rhodes Peach Halves in Syrup 410g",
+"format": "thumbnail",
+"galleryIndex": 0,
+"imageType": "GALLERY",
+"url": "https://cdn-prd-02.pnp.co.za/sys-master/images/h11/heb/81786548486174/silo-product-image-v2-15Oct2026-060029-6005044003103-Straight_on-475484-28_96Wx96H"
+},
+{
+"altText": "Rhodes Peach Halves in Syrup 410g",
+"format": "styleSwatch",
+"galleryIndex": 0,
+"imageType": "GALLERY",
+"url": "https://cdn-prd-02.pnp.co.za/sys-master/images/h7a/h81/81786549469214/silo-product-image-v2-15Oct2026-060029-6005044003103-Straight_on-475484-28_30Wx30H"
+},
+{
+"altText": "Rhodes Peach Halves in Syrup 410g",
+"format": "cartIcon",
+"galleryIndex": 0,
+"imageType": "GALLERY",
+"url": "https://cdn-prd-02.pnp.co.za/sys-master/images/hb6/h8f/81786549010462/silo-product-image-v2-15Oct2026-060029-6005044003103-Straight_on-475484-28_65Wx65H"
+},
+{
+"altText": "Rhodes Peach Halves in Syrup 410g",
+"format": "listing",
+"galleryIndex": 0,
+"imageType": "GALLERY",
+"url": "https://cdn-prd-02.pnp.co.za/sys-master/images/hf5/h95/81786550452254/silo-product-image-v2-15Oct2026-060029-6005044003103-Straight_on-475484-28_140Wx140H"
+},
+{
+"altText": "Rhodes Peach Halves in Syrup 410g",
+"format": "carousel",
+"galleryIndex": 0,
+"imageType": "GALLERY",
+"url": "https://cdn-prd-02.pnp.co.za/sys-master/images/h8d/hb8/81786547863582/silo-product-image-v2-15Oct2026-060029-6005044003103-Straight_on-475484-28_300Wx300H"
+},
+{
+"altText": "Rhodes Peach Halves in Syrup 410g",
+"format": "zoom",
+"galleryIndex": 1,
+"imageType": "GALLERY",
+"url": "https://cdn-prd-02.pnp.co.za/sys-master/images/h71/ha0/81786550779934/silo-product-image-v2-15Oct2026-060029-6005044003103-Angle_A-475482-29_515Wx515H"
+},
+{
+"altText": "Rhodes Peach Halves in Syrup 410g",
+"format": "product",
+"galleryIndex": 1,
+"imageType": "GALLERY",
+"url": "https://cdn-prd-02.pnp.co.za/sys-master/images/h1c/h96/81786552483870/silo-product-image-v2-15Oct2026-060029-6005044003103-Angle_A-475482-29_400Wx400H"
+},
+{
+"altText": "Rhodes Peach Halves in Syrup 410g",
+"format": "thumbnail",
+"galleryIndex": 1,
+"imageType": "GALLERY",
+"url": "https://cdn-prd-02.pnp.co.za/sys-master/images/h0c/hfd/81786551533598/silo-product-image-v2-15Oct2026-060029-6005044003103-Angle_A-475482-29_96Wx96H"
+},
+{
+"altText": "Rhodes Peach Halves in Syrup 410g",
+"format": "styleSwatch",
+"galleryIndex": 1,
+"imageType": "GALLERY",
+"url": "https://cdn-prd-02.pnp.co.za/sys-master/images/h02/ha1/81786552123422/silo-product-image-v2-15Oct2026-060029-6005044003103-Angle_A-475482-29_30Wx30H"
+},
+{
+"altText": "Rhodes Peach Halves in Syrup 410g",
+"format": "cartIcon",
+"galleryIndex": 1,
+"imageType": "GALLERY",
+"url": "https://cdn-prd-02.pnp.co.za/sys-master/images/h7c/hf2/81786551861278/silo-product-image-v2-15Oct2026-060029-6005044003103-Angle_A-475482-29_65Wx65H"
+},
+{
+"altText": "Rhodes Peach Halves in Syrup 410g",
+"format": "listing",
+"galleryIndex": 1,
+"imageType": "GALLERY",
+"url": "https://cdn-prd-02.pnp.co.za/sys-master/images/ha4/h8c/81786552713246/silo-product-image-v2-15Oct2026-060029-6005044003103-Angle_A-475482-29_140Wx140H"
+},
+{
+"altText": "Rhodes Peach Halves in Syrup 410g",
+"format": "carousel",
+"galleryIndex": 1,
+"imageType": "GALLERY",
+"url": "https://cdn-prd-02.pnp.co.za/sys-master/images/hbd/hf5/81786551173150/silo-product-image-v2-15Oct2026-060029-6005044003103-Angle_A-475482-29_300Wx300H"
+}
+],
+"stock": {
+"stockLevel": 159,
+"stockLevelStatus": "inStock"
+},
+"url": "/pnp-spa/products/000000000000110557_EA"
+}

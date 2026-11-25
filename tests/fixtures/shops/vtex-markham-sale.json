@@ -1,0 +1,124 @@
+[
+{
+"productName": "Markham Men's Cargo Fatigue Shorts",
+"brand": "Markham",
+"linkText": "markham-men-s-cargo-fatigue-shorts-020203acje7",
+"items": [
+{
+"name": "Mkm Cargo cotton short Fatigu XL",
+"ean": "",
+"images": [
+{
+"imageId": "228470126",
+"imageLabel": "main",
+"imageTag": "<img src=\"~/arquivos/ids/228470126-#width#-#height#/d8cc7feb-15ee-47ee-a91b-1714d667dfc5.png?v=639267966171730000\" width=\"#width#\" height=\"#height#\" alt=\"0.75\" id=\"\" />",
+"imageUrl": "https://thefoschini.vteximg.com.br/arquivos/ids/228470126/d8cc7feb-15ee-47ee-a91b-1714d667dfc5.png?v=639267966171730000",
+"imageText": "0.75",
+"imageLastModified": "2026-10-05T11:30:17.1730000Z"
+}
+],
+"sellers": [
+{
+"commertialOffer": {
+"Price": 336.75,
+"ListPrice": 449.0,
+"AvailableQuantity": 10
+}
+}
+]
+},
+{
+"name": "Mkm Cargo cotton short Fatigu L",
+"ean": "",
+"images": [
+{
+"imageId": "228469174",
+"imageLabel": "main",
+"imageTag": "<img src=\"~/arquivos/ids/228469174-#width#-#height#/d8cc7feb-15ee-47ee-a91b-1714d667dfc5.png?v=639267948146900000\" width=\"#width#\" height=\"#height#\" alt=\"0.75\" id=\"\" />",
+"imageUrl": "https://thefoschini.vteximg.com.br/arquivos/ids/228469174/d8cc7feb-15ee-47ee-a91b-1714d667dfc5.png?v=639267948146900000",
+"imageText": "0.75",
+"imageLastModified": "2026-10-05T11:00:14.6900000Z"
+}
+],
+"sellers": [
+{
+"commertialOffer": {
+"Price": 336.75,
+"ListPrice": 449.0,
+"AvailableQuantity": 100
+}
+}
+]
+},
+{
+"name": "Mkm Cargo cotton short Fatigu S",
+"ean": "",
+"images": [
+{
+"imageId": "228469186",
+"imageLabel": "main",
+"imageTag": "<img src=\"~/arquivos/ids/228469186-#width#-#height#/d8cc7feb-15ee-47ee-a91b-1714d667dfc5.png?v=639267948169500000\" width=\"#width#\" height=\"#height#\" alt=\"0.75\" id=\"\" />",
+"imageUrl": "https://thefoschini.vteximg.com.br/arquivos/ids/228469186/d8cc7feb-15ee-47ee-a91b-1714d667dfc5.png?v=639267948169500000",
+"imageText": "0.75",
+"imageLastModified": "2026-10-05T11:00:16.9500000Z"
+}
+],
+"sellers": [
+{
+"commertialOffer": {
+"Price": 336.75,
+"ListPrice": 449.0,
+"AvailableQuantity": 99999
+}
+}
+]
+},
+{
+"name": "Mkm Cargo cotton short Fatigu XS",
+"ean": "",
+"images": [
+{
+"imageId": "228470131",
+"imageLabel": "main",
+"imageTag": "<img src=\"~/arquivos/ids/228470131-#width#-#height#/d8cc7feb-15ee-47ee-a91b-1714d667dfc5.png?v=639267966246400000\" width=\"#width#\" height=\"#height#\" alt=\"0.75\" id=\"\" />",
+"imageUrl": "https://thefoschini.vteximg.com.br/arquivos/ids/228470131/d8cc7feb-15ee-47ee-a91b-1714d667dfc5.png?v=639267966246400000",
+"imageText": "0.75",
+"imageLastModified": "2026-10-05T11:30:24.6400000Z"
+}
+],
+"sellers": [
+{
+"commertialOffer": {
+"Price": 336.75,
+"ListPrice": 449.0,
+"AvailableQuantity": 10
+}
+}
+]
+},
+{
+"name": "Mkm Cargo cotton short Fatigu M",
+"ean": "",
+"images": [
+{
+"imageId": "228470144",
+"imageLabel": "main",
+"imageTag": "<img src=\"~/arquivos/ids/228470144-#width#-#height#/d8cc7feb-15ee-47ee-a91b-1714d667dfc5.png?v=639267966334130000\" width=\"#width#\" height=\"#height#\" alt=\"0.75\" id=\"\" />",
+"imageUrl": "https://thefoschini.vteximg.com.br/arquivos/ids/228470144/d8cc7feb-15ee-47ee-a91b-1714d667dfc5.png?v=639267966334130000",
+"imageText": "0.75",
+"imageLastModified": "2026-10-05T11:30:33.4130000Z"
+}
+],
+"sellers": [
+{
+"commertialOffer": {
+"Price": 336.75,
+"ListPrice": 449.0,
+"AvailableQuantity": 99999
+}
+}
+]
+}
+]
+}
+]

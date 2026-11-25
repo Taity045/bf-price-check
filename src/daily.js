@@ -254,7 +254,8 @@ async function checkOne(env, job, alerts, memo, sum) {
   else if (blockedShopFor(v.url.href)) { gone = true; note = "blocked-shop"; }
   else {
     const canonInfo = canonicalize(v.url);
-    const target = canonInfo.kind === "takealot" ? new URL(takealotApiUrl(canonInfo.plid)) : canonInfo.kind === "amazon" ? new URL(canonInfo.canon) : v.url;
+    // robots.txt is checked for the URL we really fetch: the API for an API shop reader (src/readers.js).
+    const target = canonInfo.kind === "takealot" ? new URL(takealotApiUrl(canonInfo.plid)) : canonInfo.kind === "amazon" ? new URL(canonInfo.canon) : new URL(readerTarget(v.url.href));
     const checkHost = target.hostname.toLowerCase();
     // 1) The shop's address must be public (checked again on every run: DNS can change).
     if (!memo.dns.has(checkHost)) memo.dns.set(checkHost, await resolvesPublic(checkHost));

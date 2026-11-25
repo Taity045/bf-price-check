@@ -1,0 +1,94 @@
+{
+ "_note": "Live status from the shop-reader checks of 2026-11-25 (3+ real products per shop, two runs). scripts/make_shops.py applies this over research/retailers.json. Research data is not edited here.",
+ "set": {
+  "Mr Price": {
+   "live_status": "works",
+   "price_method": "mrp-graphql"
+  },
+  "Mr Price Home": {
+   "live_status": "works",
+   "price_method": "mrp-graphql"
+  },
+  "Sportscene": {
+   "live_status": "works",
+   "price_method": "vtex-api (bash.com)"
+  },
+  "Totalsports": {
+   "live_status": "works",
+   "price_method": "vtex-api (bash.com)"
+  },
+  "Markham": {
+   "live_status": "works",
+   "price_method": "vtex-api (bash.com)"
+  },
+  "@home": {
+   "live_status": "works",
+   "price_method": "vtex-api (bash.com)"
+  },
+  "Cape Union Mart": {
+   "live_status": "works",
+   "price_method": "rsc-data"
+  },
+  "Poetry/Trenery (Country Road Group)": {
+   "live_status": "works",
+   "name": "Poetry",
+   "domains": [
+    "poetry.co.za"
+   ],
+   "price_method": "rsc-data"
+  },
+  "Pick n Pay": {
+   "live_status": "works",
+   "price_method": "pnp-occ"
+  },
+  "NetFlorist": {
+   "live_status": "works",
+   "price_method": "next-data"
+  },
+  "Clicks": {
+   "live_status": "works",
+   "price_method": "clicks-page"
+  },
+  "Absolute Pets": {
+   "live_status": "works",
+   "price_method": "absolutepets-page"
+  }
+ },
+ "add": [
+  {
+   "name": "Mr Price Sport",
+   "country": "ZA",
+   "domains": [
+    "mrpsport.com"
+   ],
+   "live_status": "works",
+   "price_method": "mrp-graphql"
+  },
+  {
+   "name": "Foschini",
+   "country": "ZA",
+   "domains": [
+    "foschini.co.za"
+   ],
+   "live_status": "works",
+   "price_method": "vtex-api (bash.com)"
+  },
+  {
+   "name": "American Swiss",
+   "country": "ZA",
+   "domains": [
+    "americanswiss.co.za"
+   ],
+   "live_status": "works",
+   "price_method": "vtex-api (bash.com)"
+  },
+  {
+   "name": "MediaMarkt Germany",
+   "country": "DE",
+   "domains": [
+    "mediamarkt.de"
+   ],
+   "live_status": "works"
+  }
+ ]
+}

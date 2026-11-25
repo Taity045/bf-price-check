@@ -108,6 +108,26 @@ The home page stays clean: heading, link box, Check price, 3 example links (Take
 
 Set a secret: `npx wrangler secret put OWNER_EMAIL`.
 
+## Shop readers (South African shops)
+
+Some big SA shops do not put the price in standard product data (JSON-LD), or show it only after their app loads. For these shops `src/readers.js` reads the price from the data the shop's own site uses. All of it is public: the same pages and API calls a normal browser makes on a product page. robots.txt is obeyed (also by the daily saving, which checks robots.txt on the API host). No bot walls are passed.
+
+| Shop | How | Source label |
+|---|---|---|
+| Bash and TFG brands (Foschini, Markham, Sportscene, Totalsports, American Swiss, @home) | Public VTEX catalog API on bash.com, by the product slug in the link (`/<slug>/p`). TFG brand sites send product links to bash.com, so all brands use the bash.com API. Lowest in-stock size wins; "was" is the list price. | `vtex-api` |
+| Mr Price, Mr Price Home, Mr Price Sport | The shop's public GraphQL API (`apiprd.omni.mrpg.com`), by the SKU at the end of the link, with the shop's `store` header. A POST query (read only). | `mrp-graphql` |
+| Pick n Pay | Public product API (`/pnphybris/v2/pnp-spa/products/<code>`), store code WC44 (the default online store). | `pnp-occ` |
+| Cape Union Mart, Poetry (and other SFCC Next.js shops of the same group) | Product data in the page's Next.js stream (`list_price` / `sale_price` in cents), matched by the product code in the link. | `rsc-data` |
+| NetFlorist | `initialProductData` in the page's `__NEXT_DATA__` (read by a small regex, not a full parse of the 300 KB block). | `next-data` |
+| Clicks | The visible price block and the page's `productPrice` field. Clicks' JSON-LD has no price. | `clicks-page` |
+| Absolute Pets | The main price block (lowest price for "from R…" products). The page's dataLayer price is without VAT, so it is not used. | `absolutepets-page` |
+
+API readers replace the page download, so these checks are faster than a normal page read (about 0.1–1 s). If a reader finds no price, the normal page parsing runs as before. Amazon and Takealot are not changed.
+
+**Tests**: `tests/unit/readers.test.mjs` with saved real responses in `tests/fixtures/shops/`. Live check: `node tests/live_readers.mjs` (readers on this machine) or `node tests/live_readers.mjs https://eish.veldwire.com` (the deployed Worker, `fresh=1`), on the real products in `tests/live_readers.txt`.
+
+**Shops list**: `src/shops.js` is made by `scripts/make_shops.py` from `research/retailers.json`, with `data/live_status.json` applied on top (newer live checks). Run `RESEARCH=<path to retailers.json> python3 scripts/make_shops.py` if the research folder is not in your checkout.
+
 ## Other shops (price compare)
 
 On a result page the "Other shops" panel (under the price chart and the buttons, so rows that arrive later never push the chart or buttons down) shows the same product's price today at other shops we support, in the same country and currency. The page asks the worker which shops to search (`/api/compare`), then asks each shop in parallel (`/api/compare/shop`, 4 at a time), so rows appear as shops answer and one slow shop does not hold up the rest. Each answer is one Worker call with a few sub-requests, well inside the Free plan's 50.
@@ -148,7 +168,8 @@ Each row shows the shop, price (and "was" price), the difference against this pa
 | `src/daily.js` | Daily price saving: cron batches, back-off, robots.txt, Takealot seed list, `/api/daily-status` |
 | `src/stats.js` | Private stats: cookieless daily counts, click beacon, Cloudflare Access JWT check, dashboard |
 | `src/og.js`, `src/og_font.js` | Share card PNG renderer and server meta tags |
-| `src/shops.js` | Shops we check / known blocked (generated) |
+| `src/readers.js` | Shop readers for SA shops without standard price data (TFG/VTEX, Mr Price, Pick n Pay, Cape Union Mart, Poetry, NetFlorist, Clicks, Absolute Pets) |
+| `src/shops.js` | Shops we check / known blocked (generated from research + `data/live_status.json`) |
 | `public/index.html` | The app (plain HTML/CSS/JS, inline SVG chart, mobile first; desktop layout from 900 px) |
 | `public/fonts/`, `public/og-home.*`, `public/og-square.jpg` | Self-hosted font subsets, static share cards |
 | `examples.json` | Example links on the home page |

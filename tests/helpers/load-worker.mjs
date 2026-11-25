@@ -10,7 +10,7 @@ const read = (p) => readFileSync(new URL(p, root), "utf8");
 
 export const NAMES = [
   "SHOP_LIST", "RL", "MAX_TRACKED", "LIVE_CACHE_PREFIX",
-  "parsePrice", "parseTextPrice", "decodeEntities", "symbolCurrency", "tldCurrency",
+  "parsePrice", "parseTextPrice", "readerFor", "readerTarget", "readApi", "readPage", "vtexProduct", "mrpProduct", "pnpProduct", "sfccRsc", "netflorist", "clicksPage", "absolutePets", "decodeEntities", "symbolCurrency", "tldCurrency",
   "isPrivateIPv4", "isPrivateIPv6", "validateUrl", "resolvesPublic", "canonicalize",
   "parseJsonLd", "parseMeta", "parseAmazon", "parseDataLayer", "parseMainPriceBlock", "parseFallback",
   "pageAmount", "detectBlock", "extractFromHtml", "takealotBarcode", "takealotApi", "getCurrent",
@@ -31,6 +31,7 @@ const source = [
   'const APP = { name: "app.0123456789.js", js: "" };',
   read("src/shops.js"),
   read("src/worker.js"),
+  read("src/readers.js"),
   read("src/features.js"),
   read("src/daily.js"),
   read("src/compare.js"),
