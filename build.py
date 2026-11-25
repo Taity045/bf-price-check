@@ -17,6 +17,10 @@ def esbuild(code, loader):
     except Exception as e:
         print("esbuild not available:", e)
     return code
+# The result view (public/result.js) is a second, long-cached file that loads on the first check.
+LAZY_JS = esbuild((root / "public/result.js").read_text(), "js")
+lazy_name = "result." + hashlib.sha1(LAZY_JS.encode()).hexdigest()[:10] + ".js"
+html = html.replace("/*LAZY*/", "/" + lazy_name)
 m = re.search(r"<script>([\s\S]*)</script>", html)
 APP_JS = esbuild(m.group(1), "js")
 app_name = "app." + hashlib.sha1(APP_JS.encode()).hexdigest()[:10] + ".js"
@@ -33,7 +37,7 @@ for f in sorted((root / "public/fonts").glob("*.woff2")):
     html = html.replace(f"/fonts/{f.name}", f"/fonts/{hashed}")
 font = (root / "src/og_font.js").read_text().replace("export const OG_FONT", "const OG_FONT")
 static = {n: base64.b64encode((root / "public" / n).read_bytes()).decode() for n in ["og-home.png", "og-home.jpg", "og-square.jpg"]}
-worker = "const STATIC_IMG = " + json.dumps(static) + ";\nconst FONTS = " + json.dumps(fonts) + ";\nconst APP = " + json.dumps({"name": app_name, "js": APP_JS}) + ";\n" + (root / "src/shops.js").read_text() + "\n" + (root / "src/worker.js").read_text() + "\n" + (root / "src/readers.js").read_text() + "\n" + (root / "src/features.js").read_text() + "\n" + (root / "src/archive.js").read_text() + "\n" + (root / "src/daily.js").read_text() + "\n" + (root / "src/compare.js").read_text() + "\n" + (root / "src/og.js").read_text() + "\n" + (root / "src/stats.js").read_text() + "\n" + font + "\nconst HTML = " + json.dumps(html) + ";\n"
+worker = "const STATIC_IMG = " + json.dumps(static) + ";\nconst FONTS = " + json.dumps(fonts) + ";\nconst APP = " + json.dumps({"name": app_name, "js": APP_JS, "lazy_name": lazy_name, "lazy": LAZY_JS}) + ";\n" + (root / "src/shops.js").read_text() + "\n" + (root / "src/worker.js").read_text() + "\n" + (root / "src/readers.js").read_text() + "\n" + (root / "src/features.js").read_text() + "\n" + (root / "src/archive.js").read_text() + "\n" + (root / "src/daily.js").read_text() + "\n" + (root / "src/compare.js").read_text() + "\n" + (root / "src/og.js").read_text() + "\n" + (root / "src/stats.js").read_text() + "\n" + font + "\nconst HTML = " + json.dumps(html) + ";\n"
 (root / "dist").mkdir(exist_ok=True)
 (root / "dist/worker.js").write_text(worker)
 schema = (root / "schema.sql").read_text()

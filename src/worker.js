@@ -1040,6 +1040,8 @@ export default {
       // The page names the script by its hash. A page loaded before a deploy may ask for an older name:
       // serve the current script for it (short cache), so buttons never stop working after a deploy.
       if (/^\/app\.[0-9a-f]{10}\.js$/.test(url.pathname)) return new Response(APP.js, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": url.pathname === "/" + APP.name ? "public, max-age=31536000, immutable" : "no-cache" } });
+      // The result view script, loaded on the first check. An old name (after a deploy) gets today's file, not cached.
+      if (/^\/result\.[0-9a-f]{10}\.js$/.test(url.pathname)) return new Response(APP.lazy, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": url.pathname === "/" + APP.lazy_name ? "public, max-age=31536000, immutable" : "no-cache" } });
       if (url.pathname === "/favicon.ico") return new Response(null, { status: 204 });
       return new Response("Not found", { status: 404 });
     } catch (e) {

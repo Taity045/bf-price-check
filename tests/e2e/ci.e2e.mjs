@@ -66,6 +66,7 @@ for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`h
   ok(`home ${name}: no sideways scroll`, await noSideScroll(p));
   ok(`home ${name}: fake discount wall link hidden`, !(await p.isVisible("#wallLink")));
   ok(`home ${name}: page weight ${Math.round(bytes / 1024)} KB within ${Math.round(HOME_BUDGET / 1024)} KB`, bytes > 0 && bytes <= HOME_BUDGET, bytes);
+  ok(`home ${name}: result view script is not part of the first view`, await p.evaluate(() => !performance.getEntriesByType("resource").some((e) => /\/result\.[0-9a-f]{10}\.js/.test(e.name))));
   ok(`home ${name}: no JS errors`, p._errs.length === 0, p._errs.join(" | "));
   await p.screenshot({ path: `${SHOTS}/home-${name}.png`, fullPage: true });
   await p.context().close();
@@ -270,6 +271,12 @@ await step("API", async () => {
   ok("/api/wall is off", wall.status === 404, wall.status);
   const js = await fetch(BASE + "/app.0123456789.js");
   ok("old script names still load after a deploy", js.ok && /javascript/.test(js.headers.get("content-type")), js.status);
+  const old = await fetch(BASE + "/result.0123456789.js");
+  ok("old result script names still load after a deploy, not cached", old.ok && /no-cache/.test(old.headers.get("cache-control")), old.status);
+  const home = await (await fetch(BASE + "/")).text(), app = (home.match(/\/app\.[0-9a-f]{10}\.js/) || [""])[0];
+  const lazy = ((await (await fetch(BASE + app)).text()).match(/\/result\.[0-9a-f]{10}\.js/) || [""])[0];
+  const lr = lazy ? await fetch(BASE + lazy) : null;
+  ok("result script is served and cached for a year", !!lr && lr.ok && /immutable/.test(lr.headers.get("cache-control")) && /__dod/.test(await lr.text()), lazy);
 });
 
 // 8. private stats: counting works end to end, and the dashboard renders (local dev shortcut /__stats,
