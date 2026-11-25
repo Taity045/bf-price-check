@@ -167,6 +167,23 @@ dialog.dlg-fb[open]{display:block;position:fixed;z-index:20;left:12px;right:12px
 .olist li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);font-size:15px}
 .olist li>span{min-width:0;overflow-wrap:anywhere}
 .olist a{display:inline-flex;align-items:center;min-height:44px}
+.cmp li{align-items:flex-start}
+.cmp .os{flex:1 1 auto;min-width:0}
+.cmp .os b{font-size:16px}
+.cmp .ot{display:block;font-size:13px;color:var(--mut);overflow-wrap:anywhere;margin-top:2px}
+.cmp .op{flex:none;text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+.cmp .op .num{font-size:17px;font-weight:600}
+.cmp .op a{min-height:32px}
+.cmp .tag{display:inline-block;margin:4px 6px 0 0;padding:1px 6px;font-size:11px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.02em;border:1.5px solid var(--line);border-radius:2px;color:var(--mut);white-space:nowrap}
+.cmp .tag.sure{border-color:var(--good);color:var(--good)}
+.cmp .tag.cheap{background:var(--acc);color:var(--acc-ink);border-color:var(--ink)}
+.cmp .tag.oos{border-color:var(--bad);color:var(--bad)}
+.cmp li.here{background:var(--soft);margin:0 -10px;padding:10px}
+.cmp li.wait .os b,.cmp li.wait .op{color:var(--mut)}
+.cmp li.oos .num{color:var(--mut)}
+.cmp .diff{font-size:12px;font-family:var(--mono)}
+.cmp .diff.less{color:var(--good)}
+#cmpSum{margin:10px 0 0}
 .chip{display:inline-block;font-size:12px;font-weight:600;padding:1px 8px;border-radius:99px;background:var(--soft);white-space:nowrap}
 .chip.good{color:var(--good)}.chip.bad{color:var(--bad)}.chip.meh{color:var(--meh)}
 .tabs{display:flex;gap:4px;margin:4px 0 8px;border-bottom:1px solid var(--line)}
@@ -320,10 +337,15 @@ footer{border-top:2px dashed var(--ink)}
 
     <section class="card verdict unk" id="verdict"></section>
 
-    <section class="card hidden" id="others" aria-labelledby="othersTitle">
-      <h3 id="othersTitle">Other shops</h3>
-      <ul class="olist" id="otherList"></ul>
-      <p class="note">Same barcode or model number. Prices come from the shop's own data. Check the shop before you buy.</p>
+    <section class="card hidden" id="others" aria-labelledby="othersTitle" aria-busy="false">
+      <div class="charthead"><h3 id="othersTitle">Other shops</h3><span class="small" id="cmpStatus" aria-live="polite"></span></div>
+      <div class="prog" id="cmpProg"><i></i></div>
+      <ul class="olist cmp" id="otherList"></ul>
+      <p class="small" id="cmpSum"></p>
+      <details id="cmpHow"><summary>How we match</summary>
+        <p class="note"><b>Same barcode</b> and <b>Same model number</b> mean it is the same product. <b>Same name and specs</b> means the name, size and storage match, but the shop shows no barcode or model number, so check the colour and model on the shop's page.</p>
+        <p class="note">We search each shop's own website and show only exact matches. Prices are from the shop when we checked (see the time on each row). Delivery is not included.</p>
+      </details>
     </section>
 
     <div class="card">
@@ -929,12 +951,61 @@ function finalize(my) {
 }
 async function loadOthers(my) {
   if (!state.tracked || !state.current || state.current.status !== "ok") return;
-  try {
-    const d = await (await fetch("/api/others?url=" + encodeURIComponent(state.canonical))).json();
-    if (my !== runId || !d.matches || !d.matches.length) return;
-    $("otherList").innerHTML = d.matches.map((m) => `<li><span><b>${esc(m.shop)}</b> · ${esc(m.title)}<br><span class="small">Same ${esc(m.match)}</span></span><span style="text-align:right"><b class="num">${esc(money(m.price, m.currency))}</b><br><a href="${esc(m.url)}" target="_blank" rel="noopener">Open ↗</a></span></li>`).join("");
-    $("others").classList.remove("hidden");
-  } catch {}
+  const canon = state.canonical, sec = $("others");
+  let plan;
+  try { const r = await fetch("/api/compare?url=" + encodeURIComponent(canon)); if (!r.ok) return; plan = await r.json(); } catch { return; }
+  if (my !== runId || !plan || !plan.product) return;
+  const here = curPrice(), shops = plan.shops || [], results = Object.assign({}, plan.results || {});
+  sec.classList.remove("hidden");
+  if (!shops.length) {
+    $("otherList").innerHTML = ""; $("cmpProg").classList.add("hidden"); $("cmpStatus").textContent = "";
+    $("cmpSum").textContent = "We don't search other shops for this kind of product in this country yet.";
+    return;
+  }
+  const ago = (t) => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? "just now" : m < 60 ? m + " min ago" : Math.round(m / 60) + " h ago"; };
+  const LEVEL = { barcode: "Same barcode", model: "Same model number", name: "Same name and specs" };
+  const render = () => {
+    const done = shops.filter((s) => results[s.id]).length;
+    const matches = shops.map((s) => results[s.id]).filter((r) => r && r.status === "match" && r.match);
+    const inStock = matches.filter((r) => r.match.in_stock).map((r) => r.match.price);
+    const herePrice = here && here.currency === plan.product.currency ? here.price : null;
+    const low = Math.min(...inStock, herePrice ?? Infinity);
+    const rows = [];
+    if (herePrice != null) rows.push({ here: true, price: herePrice, html: `<span class="os"><b>${esc(state.shop ? state.shop.name : state.host)}</b><span class="ot">This page</span>${matches.length && herePrice <= low ? '<span class="tag cheap">Cheapest</span>' : ""}</span><span class="op"><b class="num">${esc(money(herePrice, here.currency))}</b></span>` });
+    for (const r of matches.sort((a, b) => (b.match.in_stock - a.match.in_stock) || a.match.price - b.match.price)) {
+      const m = r.match, d = herePrice != null ? m.price - herePrice : null;
+      const diff = d == null || Math.abs(d) < 0.5 || !m.in_stock ? "" : `<span class="diff ${d < 0 ? "less" : ""}">${esc(money(Math.abs(Math.round(d)), m.currency))} ${d < 0 ? "less" : "more"}</span>`;
+      rows.push({ price: m.price, html: `<span class="os"><b>${esc(r.name)}</b><span class="ot">${esc(m.title)}</span><span class="tag ${m.level === "name" ? "" : "sure"}">${LEVEL[m.level]}</span>${m.in_stock && m.price <= low && (herePrice == null || m.price < herePrice) ? '<span class="tag cheap">Cheapest</span>' : ""}${m.in_stock ? "" : '<span class="tag oos">Out of stock</span>'}</span><span class="op"><b class="num">${esc(money(m.price, m.currency))}</b>${m.was ? `<span class="was small">${esc(money(m.was, m.currency))}</span>` : ""}${diff}<a href="${esc(m.url)}" target="_blank" rel="noopener nofollow">Open ↗</a><span class="small">${esc(ago(r.checked_at))}</span></span>`, oos: !m.in_stock });
+    }
+    const waiting = shops.filter((s) => !results[s.id]);
+    $("otherList").innerHTML = rows.map((r) => `<li class="${r.here ? "here" : ""}${r.oos ? " oos" : ""}">${r.html}</li>`).join("")
+      + (waiting.length ? `<li class="wait"><span class="os"><b>Checking ${waiting.length} more shop${waiting.length === 1 ? "" : "s"}…</b><span class="ot">${esc(waiting.slice(0, 6).map((s) => s.name).join(", "))}${waiting.length > 6 ? "…" : ""}</span></span></li>` : "");
+    const pctDone = Math.round((done / shops.length) * 100);
+    $("cmpProg").classList.toggle("hidden", done === shops.length);
+    $("cmpProg").firstElementChild.style.width = pctDone + "%";
+    sec.setAttribute("aria-busy", done < shops.length ? "true" : "false");
+    $("cmpStatus").textContent = done < shops.length ? `${done} of ${shops.length} shops checked` : `${shops.length} shop${shops.length === 1 ? "" : "s"} checked`;
+    const none = shops.filter((s) => results[s.id] && results[s.id].status === "none").map((s) => s.name);
+    const failed = shops.filter((s) => results[s.id] && !["match", "none", "skipped"].includes(results[s.id].status)).map((s) => s.name);
+    const parts = [];
+    if (done === shops.length && !matches.length) parts.push(`We didn't find this exact product at the ${shops.length} other shop${shops.length === 1 ? "" : "s"} we searched.`);
+    if (matches.length && none.length) parts.push(`Not found at: ${none.join(", ")}.`);
+    if (failed.length) parts.push(`Couldn't check: ${failed.join(", ")} (try again later).`);
+    $("cmpSum").textContent = parts.join(" ");
+  };
+  render();
+  const queue = shops.filter((s) => !results[s.id]);
+  const worker = async () => {
+    while (queue.length) {
+      const s = queue.shift();
+      let r;
+      try { const res = await fetch(`/api/compare/shop?url=${encodeURIComponent(canon)}&shop=${encodeURIComponent(s.id)}`); r = await res.json(); } catch { r = null; }
+      if (my !== runId) return;
+      results[s.id] = r && r.status ? r : { shop: s.id, name: s.name, status: "error" };
+      render();
+    }
+  };
+  await Promise.all([worker(), worker(), worker(), worker()]);
 }
 
 // ---------- saved products (this device only) ----------

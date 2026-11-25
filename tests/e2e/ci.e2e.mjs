@@ -99,6 +99,56 @@ for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`r
   await p.context().close();
 });
 
+// 3b. "Other shops" compare panel, with faked shop answers (arriving one by one)
+const CMP_PLAN = { product: { title: "CI Test Kettle 1.7L", brand: "ci", gtin: "6001234567890", codes: [], currency: "ZAR", category: "appliances" },
+  shops: [{ id: "hirschs", name: "Hirsch's" }, { id: "okfurniture", name: "OK Furniture" }, { id: "loot", name: "Loot" }, { id: "computermania", name: "Computer Mania" }, { id: "firstshop", name: "First Shop" }],
+  skipped: [], results: { loot: { shop: "loot", name: "Loot", status: "none", checked_at: Date.now() - 3600e3 } } };
+const CMP_SHOP = {
+  hirschs: { shop: "hirschs", name: "Hirsch's", status: "match", checked_at: Date.now(), match: { title: "CI Test Kettle 1.7L Stainless - CTK17", price: 899, was: 1099, currency: "ZAR", url: "https://shop.example.co.za/hirschs-kettle", in_stock: true, level: "model" } },
+  okfurniture: { shop: "okfurniture", name: "OK Furniture", status: "match", checked_at: Date.now(), match: { title: "CI Test Kettle 1.7L", price: 949, currency: "ZAR", url: "https://shop.example.co.za/ok-kettle", in_stock: true, level: "barcode" } },
+  computermania: { shop: "computermania", name: "Computer Mania", status: "match", checked_at: Date.now(), match: { title: "CI Test Kettle 1.7L <b>bold</b>", price: 799, currency: "ZAR", url: "https://shop.example.co.za/cm-kettle", in_stock: false, level: "name" } },
+  firstshop: { shop: "firstshop", name: "First Shop", status: "blocked", checked_at: Date.now() },
+};
+for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`compare ${name}`, async () => {
+  const p = await open(o);
+  await p.route(/\/api\/compare\?/, (r) => r.fulfill({ json: CMP_PLAN }));
+  let n = 0;
+  await p.route(/\/api\/compare\/shop\?/, async (r) => { const id = new URL(r.request().url()).searchParams.get("shop"); await new Promise((ok) => setTimeout(ok, 150 * ++n)); r.fulfill({ json: CMP_SHOP[id] }); });
+  await p.goto(BASE + "/");
+  await p.fill("#u", PRODUCT); await p.click("#go");
+  await p.waitForSelector("#others:not(.hidden)", { timeout: 15000 });
+  ok(`compare ${name}: shows progress while shops answer`, /of 5 shops checked/.test(await p.textContent("#cmpStatus")), await p.textContent("#cmpStatus"));
+  await p.waitForFunction(() => /5 shops checked/.test(document.querySelector("#cmpStatus").textContent) && !/of/.test(document.querySelector("#cmpStatus").textContent), null, { timeout: 10000 });
+  const rows = await p.$$eval("#otherList li", (ls) => ls.map((l) => l.textContent.replace(/\s+/g, " ").trim()));
+  ok(`compare ${name}: this page plus 3 matches`, rows.length === 4, rows.join(" | "));
+  ok(`compare ${name}: this page first`, /This page/.test(rows[0]), rows[0]);
+  ok(`compare ${name}: cheapest in-stock shop marked (Hirsch's, not the out-of-stock one)`, /Hirsch/.test(rows[1]) && /Cheapest/.test(rows[1]) && !rows.slice(2).some((r) => /Cheapest/.test(r)), rows.join(" | "));
+  ok(`compare ${name}: saving shown against this page`, /R\s?100 less/.test(rows[1].replace(/\u00a0/g, " ")), rows[1]);
+  ok(`compare ${name}: match levels shown`, /Same model number/.test(rows[1]) && /Same barcode/.test(rows[2]) && /Same name and specs/.test(rows[3]), rows.join(" | "));
+  ok(`compare ${name}: out of stock is labelled and listed last, with no saving shown`, /Out of stock/.test(rows[3]) && /Computer Mania/.test(rows[3]) && !/less/.test(rows[3]), rows[3]);
+  ok(`compare ${name}: shop titles are escaped`, (await p.$$eval("#otherList b", (b) => b.length)) < 20 && /<b>bold<\/b>/.test(rows[3]), rows[3]);
+  const sum = await p.textContent("#cmpSum");
+  ok(`compare ${name}: not found and couldn't check are listed`, /Not found at: Loot/.test(sum) && /Couldn't check: First Shop/.test(sum), sum);
+  const link = await p.getAttribute("#otherList li:nth-child(2) a", "href");
+  ok(`compare ${name}: link opens the shop's page`, link === "https://shop.example.co.za/hirschs-kettle", link);
+  ok(`compare ${name}: no sideways scroll`, await noSideScroll(p));
+  ok(`compare ${name}: no JS errors`, p._errs.length === 0, p._errs.join(" | "));
+  await p.waitForFunction(() => !document.querySelector(".toast.on, .toast.show"), null, { timeout: 6000 }).catch(() => {});
+  await p.waitForTimeout(3500);
+  await p.locator("#others").screenshot({ path: `${SHOTS}/compare-${name}.png` });
+  await p.context().close();
+});
+await step("compare: nothing found", async () => {
+  const p = await open(mobile);
+  await p.route(/\/api\/compare\?/, (r) => r.fulfill({ json: { ...CMP_PLAN, shops: CMP_PLAN.shops.slice(0, 2), results: {} } }));
+  await p.route(/\/api\/compare\/shop\?/, (r) => r.fulfill({ json: { status: "none", checked_at: Date.now() } }));
+  await p.goto(BASE + "/");
+  await p.fill("#u", PRODUCT); await p.click("#go");
+  await p.waitForFunction(() => /didn't find this exact product/.test(document.querySelector("#cmpSum").textContent), null, { timeout: 10000 });
+  ok("compare: says plainly when no shop has the same product", /2 other shops/.test(await p.textContent("#cmpSum")), await p.textContent("#cmpSum"));
+  await p.context().close();
+});
+
 // 4. "Ask us to add a shop" form, sent to the real worker and local D1
 for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`shop request ${name}`, async () => {
   const p = await open(o);

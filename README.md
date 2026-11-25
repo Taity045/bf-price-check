@@ -78,7 +78,7 @@ The home page stays clean: heading, link box, Check price, 3 example links (Take
 
 | Feature | Where | Data |
 |---|---|---|
-| Other shops | Result page, only for a strong match (same barcode or model number) | Takealot public API |
+| Other shops (price compare) | Result page: the same product's price today at other shops in the same country and currency. See [Other shops](#other-shops-price-compare) | Each shop's own public search |
 | Saved, Your stats, badges | Header "Saved" | Your browser only (localStorage) |
 | Deep links | `/?url=<product link>` and `/?u=<product link>` open the site and run a check (used by shared links) | — |
 | Link previews (WhatsApp chats and Status) | OG and Twitter tags in the first 1 KB of `/` and `/?u=` / `/?url=` | First `og:image`: `/og-home.jpg` (static 1200×630 JPEG, 50 KB). Second `og:image`: `/og-square.jpg` (600×600 JPEG, 31 KB). Both with content-length and a 7-day cache. A product card `/og.png?u=…` (PNG) replaces the first image once it is made (D1 cache). Remake the static images with `scripts/make_og_static.py`. `/robots.txt` allows all |
@@ -103,12 +103,41 @@ The home page stays clean: heading, link box, Check price, 3 example links (Take
 
 Set a secret: `npx wrangler secret put OWNER_EMAIL`.
 
+## Other shops (price compare)
+
+On a result page the "Other shops" panel shows the same product's price today at other shops we support, in the same country and currency. The page asks the worker which shops to search (`/api/compare`), then asks each shop in parallel (`/api/compare/shop`, 4 at a time), so rows appear as shops answer and one slow shop does not hold up the rest. Each answer is one Worker call with a few sub-requests, well inside the Free plan's 50.
+
+**Shops searched** (`CMP_SHOPS` in `src/compare.js`), each through its own public search, with an honest user agent (`DealOrDud-PriceCompare/1.0 (+https://eish.veldwire.com; …)`), at most 30 searches a minute per shop, results cached 6–12 h:
+
+- ZA, all kinds: Takealot (public search API), Loot.
+- ZA electronics: Evetech, Computer Mania, Matrix Warehouse, First Shop.
+- ZA home and appliances: Hirsch's, OK Furniture. Toys: Toys R Us, Babies R Us. Books: Exclusive Books. Liquor: Norman Goodfellows.
+- ZA fashion, sport and general: Bash (TFG: Sportscene, Totalsports, Foschini…), Superbalist, Studio 88, PUMA ZA (PUMA only), Edgars, Ackermans, Pep.
+- UK: Lakeland (kitchen and home).
+
+Shops are picked by the product's kind (electronics, appliances, books, fashion…) so a book is not searched at a TV shop. The shop the product came from is not searched again.
+
+**How a match is decided** (strict on purpose: fewer, correct matches beat more matches):
+
+1. **Same barcode** (EAN/UPC/ISBN from the product data, the shop's search, or the shop's product page). A different barcode on both sides means a different product.
+2. **Same model number** (MPN, Samsung/Sony/Apple part numbers, LEGO set numbers, Nike style codes, …).
+3. **Same name and specs**: same brand, the same core words and numbers, and none of these differ: storage (128 GB vs 256 GB), screen size, ml or grams, litres, pack size, year, men's/women's, colour (when both name one), variant words (Pro, Max, Plus, Ultra, Mini, Lite, Slim, Digital, Disc, SE, FE, ANC, Music, Solar, EDP vs EDT…).
+
+A candidate is always rejected if it is an accessory or case for the product, used/refurbished/parallel import/renewed, a bundle, or its price is far from this page's price (model matches: under ⅓ or over 3×; name matches: under ½ or over 2×). Shopify shops with several sizes or colours are read per variant, and the variant is picked by barcode or by a unique spec fit; if that is not possible the row is left out. Fashion needs a barcode or model number (names like "Air Force 1 '07" cover many colours).
+
+Each row shows the shop, price (and "was" price), the difference against this page, the match level ("Same barcode", "Same model number", "Same name and specs"), stock, a link to the shop's page and when it was checked. The cheapest in-stock offer is marked "Cheapest". Under the list: shops that did not have it, and shops we could not check (blocked or down) — never a guessed price.
+
+**History**: every price found by the compare is saved in `checks` with source `compare-<shop>`, and barcode/model matches are added to `tracked`, so the hourly re-check and later visits build price history for the same product at more shops.
+
+**Live test** (`node scripts/compare_live.mjs <urls>` or `LIST=file OUT=results.json`): runs the real search and matching for each planned shop and prints every match with its level. Results from the last run are in the PR that added this feature.
+
 ## Code layout
 
 | Part | What it does |
 |---|---|
 | `src/worker.js` | Worker: API, page parsing, archive lookups, rate limits, cache, cron, routes |
-| `src/features.js` | Verdicts, wall, other shops, email, alerts, Turnstile, API bot checks |
+| `src/features.js` | Verdicts, wall, email, alerts, Turnstile, API bot checks |
+| `src/compare.js` | Other shops price compare: shop adapters, product identity, strict matching, caching, history |
 | `src/daily.js` | Daily price saving: cron batches, back-off, robots.txt, Takealot seed list, `/api/daily-status` |
 | `src/stats.js` | Private stats: cookieless daily counts, click beacon, Cloudflare Access JWT check, dashboard |
 | `src/og.js`, `src/og_font.js` | Share card PNG renderer and server meta tags |
@@ -125,7 +154,9 @@ Set a secret: `npx wrangler secret put OWNER_EMAIL`.
 - `GET /api/archive?url=<canonical>&orig=<pasted url>` → archive index (last 365 days, any capture). Cached 12 h (cache key `cdx-v5:`). It asks the Wayback CDX index for these URL forms and keeps only captures of the same product: the canonical URL, with and without a trailing slash, the pasted URL (with its query, without `#…`), the canonical URL without its query, and the `m.` mobile host. `http`/`https` and `www.`/`m.` count as the same page. Product-ID-only URLs (for example `/PLID123` without the name part) are not searched, because the CDX index has no wildcard in the middle of a path.
 - `GET /api/snap?url=…&ts=…&orig=…` → price from one archive copy, kept in D1.
 - `GET /api/daily-status` → counts for the daily price saving (no links). Cached 5 min.
-- `GET /api/shops`, `/api/config`, `/api/others`, `POST /api/verdict`, `POST /api/request`, `POST /api/alert`.
+- `GET /api/compare?url=<product url>` → which shops will be searched for this product, plus any cached answers. Only for products someone checked first.
+- `GET /api/compare/shop?url=<product url>&shop=<id>` → one shop's answer: `match` (with title, price, was, link, in stock, match level, time checked), `none`, `blocked`, `error`, `busy` or `skipped`. Cached 12 h (20 min after an error).
+- `GET /api/shops`, `/api/config`, `/api/others` (old pages; answers from the compare cache), `POST /api/verdict`, `POST /api/request`, `POST /api/alert`.
 - `GET /og-home.jpg`, `/og-square.jpg`, `/og-home.png`, `/og.png?u=…`, `/robots.txt`.
 - `POST /api/m` (body: a button name such as `share`) → counts one click. Always 204. Only known names from the same site are counted.
 
@@ -159,7 +190,7 @@ Older prices = archive points + saved checks older than 24 h, last 365 days.
 - Only `http(s)` URLs, standard ports, no credentials, no IP-address hosts, no `localhost`/`.local`/`.internal` etc.
 - Store requests, redirects and scheduled checks require successful public DNS resolution through Cloudflare DoH.
 - Max 4 MB per page, 15 s timeout for stores, 25 s for the archive.
-- Rate limit (D1, per IP per minute): 20 checks, 120 archive-copy reads, 40 verdict saves, 20 other-shop lookups, 5 shop requests.
+- Rate limit (D1, per IP per minute): 20 checks, 120 archive-copy reads, 40 verdict saves, 240 other-shop lookups (one per shop), 5 shop requests. Each shop also gets at most 30 searches a minute from the whole site.
 - Archive reads require a tracked product and an original URL and timestamp selected from its Wayback index results. Product-defining query parameters are part of the match.
 - Max 1,000 tracked products from people's checks (plus up to 300 seed products); products not viewed for 120 days are dropped from the daily list.
 
@@ -171,7 +202,7 @@ Preview bots (WhatsApp, facebookexternalhit, etc.) can always fetch pages and sh
 
 | Table | What it holds |
 |---|---|
-| `checks` | Live prices we read (url, time, price, was, currency, source; `via = 'daily'` for the daily price saving) |
+| `checks` | Live prices we read (url, time, price, was, currency, source; `via = 'daily'` for the daily price saving). Prices found by the compare are saved with source `compare-<shop>` |
 | `product_snaps` | Prices read from archive copies |
 | `tracked` | Products in the daily price saving: people's checks (`seed = 0`) and the Takealot seed list (`seed = 1`), with `next_check_at`, `fails` |
 | `verdicts` | Latest verdict per product (wall, scores, share card) |
@@ -233,6 +264,7 @@ Cloudflare resources: Worker `bf-price-check`, D1 `bf-price-check-db`, cron `* *
 - Wayback coverage of product pages is thin, especially for South African stores (often 0–3 copies in 12 months). Takealot product pages are rendered by JavaScript, so archived copies have no price. History therefore mostly grows from the prices we save: when people check, and about once a day for each product in the daily list.
 - The Internet Archive sometimes answers 503 or is slow; the tool retries and shows a "Try the archive again" button.
 - Marketplace listings (Amazon, MediaMarkt, Takealot) can change seller, so archived prices may be from a different seller.
+- Other shops: shops whose search is built by JavaScript only or that block us are not searched (Sportsmans and Outdoor Warehouse, Cycle Lab, Yuppiechef, Woolworths, Checkers/Shoprite, Bob Shop, OneDayOnly, Cashbuild, Faithful to Nature, Bargain Books, Cotton On, Sheet Street, Miladys, and most UK shops). UK coverage is Lakeland only. Fashion items match only when the other shop shows the same barcode or style code, which most ZA fashion shops do not.
 - Free-plan Worker limits (CPU time, 50 sub-requests per call) apply; each archive copy is fetched in its own request to stay inside them, and the daily price saving works in small batches every minute.
 
 ## Private stats

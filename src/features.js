@@ -141,72 +141,7 @@ async function wallData(env) {
   return val;
 }
 
-// ---------- same product, other shops ----------
-const UNIT_TOKEN = /^(\d+(gb|tb|mb|mah|wh|w|kw|v|hz|khz|mm|cm|m|km|kg|g|mg|ml|l|in|inch|c|mp|k|p|x|pcs|pack|gen|th|nd|rd|st)|\d{4}|19\d\d|20\d\d|[a-z]+\d{1,2}|\d{1,3})$/i;
-function modelTokens(title, mpn) {
-  const toks = new Set();
-  const add = (t) => { t = t.replace(/^[^a-z0-9]+|[^a-z0-9]+$/gi, ""); if (/^\d{2,5}-\d{3,8}$/.test(t)) { toks.add(t.replace(/-/g, "")); return; } if (t.length >= 4 && t.length <= 20 && /[a-z]/i.test(t) && /\d/.test(t) && !UNIT_TOKEN.test(t)) toks.add(t.toUpperCase().replace(/[-_/]/g, "")); };
-  if (mpn) add(String(mpn));
-  for (const t of String(title || "").split(/[\s,()|]+/)) add(t);
-  return [...toks];
-}
-function titleTokens(title) { return new Set(String(title || "").toUpperCase().split(/[\s,()|]+/).map((t) => t.replace(/^[^A-Z0-9]+|[^A-Z0-9]+$/g, "").replace(/[-_/]/g, "")).filter(Boolean)); }
-
-async function takealotSearch(q) {
-  const r = await fetch(`https://api.takealot.com/rest/v-1-11-0/searches/products?qsearch=${encodeURIComponent(q)}&rows=8`, { headers: { "user-agent": UA, accept: "application/json" }, redirect: "manual", signal: AbortSignal.timeout(10000) });
-  if (!r.ok) { await r.body?.cancel(); throw new Error("takealot search HTTP " + r.status); }
-  const d = JSON.parse(await readLimitedText(r));
-  const res = (((d.sections || {}).products || {}).results) || [];
-  return res.map((x) => x.product_views || {}).map((v) => ({
-    id: v.core && v.core.id, title: v.core && v.core.title, brand: v.core && v.core.brand, slug: v.core && v.core.slug,
-    price: v.buybox_summary && parsePrice((v.buybox_summary.prices || [])[0]),
-    in_stock: !(v.stock_availability_summary && /out of stock/i.test(String(v.stock_availability_summary.status || ""))),
-  })).filter((x) => x.id && x.title && x.price);
-}
-async function findOtherShops(env, canon) {
-  const key = "others-v1:" + canon;
-  const cached = await cacheGet(env, key);
-  if (cached) return cached;
-  const cur = await latestCurrent(env, canon);
-  const host = stripWww(new URL(canon).hostname.toLowerCase());
-  let result = { matches: [], searched: [] };
-  if (cur && cur.title && (cur.currency || tldCurrency(host)) === "ZAR" && host !== "takealot.com") {
-    const tokens = modelTokens(cur.title, cur.mpn);
-    if (tokens.length || cur.gtin) {
-      result.searched.push("Takealot");
-      try {
-        const words = cur.title.replace(/[^\p{L}\p{N}\s.-]/gu, " ").split(/\s+/).filter(Boolean).slice(0, 7).join(" ");
-        const q = (cur.brand && !words.toUpperCase().includes(String(cur.brand).toUpperCase()) ? cur.brand + " " : "") + words;
-        const found = await takealotSearch(q.trim());
-        const brandOk = (c) => !cur.brand || (c.brand ? String(c.brand).toLowerCase() === String(cur.brand).toLowerCase() : c.title.toLowerCase().includes(String(cur.brand).toLowerCase()));
-        let detailCalls = 0;
-        for (const c of found.slice(0, 12)) {
-          if (!brandOk(c) || !c.in_stock) continue;
-          const ct = titleTokens(c.title);
-          const byModel = tokens.length > 0 && tokens.every((t) => ct.has(t));
-          let byGtin = false;
-          if (cur.gtin && detailCalls < 4) {
-            detailCalls++;
-            try { const d = await takealotApi(c.id); if (d.gtin && d.gtin.replace(/^0+/, "") === cur.gtin.replace(/^0+/, "")) { byGtin = true; if (d.price) c.price = d.price; } } catch {}
-          }
-          if (byGtin || byModel) result.matches.push({ shop: "Takealot", title: c.title, price: c.price, currency: "ZAR", url: `https://www.takealot.com/${c.slug || "x"}/PLID${c.id}`, match: byGtin ? "barcode" : "model number" });
-          if (result.matches.length >= 3 || (detailCalls >= 4 && !tokens.length)) break;
-        }
-      } catch (e) { result.error = "search failed"; }
-    }
-  }
-  await cachePut(env, key, result, result.error ? 30 * 60e3 : 12 * 3600e3);
-  return result;
-}
-async function apiOthers(req, env) {
-  const ip = req.headers.get("cf-connecting-ip") || "0";
-  const canon = new URL(req.url).searchParams.get("url") || "";
-  const tr = await env.DB.prepare("SELECT url FROM tracked WHERE url = ?").bind(canon).first();
-  if (!tr) return json({ error: "Check the product first." }, 403);
-  if (await rateLimit(env, ip, "others")) return json({ error: "rate limited" }, 429);
-  const r = await findOtherShops(env, canon);
-  return json({ matches: r.matches, searched: r.searched });
-}
+// ---------- same product, other shops: see compare.js ----------
 
 // ---------- email ----------
 const emailReady = (env) => !!(env.EMAIL && typeof env.EMAIL.send === "function" && env.MAIL_FROM);

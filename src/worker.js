@@ -517,6 +517,12 @@ function takealotBarcode(d) {
   walk(d.product_information, 0);
   return found || undefined;
 }
+function takealotAttr(d, type) {
+  const items = (d.product_information && d.product_information.items) || [];
+  const it = items.find((x) => x && x.item_type === type);
+  const t = it && String(it.displayable_text || "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").trim();
+  return t || null;
+}
 const takealotApiUrl = (plid) => `https://api.takealot.com/rest/v-1-14-0/product-details/PLID${plid}?platform=desktop&display_credit=false`;
 async function takealotApi(plid, agent, verifiedHost) {
   const r = await fetchStore(takealotApiUrl(plid), { ...(agent || { "user-agent": UA }), accept: "application/json" }, 12000, verifiedHost);
@@ -527,7 +533,10 @@ async function takealotApi(plid, agent, verifiedHost) {
   if (!it) return { error: "Takealot shows no offer for this product right now (maybe out of stock)." };
   const price = parsePrice(it.price), was = parsePrice(it.listing_price);
   const img = d.gallery && d.gallery.images && d.gallery.images[0];
-  return { price, was: was && price && was > price ? was : null, currency: "ZAR", title: (d.core && d.core.title) || d.title, image: img ? img.replace("{size}", "pdpxl") : null, source: "takealot-api", gtin: takealotBarcode(d), brand: (d.core && d.core.brand) || undefined };
+  const gtin = takealotBarcode(d), model = takealotAttr(d, "model_number");
+  // "Model" is often just the barcode again; keep it only when it is a real model number.
+  const mpn = model && /[a-z]/i.test(model) && model.length <= 40 ? model.replace(/\\/g, "") : undefined;
+  return { price, was: was && price && was > price ? was : null, currency: "ZAR", title: (d.core && d.core.title) || d.title, image: img ? img.replace("{size}", "pdpxl") : null, source: "takealot-api", gtin, mpn, brand: (d.core && d.core.brand) || undefined };
 }
 
 async function getCurrent(canonInfo, origUrl, verifiedHost, agent) {
@@ -899,7 +908,7 @@ export default {
       if (mIsStatsHost(url, env)) return await statsApp(req, env, url, false);
       if (mIsDevStats(req, url, env)) return await statsApp(req, env, url, true);
       if (req.method === "OPTIONS") return new Response(null, { headers: { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST", "access-control-allow-headers": "content-type" } });
-      if (/^\/api\/(check|archive|snap|others|verdict|request|alert)$/.test(url.pathname)) { const g = apiGuard(req); if (g) return g; }
+      if (/^\/api\/(check|archive|snap|others|compare|compare\/shop|verdict|request|alert)$/.test(url.pathname)) { const g = apiGuard(req); if (g) return g; }
       if (url.pathname === "/api/request") return statsTap(req, env, ctx, "request", await apiRequest(req, env, ctx));
       if (url.pathname === "/api/m") return await statsBeacon(req, env, ctx);
       if (url.pathname === "/api/e2e/stats-probe") return await statsProbe(req, env);
@@ -912,7 +921,9 @@ export default {
       if (url.pathname === "/api/daily-status") return await apiDailyStatus(env);
       if (url.pathname === "/api/config") return json({ wall: env.WALL === "on", alerts: alertsOn(env), min_judged: WALL_MIN_JUDGED, turnstile: turnstileOn(env) ? env.TURNSTILE_SITEKEY : null }, 200, { "cache-control": "public, max-age=300" });
       if (url.pathname === "/api/verdict") return await apiVerdict(req, env);
-      if (url.pathname === "/api/others") return statsTap(req, env, ctx, "others", await apiOthers(req, env));
+      if (url.pathname === "/api/compare") return statsTap(req, env, ctx, "compare", await apiCompare(req, env));
+      if (url.pathname === "/api/compare/shop") return statsTap(req, env, ctx, "compare_shop", await apiCompareShop(req, env, ctx));
+      if (url.pathname === "/api/others") return await apiOthersCompat(req, env);
       if (env.WALL !== "on" && (url.pathname === "/wall" || url.pathname === "/api/wall" || url.pathname === "/api/stats")) return url.pathname === "/wall" ? Response.redirect(url.origin + "/", 302) : json({ error: "off" }, 404);
       if (url.pathname === "/api/wall") return json(await wallData(env), 200, { "cache-control": "public, max-age=300" });
       if (url.pathname === "/api/stats") { const w = await wallData(env); return json({ fake_total: w.fake_total }, 200, { "cache-control": "public, max-age=300" }); }
