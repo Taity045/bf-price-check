@@ -366,7 +366,7 @@ Dashboard: **https://stats.veldwire.com** (owner only). It shows the last 7, 30 
 | Clicks | `navigator.sendBeacon("/api/m", name)` on Share (and WhatsApp, Copy link, More apps), Save, opening another shop's offer (compare), Request a shop, Saved list, Shops list, example links. Only the button name is sent. |
 | Events | Shop requests sent, compare searches and matches, shared links opened (`/?u=`). |
 
-No cookies, no local storage, no tracking library, no raw IP addresses, no full URLs from other sites. The site's Privacy page says this in plain words. Counting runs after the answer is sent (`ctx.waitUntil`), so pages are not slower: one D1 write batch per page view. D1 was chosen over Workers Analytics Engine because the worker can read D1 directly; Analytics Engine needs a separate API token to query.
+No cookies, no local storage, no tracking library, no raw IP addresses, no full URLs from other sites. The site's short Privacy page sums this up for visitors. Counting runs after the answer is sent (`ctx.waitUntil`), so pages are not slower: one D1 write batch per page view. D1 was chosen over Workers Analytics Engine because the worker can read D1 directly; Analytics Engine needs a separate API token to query.
 
 **Access control (fail closed).** `stats.veldwire.com` is meant to sit behind Cloudflare Access. The worker also checks the `Cf-Access-Jwt-Assertion` header on every request: RS256 signature against the team's public keys (`https://<team>.cloudflareaccess.com/cdn-cgi/access/certs`, cached for an hour), issuer, audience (`ACCESS_AUD`), expiry, and that the email is the owner's (`OWNER_EMAIL`, or `STATS_ALLOWED_EMAILS`). Anything missing or wrong = 403. Until `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` are set, everyone gets 403. The dashboard is only served on that host; the main site and workers.dev never serve it.
 
@@ -383,4 +383,6 @@ No cookies, no local storage, no tracking library, no raw IP addresses, no full 
 
 ## Privacy summary
 
-Full text at `/privacy`. We keep product links that people check and the prices we read; shop requests (shop, link, and an email only if given); price alerts when they are on; a hash of the IP address for rate limits; daily stats totals (visits, checks, button names, country, device, referring domain), with visitors counted by a hash that uses a salt deleted every day. Saved products, stats and badges stay in the browser. No ads, no ad cookies, no sale of data. The site runs on Cloudflare (Web Analytics without cookies; Turnstile when it is set up).
+`/privacy` is three short lines for friends and family, not a legal page: we save product links and prices for price history; we do not save who you are (no accounts, no names, no tracking cookies); we keep an email only if someone types it into a form.
+
+Full detail of what the code stores: product links that people check and the prices we read; shop requests (shop, link, and an email only if given) with a hash of the IP address; price alerts when they are on; daily stats totals (visits, checks, button names, country, device, referring domain), with visitors counted by a hash that uses a salt deleted every day. Saved products, stats and badges stay in the browser. The site runs on Cloudflare (Web Analytics without cookies; Turnstile when it is set up). Keep the page text in step with this list.

@@ -72,6 +72,21 @@ for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`h
   await p.context().close();
 });
 
+// 1b. privacy page: short and friendly, on desktop and phone
+for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`privacy ${name}`, async () => {
+  const p = await open(o, { fake: false });
+  const res = await p.goto(BASE + "/privacy", { waitUntil: "networkidle" });
+  const txt = (await p.textContent("#privacyView")).replace(/\s+/g, " ").trim();
+  ok(`privacy ${name}: HTTP 200 and visible`, res.status() === 200 && await p.isVisible("#privacyView"), res.status());
+  ok(`privacy ${name}: three short lines or fewer, no sub-headings`, (await p.$$("#privacyView li")).length <= 3 && !(await p.$("#privacyView h2")) && txt.length < 400, txt.length);
+  ok(`privacy ${name}: says no accounts and no names`, /no accounts, no names/.test(txt), txt);
+  ok(`privacy ${name}: no email address shown`, !/@[a-z0-9-]+\.[a-z]/i.test(txt), txt);
+  ok(`privacy ${name}: no sideways scroll`, await noSideScroll(p));
+  ok(`privacy ${name}: no JS errors`, p._errs.length === 0, p._errs.join(" | "));
+  await p.screenshot({ path: `${SHOTS}/privacy-${name}.png`, fullPage: true });
+  await p.context().close();
+});
+
 // 2. link box errors (checked in the page, before any request)
 await step("link box errors", async () => {
   const p = await open(mobile);
