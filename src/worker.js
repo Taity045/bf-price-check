@@ -33,7 +33,9 @@ const tsToMs = (ts) => Date.UTC(+ts.slice(0,4), +ts.slice(4,6)-1, +ts.slice(6,8)
 const stripWww = (h) => h.replace(/^www\d?\./, "").replace(/^m\./, "");
 
 // South African stores that use a .com (or other) domain.
-const HOST_CUR = { "cyclelab.com": "ZAR", "takealot.com": "ZAR", "bash.com": "ZAR", "superbalist.com": "ZAR", "mrp.com": "ZAR", "pepstores.com": "ZAR", "loot.co.za": "ZAR", "dionwired.com": "ZAR", "hificorp.com": "ZAR", "evetech.com": "ZAR", "builders.com": "ZAR", "sportsmanswarehouse.com": "ZAR", "makro.com": "ZAR", "game.com": "ZAR", "zando.com": "ZAR", "netflorist.com": "ZAR" };
+const HOST_CUR = { "cyclelab.com": "ZAR", "takealot.com": "ZAR", "bash.com": "ZAR", "superbalist.com": "ZAR", "mrp.com": "ZAR", "pepstores.com": "ZAR", "loot.co.za": "ZAR", "dionwired.com": "ZAR", "hificorp.com": "ZAR", "evetech.com": "ZAR", "builders.com": "ZAR", "sportsmanswarehouse.com": "ZAR", "makro.com": "ZAR", "game.com": "ZAR", "zando.com": "ZAR", "netflorist.com": "ZAR", "kurtgeiger.com": "GBP" };
+// Shop sites that set the price by the visitor's country (no fixed currency): the page asks which currency.
+const GEO_PRICED_HOSTS = ["global.kurtgeiger.com"];
 function tldCurrency(host) {
   const h = stripWww(String(host || "").toLowerCase());
   if (HOST_CUR[h]) return HOST_CUR[h];
@@ -1038,7 +1040,7 @@ async function apiCheck(req, env, ctx) {
     history_days: HISTORY_DAYS, verdict,
     ids: { gtin: current.gtin || null, mpn: current.mpn || null },
     shop: (() => { const x = shopFor(v.url.href); return x ? { name: x.name } : null; })(),
-    blocked_shop: (() => { const x = shopFor(v.url.href) ? null : blockedShopFor(v.url.href); return x ? { name: x.name } : null; })(),
+    blocked_shop: (() => { const x = shopFor(v.url.href) ? null : blockedShopFor(v.url.href); return x ? (GEO_PRICED_HOSTS.includes(host) ? { name: x.name, geo: true } : { name: x.name }) : null; })(),
   });
 }
 

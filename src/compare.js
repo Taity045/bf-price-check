@@ -21,7 +21,7 @@ const CMP_SHOP_PER_MIN = 30;          // searches per shop per minute, all visit
 const CMP_SLOW_PER_MIN = 6;           // shops whose robots.txt asks for 10 s between requests (slow: true)
 const CMP_PER_IP_PER_MIN = 240;       // shop calls per visitor per minute (one check makes up to ~20)
 // Bump when the matching rules or identity reading change, so cached answers from older rules are not shown.
-const CMP_VER = "v9";
+const CMP_VER = "v10";
 const CMP_MAX_SEARCHES = 2;           // searches per shop per product
 const CMP_MAX_DETAILS = 3;            // product-detail reads per shop per product (to read barcodes)
 
@@ -93,8 +93,10 @@ const CMP_NOT_SEARCHED = {
     { name: "Superdrug", hosts: ["superdrug.com"], why: "blocks" },
     { name: "Waitrose", hosts: ["waitrose.com"], why: "robots" },
     { name: "Iceland", hosts: ["iceland.co.uk"], why: "robots" },
+    { name: "Kurt Geiger", hosts: ["kurtgeiger.com"], why: "blocks", cats: ["fashion"] },   // bot check (DataDome, HTTP 403) on its pages and search
   ],
 };
+// Named for these kinds of product, unless the entry gives its own cats.
 const CMP_NOT_SEARCHED_CATS = ["groceries", "beauty", "baby"];
 // Shops' own brands: sold only at that shop, so never the same product at another shop.
 const CMP_OWN_BRAND = /^(woolworths|ww|pnp|pick n pay|no name|pnp no name|checkers|checkers housebrand|housebrand|ritebrand|shoprite|simple truth|forage (?:and|&) feast|clicks|clicks expert|dis ?chem|morrisons|the best|morrisons the best|savers|morrisons savers|tesco|sainsburys|asda|m&s|marks (?:and|&) spencer|waitrose|essential waitrose|boots|superdrug)$/;
@@ -321,7 +323,7 @@ function cmpPlan(id, sourceHost, currency) {
   const shops = [], skipped = [];
   // grocery shops and pharmacies we can't search, named on the result (not the shop this page is from)
   const h = stripWww(String(sourceHost || "").toLowerCase());
-  const notSearched = CMP_NOT_SEARCHED_CATS.includes(cat) ? (CMP_NOT_SEARCHED[currency] || []).filter((x) => !x.hosts.some((d) => h === d || h.endsWith("." + d))).map(({ name, why }) => ({ name, why })) : [];
+  const notSearched = (CMP_NOT_SEARCHED[currency] || []).filter((x) => cat && (x.cats || CMP_NOT_SEARCHED_CATS).includes(cat) && !x.hosts.some((d) => h === d || h.endsWith("." + d))).map(({ name, why }) => ({ name, why }));
   // a shop's own brand (PnP, Checkers Housebrand, Woolworths, Clicks…) is sold only there: nothing to compare
   if (!id.gtin && cmpOwnBrand(id.brand, id.title)) return { category: cat, noun: cat ? CMP_CAT_NOUN[cat] || null : null, shopNoun: null, specialists: 0, shops: [], skipped: [], notSearched: [], ownBrand: true };
   for (const s of CMP_SHOPS) {

@@ -179,6 +179,16 @@
    ],
    "live_status": "works",
    "price_method": "json-ld"
+  },
+  {
+   "name": "Kurt Geiger",
+   "country": "UK",
+   "domains": [
+    "kurtgeiger.com"
+   ],
+   "live_status": "blocked",
+   "price_method": null,
+   "blocked_by": "DataDome bot check (HTTP 403, captcha page) for the Worker and the box on 2026-11-25, on www.kurtgeiger.com and global.kurtgeiger.com, product pages and search."
   }
  ]
 }
