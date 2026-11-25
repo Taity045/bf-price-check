@@ -10,6 +10,10 @@ on:
         description: "Delete the listed rows (false = list only)"
         type: boolean
         default: false
+      multi_urls:
+        description: "Optional: space-separated product links; list/delete compare rows saved for one option of a page with several prices"
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -22,9 +26,10 @@ jobs:
         env:
           ARCHIVE_LOAD_KEY: ${{ secrets.ARCHIVE_LOAD_KEY }}
           APPLY: ${{ inputs.apply }}
+          MULTI: ${{ inputs.multi_urls }}
         run: |
           if [ -z "$ARCHIVE_LOAD_KEY" ]; then echo "::error::ARCHIVE_LOAD_KEY secret is not set"; exit 1; fi
-          body='{"apply":false}'; [ "$APPLY" = "true" ] && body='{"apply":true}'
+          body=$(python3 -c 'import json,os; b={"apply": os.environ["APPLY"] == "true"}; m=os.environ.get("MULTI","").split(); b.update({"multi_urls": m} if m else {}); print(json.dumps(b))')
           code=$(curl -sS -o out.json -w '%{http_code}' -X POST -A "bf-price-check-maintenance/1.0" \
             -H "authorization: Bearer $ARCHIVE_LOAD_KEY" -H "content-type: application/json" \
             --data "$body" https://eish.veldwire.com/api/admin/price-fix)

@@ -92,6 +92,16 @@ describe("compare API with mocked shops", () => {
     assert.equal(d.status, "none");
     assert.equal(d.match, null);
   });
+  test("an option picked on a page with several prices is shown but not saved to that page's history", async (t) => {
+    const multi = { title: "Apple AirPods 4", handle: "apple-airpods-4-range", url: "/products/apple-airpods-4-range", price: "1999.00", price_min: "1999.00", price_max: "3899.00", available: true, vendor: "Apple" };
+    const { get, db } = setup(t, [[/\/robots\.txt$/, () => new Response("", { status: 404 })], [/computermania\.co\.za\/search\/suggest\.json/, () => suggest([multi])],
+      [/apple-airpods-4-range\.js/, () => json({ variants: [{ title: "Standard", price: 199900, barcode: "195949688584", available: true }, { title: "Active Noise Cancellation", price: 389900, barcode: "195949688591", available: true }] })]]);
+    const d = await (await get(`/api/compare/shop?url=${encodeURIComponent(CANON)}&shop=computermania`)).json();
+    assert.equal(d.status, "match");
+    assert.equal(d.match.level, "barcode");
+    assert.equal(d.match.price, 1999);
+    assert.equal(db.prepare("SELECT count(*) n FROM checks WHERE url = ?").get("https://computermania.co.za/products/apple-airpods-4-range").n, 0);
+  });
   test("a shop that blocks us is reported, not guessed", async (t) => {
     const { get } = setup(t, routes());
     const d = await (await get(`/api/compare/shop?url=${encodeURIComponent(CANON)}&shop=matrix`)).json();

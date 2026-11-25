@@ -1879,6 +1879,7 @@ async function apiPriceFix(req, env) {
   if (!auth.startsWith("Bearer ") || !timingSafeEq(auth.slice(7), env.ARCHIVE_LOAD_KEY)) return json({ error: "not found" }, 404);
   if (req.method !== "POST") return json({ error: "method not allowed" }, 405);
   let body = {}; try { body = JSON.parse((await req.text()) || "{}"); } catch { return json({ error: "bad json" }, 400); }
+  if (Array.isArray(body.multi_urls)) return priceFixMulti(env, body.multi_urls, body.apply === true);
   const { bad, kept } = await priceFixPlan(env);
   const urls = [...new Set(bad.map((r) => r.url))];
   const out = { before: new Date(PRICE_FIX_BEFORE).toISOString(), rows: bad.map((r) => ({ id: r.id, url: r.url, at: new Date(r.ts).toISOString(), price: r.price, currency: r.currency, source: r.source, via: r.via, why: r.why, after: r.after || null, ratio_after: r.ratio_after || null })), products: urls.length, kept_no_evidence: kept, applied: false };
@@ -1897,6 +1898,31 @@ async function apiPriceFix(req, env) {
   // compare answers that used a Lakeland page as the other shop
   del.cache += (await env.DB.prepare("DELETE FROM cache WHERE k LIKE 'cmp-%:lakeland:%'").run()).meta.changes || 0;
   return json({ ...out, applied: true, deleted: del });
+}
+
+// Compare rows saved for one option of a page that sells several options at different prices (before
+// cmpSaveHistory skipped them): the page's own check reads its default option, so the two mixed in one
+// history (Edgars Sauvage 100ml R3 245 vs the page's default 60ml R2 355). Each URL is checked again with
+// the shop's product data; only compare-* rows go, the page's own reads stay.
+async function priceFixMulti(env, list, apply) {
+  const urls = [...new Set(list.map(String))].slice(0, 20);
+  const out = { urls: [], applied: apply, deleted: { checks: 0, verdicts: 0, cache: 0 } };
+  for (const u of urls) {
+    let sh = null, h = null; try { sh = cmpShopForHost(new URL(u).hostname.toLowerCase()); h = new URL(u).pathname.match(/\/products\/([^/?#]+)/); } catch {}
+    const one = { url: u, prices: null, multi: false, rows: [] };
+    if (sh && sh.kind === "shopify" && h) { try { const d = await cmpShopifyJson(sh, `${sh.base}/products/${h[1]}.js`); one.prices = (d.variants || []).map((v) => [v.title, v.price / 100]); } catch {} }
+    one.multi = !!one.prices && new Set(one.prices.map((x) => x[1])).size > 1;
+    if (one.multi) {
+      one.rows = (await env.DB.prepare("SELECT id, ts, price, currency, source FROM checks WHERE url = ? AND source LIKE 'compare-%' ORDER BY ts").bind(u).all()).results.map((r) => ({ ...r, at: new Date(r.ts).toISOString() }));
+      if (apply && one.rows.length) {
+        out.deleted.checks += (await env.DB.prepare("DELETE FROM checks WHERE url = ? AND source LIKE 'compare-%'").bind(u).run()).meta.changes || 0;
+        out.deleted.verdicts += (await env.DB.prepare("DELETE FROM verdicts WHERE url = ?").bind(u).run()).meta.changes || 0;
+        out.deleted.cache += (await env.DB.prepare("DELETE FROM cache WHERE (k LIKE 'check-%' OR k LIKE 'og-%') AND (substr(k, -length(?1)) = ?1 OR instr(k, ':' || ?1 || ':') > 0)").bind(u).run()).meta.changes || 0;
+      }
+    }
+    out.urls.push(one);
+  }
+  return json(out);
 }
 
 // ---------- Daily price saving ----------
@@ -2286,7 +2312,7 @@ const CMP_SEARCH_TTL = 6 * 3600e3;    // one search on one shop (shared by all p
 const CMP_SHOP_PER_MIN = 30;          // searches per shop per minute, all visitors together
 const CMP_PER_IP_PER_MIN = 240;       // shop calls per visitor per minute (one check makes up to ~20)
 // Bump when the matching rules or identity reading change, so cached answers from older rules are not shown.
-const CMP_VER = "v5";
+const CMP_VER = "v6";
 const CMP_MAX_SEARCHES = 2;           // searches per shop per product
 const CMP_MAX_DETAILS = 3;            // product-detail reads per shop per product (to read barcodes)
 
@@ -2728,6 +2754,8 @@ function cmpApplyDetail(id, c, d) {
     }
     if (!pick && d.variants.length === 1) pick = d.variants[0];
     if (pick) {
+      // one option of a page that sells several at different prices: the page's link alone does not say which
+      c.multi = new Set(d.variants.map((v) => v.price)).size > 1;
       if (pick.title && !(" " + cmpNorm(c.title) + " ").includes(" " + cmpNorm(pick.title) + " ")) c.title = c.title + " " + pick.title;
       if (pick.price) c.price = pick.price;
       c.gtins = [pick.barcode].filter(Boolean);
@@ -2819,7 +2847,7 @@ async function cmpSearchShop(env, shop, id) {
         } catch {}
       }
       if (!m.level || !c.price || c.range) continue;
-      const r = { shop: shop.id, name: shop.name, title: c.title, price: c.price, was: c.was && c.was > c.price ? c.was : null, currency: shop.cur, url: c.url, in_stock: c.in_stock !== false, level: m.level, code: m.code || null };
+      const r = { shop: shop.id, name: shop.name, title: c.title, price: c.price, was: c.was && c.was > c.price ? c.was : null, currency: shop.cur, url: c.url, in_stock: c.in_stock !== false, level: m.level, code: m.code || null, multi: !!c.multi };
       if (!best || CMP_RANK[r.level] > CMP_RANK[best.level] || (CMP_RANK[r.level] === CMP_RANK[best.level] && (r.in_stock && !best.in_stock || (r.in_stock === best.in_stock && r.price < best.price)))) best = r;
     }
     if (best && best.level !== "name") break;
@@ -2911,6 +2939,9 @@ async function apiCompareShop(req, env, ctx) {
 // A matched price is a real price at that shop: save it into that page's history (and keep the page
 // on the daily re-check list when we are sure it is the same product).
 async function cmpSaveHistory(env, m) {
+  // A size or colour picked on a page with several prices is not that page's price: a later check of the
+  // link reads the page's default option, and the two would mix in one history. Show it, do not save it.
+  if (m.multi) return;
   const v = validateUrl(m.url); if (v.error) return;
   const ci = canonicalize(v.url);
   const cur = { status: "ok", checked_at: now(), price: m.price, was: m.was || null, currency: m.currency, source: "compare-" + m.shop, title: m.title };
