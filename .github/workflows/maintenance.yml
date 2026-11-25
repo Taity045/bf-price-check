@@ -1,0 +1,33 @@
+name: Price fix (geo-priced reads before PR #14)
+
+# One-off maintenance: lists (and with apply=true deletes) price rows that were read for a visitor abroad
+# before PR #14: Lakeland without UK VAT, Escentual and other shops in the wrong currency. See
+# apiPriceFix in src/archive.js. Uses the archive load key; the key is never printed.
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Delete the listed rows (false = list only)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  price-fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Price fix
+        env:
+          ARCHIVE_LOAD_KEY: ${{ secrets.ARCHIVE_LOAD_KEY }}
+          APPLY: ${{ inputs.apply }}
+        run: |
+          if [ -z "$ARCHIVE_LOAD_KEY" ]; then echo "::error::ARCHIVE_LOAD_KEY secret is not set"; exit 1; fi
+          body='{"apply":false}'; [ "$APPLY" = "true" ] && body='{"apply":true}'
+          code=$(curl -sS -o out.json -w '%{http_code}' -X POST -A "bf-price-check-maintenance/1.0" \
+            -H "authorization: Bearer $ARCHIVE_LOAD_KEY" -H "content-type: application/json" \
+            --data "$body" https://eish.veldwire.com/api/admin/price-fix)
+          echo "HTTP $code"; python3 -m json.tool out.json
+          { echo '### Price fix'; echo '```json'; python3 -m json.tool out.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          [ "$code" = "200" ]
