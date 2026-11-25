@@ -563,16 +563,9 @@ async function cmpSearchShop(env, shop, id) {
   return { status: "none", candidates };
 }
 
-async function cmpShopBusy(env, shopId) {
-  const win = Math.floor(now() / 60000);
-  const r = await env.DB.prepare("INSERT INTO rl (k, n, win) VALUES (?, 1, ?) ON CONFLICT(k) DO UPDATE SET n = CASE WHEN rl.win = excluded.win THEN rl.n + 1 ELSE 1 END, win = excluded.win RETURNING n").bind("cmpshop:" + shopId, win).first();
-  return r && r.n > CMP_SHOP_PER_MIN;
-}
-async function cmpIpLimited(env, ip) {
-  const win = Math.floor(now() / 60000);
-  const r = await env.DB.prepare("INSERT INTO rl (k, n, win) VALUES (?, 1, ?) ON CONFLICT(k) DO UPDATE SET n = CASE WHEN rl.win = excluded.win THEN rl.n + 1 ELSE 1 END, win = excluded.win RETURNING n").bind("cmp:" + ip, win).first();
-  return r && r.n > CMP_PER_IP_PER_MIN;
-}
+// Rate Limiting API on Cloudflare, D1 table `rl` without it (see overLimit in worker.js).
+const cmpShopBusy = (env, shopId) => overLimit(env, "cmpshop", shopId, CMP_SHOP_PER_MIN);
+const cmpIpLimited = (env, ip) => overLimit(env, "cmp", ip, CMP_PER_IP_PER_MIN);
 
 // The identity of a checked product (cached). For Shopify shops the product's own .js gives the barcode.
 async function cmpIdentityFor(env, canon) {

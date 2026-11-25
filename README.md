@@ -259,7 +259,7 @@ Older prices = archive points + saved checks older than 24 h, last 365 days.
 - Only `http(s)` URLs, standard ports, no credentials, no IP-address hosts, no `localhost`/`.local`/`.internal` etc.
 - Store requests, redirects and scheduled checks require public DNS answers (DoH: 1.1.1.1, then dns.google). Every A/AAAA address must be public. **Fails closed:** if no resolver answers, `resolvesPublic` returns `null`; `/api/check` answers 503 "We could not look up the shop's address. Try again in a minute.", redirects are refused, and the daily cron retries in 1 hour without counting a product failure. NXDOMAIN (no such name) passes the DNS step, and the fetch then fails.
 - Max 4 MB per page, 15 s timeout for stores, 25 s for the archive.
-- Rate limit (D1, per IP per minute): 20 checks, 120 archive-copy reads, 40 verdict saves, 240 other-shop lookups (one per shop), 5 shop requests. Each shop also gets at most 30 searches a minute from the whole site.
+- Rate limit (per IP per minute): 20 checks, 120 archive-copy reads, 40 verdict saves, 240 other-shop lookups (one per shop), 5 shop requests. Each shop also gets at most 30 searches a minute from the whole site. On Cloudflare these use the Workers Rate Limiting API (`[[ratelimits]]` bindings `RL_*` in `wrangler.toml`). Its counts are kept per Cloudflare location and are approximate, and it writes nothing to D1. Without the bindings (unit tests) the code uses the D1 table `rl`. If the limiter fails, the request is allowed.
 - Archive reads require a tracked product and an original URL and timestamp selected from its Wayback index results. Product-defining query parameters are part of the match.
 - Max 1,000 tracked products from people's checks (plus up to 300 seed products); products not viewed for 120 days are dropped from the daily list.
 
@@ -279,9 +279,16 @@ Preview bots (WhatsApp, facebookexternalhit, etc.) can always fetch pages and sh
 | `verdicts` | Latest verdict per product (wall, scores, share card) |
 | `alerts` | Price alerts (off) |
 | `shop_requests` | "Ask us to add a shop" requests (made on first use) |
-| `cache`, `rl` | Cache and rate-limit counters |
+| `cache` | Cache (shop pages, robots.txt, archive lists). The same value is not written again while more than half its time to live is left |
+| `rl` | Rate-limit counters, only when the `RL_*` bindings are missing, plus the daily mail counter |
 | `m_counts` | Stats: daily totals only (`day`, `metric`, `key`, `n`). Kept 400 days |
 | `m_seen`, `m_salt` | Stats: today's salted visitor hashes and today's random salt. Deleted at the start of each new day |
+
+### Rows written (D1 Free plan: 100,000 a day)
+
+D1 counts every row and every index entry a query changes, and the count resets at 00:00 UTC (02:00 SAST). If the limit is used up, D1 refuses writes until the reset. A check still answers then: the price we read is shown, but it is not cached or saved (`tracked: false`), and the Worker logs one `{"d1_write_failed": ...}` line a minute. Stats writes fail silently.
+
+See where writes come from (GraphQL Analytics API, dataset `d1QueriesAdaptiveGroups`, `sum { rowsWritten }` by `dimensions.query`, filtered by `databaseId` and `datetime`), or Cloudflare dashboard → D1 → `bf-price-check-db` → Metrics.
 
 Read shop requests:
 
