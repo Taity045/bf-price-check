@@ -56,3 +56,26 @@ describe("price fix: geo-priced reads saved before #14", () => {
     assert.equal(again.rows.length, 0);
   });
 });
+describe("price fix: compare rows saved for one option of a multi-price page", () => {
+  test("only compare rows at pages whose options have different prices go", async (t) => {
+    const { env } = testDb(t);
+    env.ARCHIVE_LOAD_KEY = KEY;
+    const ED = "https://www.edgars.co.za/products/sauvage-eau-de-parfum-c29481813";
+    const ONE = "https://www.edgars.co.za/products/one-size";
+    t.mock.method(globalThis, "fetch", async (raw) => {
+      const u = new URL(raw);
+      if (u.pathname.endsWith("/robots.txt")) return new Response("", { status: 404 });
+      if (u.pathname.endsWith("sauvage-eau-de-parfum-c29481813.js")) return Response.json({ variants: [{ title: "60ml", price: 235500 }, { title: "100ml", price: 324500 }] });
+      if (u.pathname.endsWith("one-size.js")) return Response.json({ variants: [{ title: "Default Title", price: 10000 }] });
+      return new Response("no", { status: 404 });
+    });
+    const ins = (id, url, price, source) => env.DB.prepare("INSERT INTO checks (id, url, ts, price, currency, source) VALUES (?, ?, ?, ?, 'ZAR', ?)").bind(id, url, Date.now(), price, source).run();
+    await ins(1, ED, 3245, "compare-edgars"); await ins(2, ED, 2355, "json-ld"); await ins(3, ONE, 100, "compare-edgars");
+    const dry = await (await W.apiPriceFix(req({ multi_urls: [ED, ONE] }), env)).json();
+    assert.deepEqual(dry.urls.map((x) => [x.multi, x.rows.map((r) => r.id)]), [[true, [1]], [false, []]]);
+    assert.equal((await env.DB.prepare("SELECT count(*) n FROM checks").first()).n, 3);
+    const done = await (await W.apiPriceFix(req({ multi_urls: [ED, ONE], apply: true }), env)).json();
+    assert.equal(done.deleted.checks, 1);
+    assert.deepEqual((await env.DB.prepare("SELECT id FROM checks ORDER BY id").all()).results.map((r) => r.id), [2, 3]);
+  });
+});

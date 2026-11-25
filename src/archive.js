@@ -236,6 +236,7 @@ async function apiPriceFix(req, env) {
   if (!auth.startsWith("Bearer ") || !timingSafeEq(auth.slice(7), env.ARCHIVE_LOAD_KEY)) return json({ error: "not found" }, 404);
   if (req.method !== "POST") return json({ error: "method not allowed" }, 405);
   let body = {}; try { body = JSON.parse((await req.text()) || "{}"); } catch { return json({ error: "bad json" }, 400); }
+  if (Array.isArray(body.multi_urls)) return priceFixMulti(env, body.multi_urls, body.apply === true);
   const { bad, kept } = await priceFixPlan(env);
   const urls = [...new Set(bad.map((r) => r.url))];
   const out = { before: new Date(PRICE_FIX_BEFORE).toISOString(), rows: bad.map((r) => ({ id: r.id, url: r.url, at: new Date(r.ts).toISOString(), price: r.price, currency: r.currency, source: r.source, via: r.via, why: r.why, after: r.after || null, ratio_after: r.ratio_after || null })), products: urls.length, kept_no_evidence: kept, applied: false };
@@ -254,4 +255,29 @@ async function apiPriceFix(req, env) {
   // compare answers that used a Lakeland page as the other shop
   del.cache += (await env.DB.prepare("DELETE FROM cache WHERE k LIKE 'cmp-%:lakeland:%'").run()).meta.changes || 0;
   return json({ ...out, applied: true, deleted: del });
+}
+
+// Compare rows saved for one option of a page that sells several options at different prices (before
+// cmpSaveHistory skipped them): the page's own check reads its default option, so the two mixed in one
+// history (Edgars Sauvage 100ml R3 245 vs the page's default 60ml R2 355). Each URL is checked again with
+// the shop's product data; only compare-* rows go, the page's own reads stay.
+async function priceFixMulti(env, list, apply) {
+  const urls = [...new Set(list.map(String))].slice(0, 20);
+  const out = { urls: [], applied: apply, deleted: { checks: 0, verdicts: 0, cache: 0 } };
+  for (const u of urls) {
+    let sh = null, h = null; try { sh = cmpShopForHost(new URL(u).hostname.toLowerCase()); h = new URL(u).pathname.match(/\/products\/([^/?#]+)/); } catch {}
+    const one = { url: u, prices: null, multi: false, rows: [] };
+    if (sh && sh.kind === "shopify" && h) { try { const d = await cmpShopifyJson(sh, `${sh.base}/products/${h[1]}.js`); one.prices = (d.variants || []).map((v) => [v.title, v.price / 100]); } catch {} }
+    one.multi = !!one.prices && new Set(one.prices.map((x) => x[1])).size > 1;
+    if (one.multi) {
+      one.rows = (await env.DB.prepare("SELECT id, ts, price, currency, source FROM checks WHERE url = ? AND source LIKE 'compare-%' ORDER BY ts").bind(u).all()).results.map((r) => ({ ...r, at: new Date(r.ts).toISOString() }));
+      if (apply && one.rows.length) {
+        out.deleted.checks += (await env.DB.prepare("DELETE FROM checks WHERE url = ? AND source LIKE 'compare-%'").bind(u).run()).meta.changes || 0;
+        out.deleted.verdicts += (await env.DB.prepare("DELETE FROM verdicts WHERE url = ?").bind(u).run()).meta.changes || 0;
+        out.deleted.cache += (await env.DB.prepare("DELETE FROM cache WHERE (k LIKE 'check-%' OR k LIKE 'og-%') AND (substr(k, -length(?1)) = ?1 OR instr(k, ':' || ?1 || ':') > 0)").bind(u).run()).meta.changes || 0;
+      }
+    }
+    out.urls.push(one);
+  }
+  return json(out);
 }
