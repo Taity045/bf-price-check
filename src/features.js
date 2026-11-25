@@ -102,7 +102,11 @@ async function saveVerdict(env, canon, title, j) {
 function verdictStmt(env, canon, title, j) {
   const host = stripWww(new URL(canon).hostname.toLowerCase());
   return env.DB.prepare(`INSERT INTO verdicts (url, host, title, verdict, price, was, currency, low, med, high, high90, n, gap, archived, low_t, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(url) DO UPDATE SET host = excluded.host, title = COALESCE(excluded.title, verdicts.title), verdict = excluded.verdict, price = excluded.price, was = excluded.was, currency = excluded.currency, low = excluded.low, med = excluded.med, high = excluded.high, high90 = excluded.high90, n = excluded.n, gap = excluded.gap, archived = excluded.archived, low_t = excluded.low_t, updated_at = excluded.updated_at`)
+    ON CONFLICT(url) DO UPDATE SET host = excluded.host, title = COALESCE(excluded.title, verdicts.title), verdict = excluded.verdict, price = excluded.price, was = excluded.was, currency = excluded.currency, low = excluded.low, med = excluded.med, high = excluded.high, high90 = excluded.high90, n = excluded.n, gap = excluded.gap, archived = excluded.archived, low_t = excluded.low_t, updated_at = excluded.updated_at
+    WHERE verdicts.verdict IS NOT excluded.verdict OR verdicts.price IS NOT excluded.price OR verdicts.was IS NOT excluded.was OR verdicts.currency IS NOT excluded.currency
+      OR verdicts.low IS NOT excluded.low OR verdicts.med IS NOT excluded.med OR verdicts.high IS NOT excluded.high OR verdicts.high90 IS NOT excluded.high90
+      OR verdicts.n IS NOT excluded.n OR verdicts.gap IS NOT excluded.gap OR verdicts.archived IS NOT excluded.archived OR verdicts.low_t IS NOT excluded.low_t
+      OR verdicts.host IS NOT excluded.host OR (excluded.title IS NOT NULL AND verdicts.title IS NOT excluded.title)`)
     .bind(canon, host, title || null, j.verdict, j.price ?? null, j.was ?? null, j.currency ?? null, j.low ?? null, j.med ?? null, j.high ?? null, j.high90 ?? null, j.n, j.gap ?? null, j.archived, j.low_t ?? null, now());
 }
 async function latestCurrent(env, canon) {

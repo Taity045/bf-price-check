@@ -279,7 +279,7 @@ Preview bots (WhatsApp, facebookexternalhit, etc.) can always fetch pages and sh
 | `verdicts` | Latest verdict per product (wall, scores, share card) |
 | `alerts` | Price alerts (off) |
 | `shop_requests` | "Ask us to add a shop" requests (made on first use) |
-| `cache` | Cache (shop pages, robots.txt, archive lists). The same value is not written again while more than half its time to live is left |
+| `cache` | Cache (shop pages, robots.txt, archive lists). `WITHOUT ROWID`, so each entry is one row written. The same value is not written again while more than half its time to live is left |
 | `rl` | Rate-limit counters, only when the `RL_*` bindings are missing, plus the daily mail counter |
 | `m_counts` | Stats: daily totals only (`day`, `metric`, `key`, `n`). Kept 400 days |
 | `m_seen`, `m_salt` | Stats: today's salted visitor hashes and today's random salt. Deleted at the start of each new day |
@@ -289,6 +289,8 @@ Preview bots (WhatsApp, facebookexternalhit, etc.) can always fetch pages and sh
 D1 counts every row and every index entry a query changes, and the count resets at 00:00 UTC (02:00 SAST). If the limit is used up, D1 refuses writes until the reset. A check still answers then: the price we read is shown, but it is not cached or saved (`tracked: false`), and the Worker logs one `{"d1_write_failed": ...}` line a minute. Stats writes fail silently.
 
 See where writes come from (GraphQL Analytics API, dataset `d1QueriesAdaptiveGroups`, `sum { rowsWritten }` by `dimensions.query`, filtered by `databaseId` and `datetime`), or Cloudflare dashboard → D1 → `bf-price-check-db` → Metrics.
+
+Writes that change nothing are skipped (every changed row and every changed index entry counts): `track()` writes nothing for a cached answer seen again within 12 hours, a verdict is written only when a value changed (`updated_at` = last change), a seed product's `last_viewed` moves at most once in 20 hours, and the daily check does not fill the check cache. Indexes that nothing reads (`idx_tracked_last`, `idx_checks_via_ts`) are dropped in `schema.sql`.
 
 Read shop requests:
 

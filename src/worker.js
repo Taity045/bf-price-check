@@ -792,7 +792,7 @@ async function fetchSnapshot(ts, orig, canon) {
 
 // ---------- D1 helpers ----------
 async function cacheGet(env, k) {
-  const r = await env.DB.prepare("SELECT v, exp FROM cache WHERE k = ?").bind(k).first();
+  const r = await env.DB.prepare("SELECT v, exp FROM cache WHERE k = ?").bind(k).first().catch(() => null);
   if (!r || r.exp < now()) return null;
   try { return JSON.parse(r.v); } catch { return null; }
 }
@@ -837,6 +837,9 @@ async function recordCheck(env, canon, cur) {
 // A product someone checked: it joins the daily price saving (seed = 0, before the seed list).
 // Its next daily check is about a day after its last live check. A check by a person also
 // restarts a product that was paused after many failed checks.
+// A cached answer seen again within 12 hours changes nothing that matters (last_viewed is only used in
+// days), so track() writes nothing then.
+const TRACK_VIEW_MS = 12 * 3600e3;
 async function track(env, canon, origUrl, cur) {
   await ensureDailySchema(env);
   const viewed = now();
@@ -852,8 +855,11 @@ async function track(env, canon, origUrl, cur) {
       seed = 0, lane = excluded.lane, host = excluded.host,
       fails = CASE WHEN excluded.fails = 0 OR tracked.next_check_at IS NULL THEN 0 ELSE tracked.fails END,
       next_check_at = CASE WHEN tracked.next_check_at IS NULL OR excluded.last_checked > COALESCE(tracked.last_checked, 0) THEN excluded.next_check_at ELSE tracked.next_check_at END
-    RETURNING url`).bind(canon, origUrl, cur.title || null, viewed, viewed, cur.checked_at, cur.status, laneFor(canon), hostKey(canon), ok ? 0 : 1, cur.checked_at + DAILY_MS, canon, MAX_TRACKED).first();
-  return !!row;
+    WHERE excluded.last_checked > COALESCE(tracked.last_checked, 0) OR tracked.last_viewed IS NULL OR tracked.last_viewed < excluded.last_viewed - ?
+      OR tracked.seed IS NOT 0 OR tracked.lane IS NULL OR tracked.next_check_at IS NULL OR tracked.orig_url IS NOT excluded.orig_url
+    RETURNING url`).bind(canon, origUrl, cur.title || null, viewed, viewed, cur.checked_at, cur.status, laneFor(canon), hostKey(canon), ok ? 0 : 1, cur.checked_at + DAILY_MS, canon, MAX_TRACKED, TRACK_VIEW_MS).first();
+  // No row back: either the list is full, or nothing new to write (D1 rows written are counted per row).
+  return !!row || !!(await env.DB.prepare("SELECT 1 AS x FROM tracked WHERE url = ?").bind(canon).first());
 }
 async function storedHistory(env, canon) {
   const since = now() - HISTORY_DAYS * 864e5;

@@ -147,10 +147,9 @@ async function ensureDailySchema(env) {
       try { await env.DB.prepare(`ALTER TABLE ${table} ADD COLUMN ${name} ${type}`).run(); } catch (e) { if (!/duplicate column/i.test(String(e && e.message || e))) throw e; }
     }
   }
-  await env.DB.batch([
-    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_tracked_due ON tracked(lane, seed, next_check_at)"),
-    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_checks_via_ts ON checks(via, ts)"),
-  ]);
+  // Only the index the daily pick needs. (idx_checks_via_ts and idx_tracked_last were dropped to save
+  // rows written: every index is one more row written per change; schema.sql drops them.)
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_tracked_due ON tracked(lane, seed, next_check_at)").run();
   dailySchemaReady = true;
 }
 // Rows written without a lane (from before daily saving, or by an older deploy during a rollout):
@@ -286,7 +285,6 @@ async function checkOne(env, job, alerts, memo, sum) {
   let j = null;
   if (ok) {
     stmts.push(checkStmt(env, row.url, cur, "daily"));
-    stmts.push(env.DB.prepare("INSERT INTO cache (k, v, exp) VALUES (?, ?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v, exp = excluded.exp").bind(LIVE_CACHE_PREFIX + row.url, JSON.stringify(cur), t + CHECK_TTL_MS));
     const hist = { checks: [...job.hist.checks, { ts: cur.checked_at, price: cur.price, was: cur.was, currency: cur.currency }], snaps: job.hist.snaps, cc: job.hist.cc || [] };
     try { j = judge(cur, hist); } catch { j = null; }
     if (j && j.verdict) stmts.push(verdictStmt(env, row.url, cur.title || row.title, j));
@@ -328,7 +326,8 @@ async function refreshSeeds(env, dept, sum) {
     SELECT ?, ?, ?, ?, ?, 0, 1, 'takealot', 'takealot.com', 0, ?, 0
     WHERE EXISTS (SELECT 1 FROM tracked WHERE url = ?) OR (SELECT COUNT(*) FROM tracked WHERE seed = 1) < ?
     ON CONFLICT(url) DO UPDATE SET last_viewed = excluded.last_viewed, title = COALESCE(tracked.title, excluded.title)
-    `).bind(s.url, s.url, s.title, t, t, t, s.url, MAX_SEEDS));
+    WHERE tracked.last_viewed IS NULL OR tracked.last_viewed < excluded.last_viewed - ? OR (tracked.title IS NULL AND excluded.title IS NOT NULL)
+    `).bind(s.url, s.url, s.title, t, t, t, s.url, MAX_SEEDS, 20 * HOUR_MS));
   const count = () => env.DB.prepare("SELECT COUNT(*) AS n FROM tracked WHERE seed = 1");
   const out = await env.DB.batch([count(), ...stmts, count()]);
   sum.seeds_added = out[out.length - 1].results[0].n - out[0].results[0].n;

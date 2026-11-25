@@ -798,7 +798,7 @@ async function fetchSnapshot(ts, orig, canon) {
 
 // ---------- D1 helpers ----------
 async function cacheGet(env, k) {
-  const r = await env.DB.prepare("SELECT v, exp FROM cache WHERE k = ?").bind(k).first();
+  const r = await env.DB.prepare("SELECT v, exp FROM cache WHERE k = ?").bind(k).first().catch(() => null);
   if (!r || r.exp < now()) return null;
   try { return JSON.parse(r.v); } catch { return null; }
 }
@@ -843,6 +843,9 @@ async function recordCheck(env, canon, cur) {
 // A product someone checked: it joins the daily price saving (seed = 0, before the seed list).
 // Its next daily check is about a day after its last live check. A check by a person also
 // restarts a product that was paused after many failed checks.
+// A cached answer seen again within 12 hours changes nothing that matters (last_viewed is only used in
+// days), so track() writes nothing then.
+const TRACK_VIEW_MS = 12 * 3600e3;
 async function track(env, canon, origUrl, cur) {
   await ensureDailySchema(env);
   const viewed = now();
@@ -858,8 +861,11 @@ async function track(env, canon, origUrl, cur) {
       seed = 0, lane = excluded.lane, host = excluded.host,
       fails = CASE WHEN excluded.fails = 0 OR tracked.next_check_at IS NULL THEN 0 ELSE tracked.fails END,
       next_check_at = CASE WHEN tracked.next_check_at IS NULL OR excluded.last_checked > COALESCE(tracked.last_checked, 0) THEN excluded.next_check_at ELSE tracked.next_check_at END
-    RETURNING url`).bind(canon, origUrl, cur.title || null, viewed, viewed, cur.checked_at, cur.status, laneFor(canon), hostKey(canon), ok ? 0 : 1, cur.checked_at + DAILY_MS, canon, MAX_TRACKED).first();
-  return !!row;
+    WHERE excluded.last_checked > COALESCE(tracked.last_checked, 0) OR tracked.last_viewed IS NULL OR tracked.last_viewed < excluded.last_viewed - ?
+      OR tracked.seed IS NOT 0 OR tracked.lane IS NULL OR tracked.next_check_at IS NULL OR tracked.orig_url IS NOT excluded.orig_url
+    RETURNING url`).bind(canon, origUrl, cur.title || null, viewed, viewed, cur.checked_at, cur.status, laneFor(canon), hostKey(canon), ok ? 0 : 1, cur.checked_at + DAILY_MS, canon, MAX_TRACKED, TRACK_VIEW_MS).first();
+  // No row back: either the list is full, or nothing new to write (D1 rows written are counted per row).
+  return !!row || !!(await env.DB.prepare("SELECT 1 AS x FROM tracked WHERE url = ?").bind(canon).first());
 }
 async function storedHistory(env, canon) {
   const since = now() - HISTORY_DAYS * 864e5;
@@ -1389,7 +1395,11 @@ async function saveVerdict(env, canon, title, j) {
 function verdictStmt(env, canon, title, j) {
   const host = stripWww(new URL(canon).hostname.toLowerCase());
   return env.DB.prepare(`INSERT INTO verdicts (url, host, title, verdict, price, was, currency, low, med, high, high90, n, gap, archived, low_t, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(url) DO UPDATE SET host = excluded.host, title = COALESCE(excluded.title, verdicts.title), verdict = excluded.verdict, price = excluded.price, was = excluded.was, currency = excluded.currency, low = excluded.low, med = excluded.med, high = excluded.high, high90 = excluded.high90, n = excluded.n, gap = excluded.gap, archived = excluded.archived, low_t = excluded.low_t, updated_at = excluded.updated_at`)
+    ON CONFLICT(url) DO UPDATE SET host = excluded.host, title = COALESCE(excluded.title, verdicts.title), verdict = excluded.verdict, price = excluded.price, was = excluded.was, currency = excluded.currency, low = excluded.low, med = excluded.med, high = excluded.high, high90 = excluded.high90, n = excluded.n, gap = excluded.gap, archived = excluded.archived, low_t = excluded.low_t, updated_at = excluded.updated_at
+    WHERE verdicts.verdict IS NOT excluded.verdict OR verdicts.price IS NOT excluded.price OR verdicts.was IS NOT excluded.was OR verdicts.currency IS NOT excluded.currency
+      OR verdicts.low IS NOT excluded.low OR verdicts.med IS NOT excluded.med OR verdicts.high IS NOT excluded.high OR verdicts.high90 IS NOT excluded.high90
+      OR verdicts.n IS NOT excluded.n OR verdicts.gap IS NOT excluded.gap OR verdicts.archived IS NOT excluded.archived OR verdicts.low_t IS NOT excluded.low_t
+      OR verdicts.host IS NOT excluded.host OR (excluded.title IS NOT NULL AND verdicts.title IS NOT excluded.title)`)
     .bind(canon, host, title || null, j.verdict, j.price ?? null, j.was ?? null, j.currency ?? null, j.low ?? null, j.med ?? null, j.high ?? null, j.high90 ?? null, j.n, j.gap ?? null, j.archived, j.low_t ?? null, now());
 }
 async function latestCurrent(env, canon) {
@@ -2074,10 +2084,9 @@ async function ensureDailySchema(env) {
       try { await env.DB.prepare(`ALTER TABLE ${table} ADD COLUMN ${name} ${type}`).run(); } catch (e) { if (!/duplicate column/i.test(String(e && e.message || e))) throw e; }
     }
   }
-  await env.DB.batch([
-    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_tracked_due ON tracked(lane, seed, next_check_at)"),
-    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_checks_via_ts ON checks(via, ts)"),
-  ]);
+  // Only the index the daily pick needs. (idx_checks_via_ts and idx_tracked_last were dropped to save
+  // rows written: every index is one more row written per change; schema.sql drops them.)
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_tracked_due ON tracked(lane, seed, next_check_at)").run();
   dailySchemaReady = true;
 }
 // Rows written without a lane (from before daily saving, or by an older deploy during a rollout):
@@ -2213,7 +2222,6 @@ async function checkOne(env, job, alerts, memo, sum) {
   let j = null;
   if (ok) {
     stmts.push(checkStmt(env, row.url, cur, "daily"));
-    stmts.push(env.DB.prepare("INSERT INTO cache (k, v, exp) VALUES (?, ?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v, exp = excluded.exp").bind(LIVE_CACHE_PREFIX + row.url, JSON.stringify(cur), t + CHECK_TTL_MS));
     const hist = { checks: [...job.hist.checks, { ts: cur.checked_at, price: cur.price, was: cur.was, currency: cur.currency }], snaps: job.hist.snaps, cc: job.hist.cc || [] };
     try { j = judge(cur, hist); } catch { j = null; }
     if (j && j.verdict) stmts.push(verdictStmt(env, row.url, cur.title || row.title, j));
@@ -2255,7 +2263,8 @@ async function refreshSeeds(env, dept, sum) {
     SELECT ?, ?, ?, ?, ?, 0, 1, 'takealot', 'takealot.com', 0, ?, 0
     WHERE EXISTS (SELECT 1 FROM tracked WHERE url = ?) OR (SELECT COUNT(*) FROM tracked WHERE seed = 1) < ?
     ON CONFLICT(url) DO UPDATE SET last_viewed = excluded.last_viewed, title = COALESCE(tracked.title, excluded.title)
-    `).bind(s.url, s.url, s.title, t, t, t, s.url, MAX_SEEDS));
+    WHERE tracked.last_viewed IS NULL OR tracked.last_viewed < excluded.last_viewed - ? OR (tracked.title IS NULL AND excluded.title IS NOT NULL)
+    `).bind(s.url, s.url, s.title, t, t, t, s.url, MAX_SEEDS, 20 * HOUR_MS));
   const count = () => env.DB.prepare("SELECT COUNT(*) AS n FROM tracked WHERE seed = 1");
   const out = await env.DB.batch([count(), ...stmts, count()]);
   sum.seeds_added = out[out.length - 1].results[0].n - out[0].results[0].n;
