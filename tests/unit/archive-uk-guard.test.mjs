@@ -63,6 +63,9 @@ describe("UK archive guard (archivedGeoCheck)", () => {
     assert.equal(check(amz("Delivering to London E17 7"), u, "GBP"), null);
     assert.equal(check(amz("Deliver to United States"), u, "GBP").reason, "geo-price");
     assert.equal(check(amz(""), u, "GBP").reason, "geo-unconfirmed");
+    const enc = amz("Delivering to London E17 7").replace('currencyOfPreference="GBP"', 'data-a-state="{&quot;currencyOfPreference&quot;:&quot;GBP&quot;}"');
+    assert.equal(check(enc, u, "GBP"), null);
+    assert.equal(check(amz("Delivering to London E17 7").replace('currencyOfPreference="GBP"', 'currencyOfPreference="USD"'), u, "GBP").reason, "currency");
     assert.equal(check(amz("Delivering to London E17 7", "<span>Price excl. VAT</span>"), u, "GBP").reason, "ex-vat");
   });
   test("South African shops are not changed by this guard", () => {
