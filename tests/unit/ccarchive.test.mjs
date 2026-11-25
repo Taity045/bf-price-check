@@ -188,6 +188,17 @@ describe("archive rows in the history and verdicts", () => {
     assert.equal(pts.length, 0);
     assert.equal(W.historyPoints(h, "GBP", 300).pts.length, 1);
   });
+  test("a Common Crawl price matching an Internet Archive copy on the same day counts once", async (t) => {
+    const { env } = testDb(t);
+    const t0 = Math.round(ago(100));
+    await seed(env, [row({ price: 50, captured_at: t0, last_seen: t0, n: 1 })]);
+    const h = await W.storedHistory(env, DUNELM);
+    const ts = (ms) => new Date(ms).toISOString().replace(/\D/g, "").slice(0, 14);
+    const snap = (price) => ({ status: "ok", price, was: null, currency: "GBP", snap_ts: ts(t0) });
+    assert.deepEqual(W.historyPoints({ ...h, snaps: [snap(50)] }, "GBP", 75).pts.map((p) => p.kind), ["archive"]);
+    // a different price on the same day is a separate reading: both stay
+    assert.deepEqual(W.historyPoints({ ...h, snaps: [snap(55)] }, "GBP", 75).pts.map((p) => p.kind).sort(), ["archive", "cc"]);
+  });
   test("points link to Common Crawl's public index record", () => {
     const p = W.archivePoints([{ ...row(), product_key: DUNELM }], ago(365), 85);
     assert.equal(p.length, 2);
