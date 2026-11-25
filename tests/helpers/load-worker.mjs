@@ -22,6 +22,7 @@ export const NAMES = [
   "ensureDailySchema", "backfillLanes", "runDaily", "dueSeedDept", "refreshSeeds", "dailyHousekeeping", "apiDailyStatus",
   "DAILY_MS", "DAILY_CAPS", "SEED_CAPS", "MAX_FAILS", "MAX_SEEDS", "BOT_UA", "STALE_MS", "CLAIM_MS", "isE2E", "verifyTurnstile", "notifyOwnerOfRequest",
   "mDay", "mHuman", "mDevice", "mRefDomain", "mTeam", "verifyAccess", "statsData", "statsHtml", "M_CLICKS",
+  "archiveKey", "archiveLookupKeys", "archiveBatchStmt", "archiveRowsFor", "archiveProbe", "archiveRows", "archivePoints", "ccIndexLink", "cleanArchiveRow", "apiArchiveLoad", "apiArchiveStats", "ensureArchiveTables", "ARCHIVE_DAILY_CAP", "storedHistory", "apiCheck",
   "CMP_SHOPS", "CMP_SEARCH", "cmpNorm", "cmpWords", "cmpCodes", "cmpCodesMatch", "cmpGtin", "cmpAttrs", "cmpIdentity", "cmpIdentityFromCurrent", "cmpApplyDetail", "cmpCodesConflict", "cmpCategory", "cmpPlan", "cmpQuery", "cmpMatch", "cmpSearchShop", "cmpShopForHost", "takealotAttr",
 ];
 
@@ -33,6 +34,7 @@ const source = [
   read("src/worker.js"),
   read("src/readers.js"),
   read("src/features.js"),
+  read("src/archive.js"),
   read("src/daily.js"),
   read("src/compare.js"),
   read("src/og.js"),

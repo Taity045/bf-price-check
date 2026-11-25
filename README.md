@@ -8,7 +8,7 @@ Live:
 Paste a product link from an online shop. The site shows:
 
 1. **Today's price and the "was" price**, read on the server from the shop's product page.
-2. **A price history chart**, made from public web archive copies of the page (Internet Archive) and from prices we save when people check the product.
+2. **A price history chart**, made from public web archive copies of the page (Internet Archive and Common Crawl) and from prices we save when people check the product.
 3. **A verdict**: Real deal, Decent deal, Same old price, Pricier than usual, Fake discount (from 3 or more older prices). With only 1 or 2 older prices from the last 6 months: Likely inflated was price, Seen cheaper before, or Seen at this price before, each with the date, the source and a link to the archived copy. Otherwise: Not enough history.
 
 The site never invents prices. If a shop blocks the check, or there is no history, the page says so. You can type the price you see to get a verdict anyway (shown as "entered by you").
@@ -16,10 +16,33 @@ The site never invents prices. If a shop blocks the check, or there is no histor
 ## Where the prices come from (and the limits)
 
 - **Today's price**: the shop's product page (for Takealot: its public product API).
-- **Older prices**: (a) Internet Archive copies of the same page from the last 12 months, and (b) prices this site saved: when someone checks a product, and then about once a day by the daily price saving (see [Daily price saving](#daily-price-saving)), which also covers a seed list of up to 300 popular Takealot products.
+- **Older prices**: (a) Internet Archive copies of the same page from the last 12 months, (b) Common Crawl copies of the same page from the last 12 months (see [Common Crawl archive prices](#common-crawl-archive-prices)), and (c) prices this site saved: when someone checks a product, and then about once a day by the daily price saving (see [Daily price saving](#daily-price-saving)), which also covers a seed list of up to 300 popular Takealot products.
 - Many products have few or no archive copies. This is true for most Takealot products (their pages are built by JavaScript, so archive copies have no price). So "Not enough history" is common at first. The result says why. The history grows by about one price a day per product. A verdict needs 3 older prices (older than 24 h), so a new product can get a verdict after about 4 days of daily saving.
 - Shops that block automatic checks (or say no in robots.txt) get no daily saving; for those, only checks by people add prices.
 - The same text is on the site: footer link "Where prices come from" (opens the Shops dialog).
+
+## Common Crawl archive prices
+
+[Common Crawl](https://commoncrawl.org/) is a free, public archive of the web, with a new crawl about once a month. For 22 of our shops it holds copies of many product pages (strongest: Dunelm, Wickes, Lookfantastic, Cult Beauty, Apple UK, Cashbuild, Studio 88, PUMA ZA, Cycle Lab; then Bash, M&S, JD Sports, Richer Sounds, Loot, Evetech, OneDayOnly, Woolworths and Woolworths Food, Sportsmans Warehouse, Miladys, Sheet Street, First Shop). Takealot refuses Common Crawl's robot, so there is nothing for Takealot. Research and test numbers: `bf-sources/report.md` (on the box).
+
+**How it works.** Nothing here runs during a check: a check only reads rows from D1 (one indexed query, run together with the other history queries).
+1. `scripts/cc/archive.mjs collect` finds each shop's product pages in Common Crawl's public index on `data.commoncrawl.org` (`cluster.idx` + index blocks, by byte range), downloads each archived page with one byte-range request (a few at a time, with a pause when the server is busy), and reads it with the site's own price reader (`extractFromHtml`).
+2. **Sanity filter** (`scripts/cc/read.mjs`): a copy is dropped when it is a bot-check page, has no product data (JSON-LD/microdata/Open Graph product or a product data layer), shows out of stock, has another currency than the shop, has a zero or absurd price, has a canonical link to another page, or only has a price guessed from the page text. Links with size/colour/SKU parameters are skipped (they can show another price). Per product, a price more than 2.5x away from the product's median is dropped; a product whose copies still differ more than 3x (or two copies more than 2x) is dropped entirely. The worker also never shows an archive price more than 3x away from today's price.
+3. `reduce` keeps only price changes: one row per run of the same price, with the first copy (`captured_at`), the last copy (`last_seen`) and how many copies agreed (`n`).
+4. `upload` sends rows to `POST /api/admin/archive-load` (header `Authorization: Bearer <ARCHIVE_LOAD_KEY>`; without the right key the endpoint answers 404). The worker checks every row again (supported shop, same host, shop currency, sane price and date) and writes it to `archive_prices`. It stops at **35,000 rows per UTC day** (`ARCHIVE_DAILY_CAP`), so loading never uses up the D1 free plan's 100,000 daily row writes (the site, the daily saving and the stats need the rest). A bigger load goes in daily batches; the loader remembers what it sent.
+5. The product key is the live check's canonical link (`canonicalize`), with junk link parameters (`rctxt`, `affil`, `utm_*` …) removed (`archiveKey`). A check looks up its key with and without `www.` and a trailing slash, so the check, the 1–2 price evidence verdicts and the full verdicts all use these rows.
+6. On the site each point says "web archive copy (Common Crawl)" and links to Common Crawl's public index record for that copy (`index.commoncrawl.org/<crawl>-index?url=…`). Common Crawl has no public page viewer.
+
+**First load (12 months, crawls CC-MAIN-2025-47 to CC-MAIN-2026-47)** ran on the box, strongest shops first, products still on sale with a copy from 3–6 months ago first. **New crawls**: `.github/workflows/archive.yml` runs daily; when a crawl newer than `LOADED_UP_TO` is out, it reads it (up to 4.5 hours a run, continuing the next day from the Actions cache) and appends its prices (`--mode append`: same price extends the product's latest row, a new price adds a row). Run it by hand from the Actions tab with a crawl id. `GET /api/archive-stats` shows rows and products per shop.
+
+```
+# on any machine with Node 22+ (the key is the ARCHIVE_LOAD_KEY repo secret)
+node scripts/cc/archive.mjs collect --out cc-archive --crawls CC-MAIN-2026-47 --shops "Dunelm,Wickes" --concurrency 4
+node scripts/cc/archive.mjs reduce --out cc-archive
+ARCHIVE_LOAD_KEY=… node scripts/cc/archive.mjs upload --out cc-archive --max-writes 30000
+```
+
+Common Crawl's terms of use apply; crawled content may be subject to the shops' own terms. We store only the price facts (price, was price, date, link), not page content.
 
 ## Daily price saving
 
@@ -106,6 +129,8 @@ The home page stays clean: heading, link box, Check price, 3 example links (Take
 - `STATS_ALLOWED_EMAILS` (optional): comma-separated emails allowed on the stats page. If not set, the page allows only `OWNER_EMAIL`.
 - `TURNSTILE_SECRET` plus var `TURNSTILE_SITEKEY`: turn on Cloudflare Turnstile on the forms (the code is ready: invisible "interaction-only" widget, server check in `verifyTurnstile`). **Not set now.** Turnstile is free, but making the widget needs the `challenge-widgets` permission, which the deploy token and the Cloudflare connector do not have (checked 2026-11-25). To turn it on: Cloudflare dashboard → Turnstile → Add widget (hostnames `eish.veldwire.com`, `bf-price-check.tm-deal-lab.workers.dev`, mode Managed), put the site key in `wrangler.toml` `TURNSTILE_SITEKEY`, and run `npx wrangler secret put TURNSTILE_SECRET`. Until then the forms use a honeypot and rate limits.
 
+- `ARCHIVE_LOAD_KEY`: key for the Common Crawl loader (`POST /api/admin/archive-load`). Kept as a GitHub repo secret of the same name; the deploy job puts it on the worker once (`wrangler secret put`) if it is not there yet. Without it the endpoint answers 404.
+
 Set a secret: `npx wrangler secret put OWNER_EMAIL`.
 
 ## Shop readers (South African shops)
@@ -164,6 +189,8 @@ Each row shows the shop, price (and "was" price), the difference against this pa
 |---|---|
 | `src/worker.js` | Worker: API, page parsing, archive lookups, rate limits, cache, cron, routes |
 | `src/features.js` | Verdicts, wall, email, alerts, Turnstile, API bot checks |
+| `src/archive.js` | Common Crawl archive prices: product keys, D1 reads, points with source links, the admin load endpoint, `/api/archive-stats` |
+| `scripts/cc/` | Common Crawl backfill: `archive.mjs` (collect, reduce, upload), `read.mjs` (sanity filter), `shops.mjs` (shops and product link patterns) |
 | `src/compare.js` | Other shops price compare: shop adapters, product identity, strict matching, caching, history |
 | `src/daily.js` | Daily price saving: cron batches, back-off, robots.txt, Takealot seed list, `/api/daily-status` |
 | `src/stats.js` | Private stats: cookieless daily counts, click beacon, Cloudflare Access JWT check, dashboard |
@@ -181,6 +208,9 @@ Each row shows the shop, price (and "was" price), the difference against this pa
 - `GET /api/check?url=<product url>` → today's price and saved history. Cached 6 h (30 min after a failed check).
 - `GET /api/archive?url=<canonical>&orig=<pasted url>` → archive index (last 365 days, any capture). Cached 12 h (cache key `cdx-v5:`). It asks the Wayback CDX index for these URL forms and keeps only captures of the same product: the canonical URL, with and without a trailing slash, the pasted URL (with its query, without `#…`), the canonical URL without its query, and the `m.` mobile host. `http`/`https` and `www.`/`m.` count as the same page. Product-ID-only URLs (for example `/PLID123` without the name part) are not searched, because the CDX index has no wildcard in the middle of a path.
 - `GET /api/snap?url=…&ts=…&orig=…` → price from one archive copy, kept in D1.
+- `GET /api/archive-stats` → Common Crawl rows and products per shop host, and rows loaded per day (cached 1 h).
+- `POST /api/admin/archive-load` → loader only (secret key; 404 without it). See [Common Crawl archive prices](#common-crawl-archive-prices).
+- `/api/check` also returns `history.cc`: Common Crawl points (`t`, `price`, `was`, `currency`, `url`, `link`).
 - `GET /api/daily-status` → counts for the daily price saving (no links). Cached 5 min.
 - `GET /api/compare?url=<product url>` → which shops will be searched for this product, plus any cached answers. Only for products someone checked first.
 - `GET /api/compare/shop?url=<product url>&shop=<id>` → one shop's answer: `match` (with title, price, was, link, in stock, match level, time checked), `none`, `blocked`, `error`, `busy` or `skipped`. Cached 12 h (20 min after an error).
@@ -236,7 +266,9 @@ Preview bots (WhatsApp, facebookexternalhit, etc.) can always fetch pages and sh
 | Table | What it holds |
 |---|---|
 | `checks` | Live prices we read (url, time, price, was, currency, source; `via = 'daily'` for the daily price saving). Prices found by the compare are saved with source `compare-<shop>` |
-| `product_snaps` | Prices read from archive copies |
+| `product_snaps` | Prices read from Internet Archive copies |
+| `archive_prices` | Common Crawl prices: one row per run of the same price (`product_key`, `captured_at`, `last_seen`, `n`, `price`, `was`, `currency`, `source = 'common crawl'`, `url`, `crawl`, `last_crawl`). `WITHOUT ROWID`, so each row is one write |
+| `archive_load` | Rows the loader wrote per UTC day (for the daily cap) |
 | `tracked` | Products in the daily price saving: people's checks (`seed = 0`) and the Takealot seed list (`seed = 1`), with `next_check_at`, `fails` |
 | `verdicts` | Latest verdict per product (wall, scores, share card) |
 | `alerts` | Price alerts (off) |
@@ -296,7 +328,7 @@ Cloudflare resources: Worker `bf-price-check`, D1 `bf-price-check-db`, cron `* *
 
 - Many big stores block requests from cloud servers (HTTP 403/bot checks): in tests Argos, Currys, bol.com, Zalando, Incredible, iStore, Makro, Dis-Chem; John Lewis returned 520, Otto 400. For these the tool shows the latest archived price (if any) and lets the user type the price.
 - Amazon hides the buy box from foreign visitors for some products (e.g. Kindle devices). Items that ship internationally (books etc.) work.
-- Wayback coverage of product pages is thin, especially for South African stores (often 0–3 copies in 12 months). Takealot product pages are rendered by JavaScript, so archived copies have no price. History therefore mostly grows from the prices we save: when people check, and about once a day for each product in the daily list.
+- Wayback coverage of product pages is thin, especially for South African stores (often 0–3 copies in 12 months). Common Crawl adds monthly copies for 22 shops, but not Takealot, and only for products it happened to crawl. Takealot product pages are rendered by JavaScript, so archived copies have no price. History therefore mostly grows from the prices we save: when people check, and about once a day for each product in the daily list.
 - The Internet Archive sometimes answers 503 or is slow; the tool retries and shows a "Try the archive again" button.
 - Marketplace listings (Amazon, MediaMarkt, Takealot) can change seller, so archived prices may be from a different seller.
 - Other shops: shops whose search is built by JavaScript only or that block us are not searched (Sportsmans and Outdoor Warehouse, Cycle Lab, Yuppiechef, Woolworths, Checkers/Shoprite, Bob Shop, OneDayOnly, Cashbuild, Faithful to Nature, Bargain Books, Cotton On, Sheet Street, Miladys, and most UK shops). UK coverage is Lakeland only. Fashion items match only when the other shop shows the same barcode or style code, which most ZA fashion shops do not.

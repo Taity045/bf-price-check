@@ -43,5 +43,13 @@ check("/api/request refuses bad input (400)", form.status === 400, `HTTP ${form.
 const badJson = await get("/api/request", { method: "POST", headers: { "content-type": "application/json" }, body: "{" });
 check("/api/request refuses broken JSON (400)", badJson.status === 400, `HTTP ${badJson.status}`);
 
+// 4. archive prices: the load endpoint is hidden without its key; the stats answer
+const load = await get("/api/admin/archive-load", { method: "POST", headers: { "content-type": "application/json", authorization: "Bearer wrong-key-for-smoke-test-0000000000000" }, body: JSON.stringify({ rows: [] }) });
+check("/api/admin/archive-load is hidden without the key (404)", load.status === 404, `HTTP ${load.status}`);
+const ast = await get("/api/archive-stats");
+const astJ = await ast.json().catch(() => null);
+check("/api/archive-stats answers", ast.status === 200 && astJ && typeof astJ.rows === "number", `HTTP ${ast.status}${astJ ? `, ${astJ.rows} rows` : ""}`);
+if (checked) check("/api/check has the Common Crawl history list", Array.isArray(checked.history && checked.history.cc));
+
 if (failures.length) { console.error(`\nSMOKE TEST FAILED on ${BASE}: ${failures.join("; ")}`); process.exit(1); }
 console.log(`\nSmoke test passed on ${BASE}`);

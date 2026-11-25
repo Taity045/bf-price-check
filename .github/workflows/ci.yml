@@ -123,6 +123,13 @@ jobs:
         run: echo "::notice title=D1 schema skipped::The Cloudflare token has no D1 Edit permission. The worker creates its tables itself (CREATE TABLE IF NOT EXISTS), so the deploy goes ahead."
       - name: Deploy
         run: npx wrangler deploy
+      - name: Archive loader key (worker secret, set once)
+        # The key for POST /api/admin/archive-load (src/archive.js). Without it the endpoint answers 404.
+        env:
+          ARCHIVE_LOAD_KEY: ${{ secrets.ARCHIVE_LOAD_KEY }}
+        run: |
+          if [ -z "$ARCHIVE_LOAD_KEY" ]; then echo "ARCHIVE_LOAD_KEY secret not set; the archive load endpoint stays off."; exit 0; fi
+          if npx wrangler secret list 2>/dev/null | grep -q '"ARCHIVE_LOAD_KEY"'; then echo "Archive loader key already set."; else printf '%s' "$ARCHIVE_LOAD_KEY" | npx wrangler secret put ARCHIVE_LOAD_KEY > /dev/null && echo "Archive loader key set."; fi
       - name: Smoke test (workers.dev)
         run: node tests/smoke.mjs "$LIVE_URL"
       - name: Smoke test (custom domain)

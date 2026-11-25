@@ -423,8 +423,9 @@ footer{border-top:2px dashed var(--ink)}
     <h3 id="priceSrc" tabindex="-1" style="margin-top:16px">Where do the prices come from?</h3>
     <ul class="note" style="padding-left:18px;margin-top:4px">
       <li>Today's price comes from the shop's product page.</li>
-      <li>Older prices come from public web archive copies of that page (the Internet Archive), and from prices we save when people check a product here.</li>
-      <li>Many products have few or no archive copies, for example most Takealot products. With 1 or 2 older prices, we show what we found, with the date and the source. From 3 older prices, we give a full verdict.</li>
+      <li>Older prices come from public web archive copies of that page, and from prices we save when people check a product here. We use two archives: the Internet Archive, and Common Crawl, a free public archive of the web that saves copies of many shop pages about once a month.</li>
+      <li>We read each archived copy with the same price reader as today's check. We leave out copies that show a bot check, an out-of-stock page, another product, another currency, or a price far away from the product's other prices. Each archived price links to its source.</li>
+      <li>Many products have few or no archive copies, for example most Takealot products, because Takealot does not let archives copy its pages. With 1 or 2 older prices, we show what we found, with the date and the source. From 3 older prices, we give a full verdict.</li>
       <li>After someone checks a product here, we check its price again about once a day and save it. We do the same for some popular Takealot products. So the history grows each day.</li>
       <li>Some shops do not let automatic checks read their pages. For those products, we save the price only when someone checks it here.</li>
     </ul>
@@ -613,7 +614,7 @@ async function run(url, fresh) {
     if (my !== runId) return;
     if (!r.ok || d.error) { showError(d.error || "The check stopped. Try again."); return; }
     history.replaceState(null, "", "/?u=" + encodeURIComponent(d.url));
-    state = { ...d, title: d.current.title, archive_meta: null, archive: d.history.archive.slice(), manual: null, failed: d.history.archive_failed };
+    state = { ...d, title: d.current.title, archive_meta: null, archive: d.history.archive.slice(), cc: (d.history.cc || []).slice(), manual: null, failed: d.history.archive_failed };
     $("mcur").value = d.current.currency || d.tld_currency || "";
     $("result").classList.remove("hidden");
     $("tip").textContent = "Tap a point to see its date and price."; $("pts").open = false;
@@ -674,7 +675,7 @@ function updProg(done, total) {
 
 // The one currency all known history points share, if any.
 function historyCurrency() {
-  const set = new Set([...state.archive, ...state.history.checks].map((x) => x.currency).filter(Boolean));
+  const set = new Set([...state.archive, ...(state.cc || []), ...state.history.checks].map((x) => x.currency).filter(Boolean));
   return set.size === 1 ? [...set][0] : null;
 }
 
@@ -703,7 +704,7 @@ function renderPrices() {
     const when = c.checked_at ? new Date(c.checked_at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
     src.textContent = p.manual ? "You entered these prices." : `Read from the shop ${when}${c.currency_guessed ? " · currency guessed from the web address" : ""}`;
   } else {
-    const arch = state.archive.slice().sort((a, b) => b.t - a.t)[0];
+    const arch = [...state.archive, ...(state.cc || [])].sort((a, b) => b.t - a.t)[0];
     if (arch) {
       box.innerHTML = `<span class="now dim num">${esc(money(arch.price, arch.currency))}</span>` + (arch.was ? `<span class="was num">${esc(money(arch.was, arch.currency))}</span>` : "") + `<span class="claim">Latest archived price</span>`;
       src.textContent = `From an archived copy of ${fmtDate(arch.t)}. Check today's price on the shop's page.`;
@@ -726,6 +727,12 @@ function lastBlackFriday() {
 }
 function median(a) { const s = [...a].sort((x, y) => x - y), n = s.length; return n ? (n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2) : null; }
 
+// Where an older price came from, as a link to the source when there is one.
+function srcLink(p, short) {
+  if (p.kind === "archive") return `<a href="https://web.archive.org/web/${esc(p.ts)}/${esc(p.orig || state.canonical)}" target="_blank" rel="noopener">${short ? "archive" : "web archive copy"}</a>`;
+  if (p.kind === "cc") return `<a href="${esc(p.link || "https://commoncrawl.org/")}" target="_blank" rel="noopener" title="Common Crawl's index record for the archived copy of this page">${short ? "Common Crawl" : "web archive copy (Common Crawl)"}</a>`;
+  return "our saved check";
+}
 // keep the last check of each day
 function dedupeDays(list) { const m = new Map(); for (const c of list) m.set(new Date(c.t).toISOString().slice(0, 10), c); return [...m.values()]; }
 
@@ -733,12 +740,13 @@ function points() {
   const cur = curPrice(); const ccy = cur ? cur.currency : null;
   const all = [
     ...state.archive.map((a) => ({ ...a, kind: "archive" })),
+    ...(state.cc || []).map((a) => ({ ...a, kind: "cc" })),
     ...state.history.checks.map((c) => ({ ...c, kind: "check" })),
   ].filter((x) => x.price && x.t >= Date.now() - 365 * DAY);
   // keep one currency only
   const pick = ccy || all.find((x) => x.currency)?.currency;
   const same = all.filter((x) => pick && x.currency === pick);
-  const pts = same.filter((x) => x.kind === "archive").concat(dedupeDays(same.filter((x) => x.kind === "check")));
+  const pts = same.filter((x) => x.kind === "archive" || x.kind === "cc").concat(dedupeDays(same.filter((x) => x.kind === "check")));
   pts.sort((a, b) => a.t - b.t);
   return { pts, other: all.length - same.length, ccy: pick };
 }
@@ -803,7 +811,7 @@ function renderVerdict() {
     const ev = sparseEvidence(P, W, hist);
     if (ev) {
       const pt = ev.pt;
-      const src = pt.kind === "archive" ? `<a href="https://web.archive.org/web/${esc(pt.ts)}/${esc(pt.orig || state.canonical)}" target="_blank" rel="noopener">web archive copy</a>` : "our saved check";
+      const src = srcLink(pt);
       const when = `${esc(money(pt.price, C))} on ${esc(fmtDate(pt.t))} (${src})`;
       let vb;
       if (ev.verdict === "Likely inflated was price") { cls = "bad"; vb = `Was cheaper before: ${when}. The shop's "was" price of ${esc(money(W, C))} looks inflated.`; }
@@ -882,7 +890,7 @@ function renderChart() {
   $("chart").innerHTML = s;
   $("chart").querySelectorAll("circle[data-i]").forEach((c) => c.addEventListener("click", () => {
     const p = all[+c.dataset.i];
-    $("tip").innerHTML = `<b>${esc(money(p.price, ccy))}</b> · ${p.kind === "now" ? "today" : fmtDate(p.t)} · ${p.kind === "archive" ? "archived copy" : p.kind === "check" ? "our check" : (cur.manual ? "entered by you" : "shop's page today")}${p.was ? ` · was ${esc(money(p.was, ccy))}` : ""}`;
+    $("tip").innerHTML = `<b>${esc(money(p.price, ccy))}</b> · ${p.kind === "now" ? "today" : fmtDate(p.t)} · ${p.kind === "archive" ? "archived copy" : p.kind === "cc" ? "web archive copy (Common Crawl)" : p.kind === "check" ? "our check" : (cur.manual ? "entered by you" : "shop's page today")}${p.was ? ` · was ${esc(money(p.was, ccy))}` : ""}`;
   }));
 }
 
@@ -891,17 +899,19 @@ function renderArchiveNote() {
   const ai = state.archive_meta;
   if (ai) {
     if (ai.status !== "ok") note = `We could not get archive copies just now, so archive prices are missing. Use "Try the archive again".`;
-    else if (!(ai.captures_12mo ?? ai.captures_6mo)) note = "The Internet Archive has no copies of this page from the last twelve months, so older prices are missing.";
+    else if (!(ai.captures_12mo ?? ai.captures_6mo)) note = "The Internet Archive has no copies of this page from the last twelve months" + ((state.cc || []).length ? "." : ", so older prices are missing.");
     else { const n = ai.captures_12mo ?? ai.captures_6mo; note = `Archived copies: ${n} day${n === 1 ? "" : "s"} in 12 months. We looked at ${ai.sampled}.`; }
     if (state.failed) note += ` ${state.failed} had no price we could read.`;
   }
+  const ccN = (state.cc || []).length;
+  if (ccN) note = `Common Crawl web archive: ${ccN} older price${ccN === 1 ? "" : "s"}. ` + note;
   $("archnote").textContent = note;
 }
 
 function renderTable() {
   const { pts, ccy } = points();
   if (!pts.length) { $("ptable").innerHTML = `<p class="small">No data points yet.</p>`; return; }
-  $("ptable").innerHTML = `<table><tr><th>Date</th><th>Price</th><th>Was</th><th>Source</th></tr>${pts.slice().reverse().map((p) => `<tr><td>${fmtDate(p.t)}</td><td>${esc(money(p.price, ccy))}</td><td>${p.was ? esc(money(p.was, ccy)) : "—"}</td><td>${p.kind === "archive" ? `<a href="https://web.archive.org/web/${p.ts}/${esc(p.orig || state.canonical)}" target="_blank" rel="noopener">archive</a>` : "our check"}</td></tr>`).join("")}</table>`;
+  $("ptable").innerHTML = `<table><tr><th>Date</th><th>Price</th><th>Was</th><th>Source</th></tr>${pts.slice().reverse().map((p) => `<tr><td>${fmtDate(p.t)}</td><td>${esc(money(p.price, ccy))}</td><td>${p.was ? esc(money(p.was, ccy)) : "—"}</td><td>${srcLink(p, true)}</td></tr>`).join("")}</table>`;
 }
 
 

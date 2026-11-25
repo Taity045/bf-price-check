@@ -15,3 +15,7 @@ CREATE INDEX IF NOT EXISTS idx_alerts_url ON alerts(url, status);
 CREATE TABLE IF NOT EXISTS m_counts (day TEXT NOT NULL, metric TEXT NOT NULL, key TEXT NOT NULL DEFAULT '', n INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (day, metric, key));
 CREATE TABLE IF NOT EXISTS m_seen (day TEXT NOT NULL, h TEXT NOT NULL, PRIMARY KEY (day, h));
 CREATE TABLE IF NOT EXISTS m_salt (day TEXT PRIMARY KEY, salt TEXT NOT NULL);
+-- Web archive prices from Common Crawl (src/archive.js, scripts/cc/archive.mjs): one row per run of the same price
+-- (first copy, last copy, how many copies agreed). WITHOUT ROWID keeps each row to one write on the free plan.
+CREATE TABLE IF NOT EXISTS archive_prices (product_key TEXT NOT NULL, captured_at INTEGER NOT NULL, last_seen INTEGER NOT NULL, n INTEGER NOT NULL DEFAULT 1, price REAL NOT NULL, was REAL, currency TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'common crawl', url TEXT NOT NULL, crawl TEXT, last_crawl TEXT, PRIMARY KEY (product_key, captured_at)) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS archive_load (day TEXT PRIMARY KEY, written INTEGER NOT NULL DEFAULT 0, requests INTEGER NOT NULL DEFAULT 0);

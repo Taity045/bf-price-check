@@ -99,6 +99,31 @@ for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`r
   await p.context().close();
 });
 
+// 3a. one older price from a Common Crawl web archive copy (answer faked): evidence verdict with its source link
+await step("common crawl evidence", async () => {
+  const p = await open(desktop);
+  const CC = "https://www.dunelm.com/product/teddy-bear-throw-1000162540";
+  const link = "https://index.commoncrawl.org/CC-MAIN-2026-30-index?url=" + encodeURIComponent(CC) + "&output=json";
+  await p.route(/\/api\/check\?/, (r) => r.fulfill({ json: { ...checkAnswer(), url: CC, canonical: CC, host: "dunelm.com", tld_currency: null, shop: { name: "Dunelm" },
+    current: { status: "ok", checked_at: Date.now(), price: 85, was: 140, currency: "GBP", title: "CI Teddy Throw", source: "json-ld" },
+    history: { archive: [], archive_failed: 0, checks: [], cc: [{ t: Date.now() - 120 * DAY, price: 85, was: null, currency: "GBP", url: CC, link }] } } }));
+  await p.goto(BASE + "/");
+  await p.fill("#u", CC); await p.click("#go");
+  await p.waitForSelector("#result:not(.hidden)", { timeout: 15000 });
+  await p.waitForTimeout(500);
+  const v = await p.textContent("#verdict");
+  ok("cc: inflated 'was' price verdict from one archive price", /Likely inflated was price/.test(v), v);
+  ok("cc: verdict names the source", /web archive copy \(Common Crawl\)/.test(v), v);
+  const href = await p.getAttribute("#verdict a[href*='commoncrawl']", "href");
+  ok("cc: source links to Common Crawl's index record", href === link, href);
+  await p.click("#pts summary").catch(() => {});
+  ok("cc: price table lists the Common Crawl copy", /Common Crawl/.test(await p.textContent("#ptable")), await p.textContent("#ptable"));
+  ok("cc: archive note counts it", /Common Crawl web archive: 1 older price/.test(await p.textContent("#archnote")), await p.textContent("#archnote"));
+  ok("cc: no JS errors", p._errs.length === 0, p._errs.join(" | "));
+  await p.screenshot({ path: `${SHOTS}/result-common-crawl.png`, fullPage: true });
+  await p.context().close();
+});
+
 // 3b. "Other shops" compare panel, with faked shop answers (arriving one by one)
 const CMP_PLAN = { product: { title: "CI Test Kettle 1.7L", brand: "ci", gtin: "6001234567890", codes: [], currency: "ZAR", category: "appliances" },
   shops: [{ id: "hirschs", name: "Hirsch's" }, { id: "okfurniture", name: "OK Furniture" }, { id: "loot", name: "Loot" }, { id: "computermania", name: "Computer Mania" }, { id: "firstshop", name: "First Shop" }],
