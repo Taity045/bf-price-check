@@ -1144,7 +1144,7 @@ export default {
       if (url.pathname === "/api/wall") return json(await wallData(env), 200, { "cache-control": "public, max-age=300" });
       if (url.pathname === "/api/stats") { const w = await wallData(env); return json({ fake_total: w.fake_total }, 200, { "cache-control": "public, max-age=300" }); }
       const stat = url.pathname.slice(1);
-      if (Object.prototype.hasOwnProperty.call(STATIC_IMG, stat)) { const b = Uint8Array.from(atob(STATIC_IMG[stat]), (x) => x.charCodeAt(0)); return new Response(req.method === "HEAD" ? null : b, { headers: { "content-type": stat.endsWith(".png") ? "image/png" : "image/jpeg", "content-length": String(b.length), "cache-control": "public, max-age=604800", "access-control-allow-origin": "*" } }); }
+      if (Object.prototype.hasOwnProperty.call(STATIC_IMG, stat)) { const b = Uint8Array.from(atob(STATIC_IMG[stat]), (x) => x.charCodeAt(0)); return new Response(req.method === "HEAD" ? null : b, { headers: { "content-type": stat.endsWith(".png") ? "image/png" : stat.endsWith(".ico") ? "image/x-icon" : "image/jpeg", "content-length": String(b.length), "cache-control": "public, max-age=604800", "access-control-allow-origin": "*" } }); }
       if (url.pathname === "/robots.txt") return new Response("User-agent: *\nAllow: /\n", { headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=86400" } });
       if (url.pathname === "/og.png") return await apiOg(req, env);
       if (url.pathname === "/alert/confirm") return await alertLink(req, env, "confirm");
@@ -1159,7 +1159,6 @@ export default {
       if (/^\/app\.[0-9a-f]{10}\.js$/.test(url.pathname)) return new Response(APP.js, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": url.pathname === "/" + APP.name ? "public, max-age=31536000, immutable" : "no-cache" } });
       // The result view script, loaded on the first check. An old name (after a deploy) gets today's file, not cached.
       if (/^\/result\.[0-9a-f]{10}\.js$/.test(url.pathname)) return new Response(APP.lazy, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": url.pathname === "/" + APP.lazy_name ? "public, max-age=31536000, immutable" : "no-cache" } });
-      if (url.pathname === "/favicon.ico") return new Response(null, { status: 204 });
       return new Response("Not found", { status: 404 });
     } catch (e) {
       return json({ error: "Something went wrong on our side.", detail: String(e && e.message || e).slice(0, 200) }, 500);

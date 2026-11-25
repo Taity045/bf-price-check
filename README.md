@@ -109,7 +109,7 @@ The home page stays clean: heading, link box, Check price, 3 example links (Take
 | Other shops (price compare) | Result page: the same product's price today at other shops in the same country and currency. See [Other shops](#other-shops-price-compare) | Each shop's own public search |
 | Saved, Your stats, badges | Header "Saved" | Your browser only (localStorage) |
 | Deep links | `/?url=<product link>` and `/?u=<product link>` open the site and run a check (used by shared links). For these links the server adds `class="q"` to `<html>`, so the first paint already uses the compact result layout (no centred hero, steps or footer while the result loads): no layout shift when the result appears (CLS < 0.02 at 360–1440 px, tested in e2e) | — |
-| Link previews (WhatsApp chats and Status) | OG and Twitter tags in the first 1 KB of `/` and `/?u=` / `/?url=` | First `og:image`: `/og-home.jpg` (static 1200×630 JPEG, 50 KB). Second `og:image`: `/og-square.jpg` (600×600 JPEG, 31 KB). Both with content-length and a 7-day cache. A product card `/og.png?u=…` (PNG) replaces the first image once it is made (D1 cache). Remake the static images with `scripts/make_og_static.py`. `/robots.txt` allows all |
+| Link previews (WhatsApp chats and Status) | OG and Twitter tags in the first 1 KB of `/` and `/?u=` / `/?url=` | One `og:image` only (Meta's WhatsApp rules): `/og-home.jpg` (static 1200×630 JPEG, 50 KB) with content-length and a 7-day cache. A product card `/og.png?u=…` (PNG) replaces it once it is made (D1 cache). `/og-square.jpg` is still served for older previews but is no longer in the tags. `/favicon.ico` (16/32/48 px) and `/apple-touch-icon.png` (180 px) are real images: WhatsApp on iPhone asks for `/favicon.ico` with the page. Remake them with `scripts/make_og_static.py` and `scripts/make_icons.py`. `/robots.txt` allows all. Tests: `tests/unit/link-preview.test.mjs` |
 | Fake discount wall and shop scores | `/wall` — **off** (`WALL = "off"`) | D1 `verdicts` |
 | Price alerts | Result "Alert me" — **off** (`ALERTS = "off"`) | D1 `alerts` |
 | Ask us to add a shop | Footer, and on results for unknown shops | D1 `shop_requests`, plus an email to the owner |
@@ -212,7 +212,7 @@ Each row shows the shop, price (and "was" price), the difference against this pa
 | `src/readers.js` | Shop readers for SA shops without standard price data (TFG/VTEX, Mr Price, Pick n Pay, Cape Union Mart, Poetry, NetFlorist, Clicks, Absolute Pets) |
 | `src/shops.js` | Shops we check / known blocked (generated from research + `data/live_status.json`) |
 | `public/index.html` | The app (plain HTML/CSS/JS, inline SVG chart, mobile first; desktop layout from 900 px) |
-| `public/fonts/`, `public/og-home.*`, `public/og-square.jpg` | Self-hosted font subsets, static share cards |
+| `public/fonts/`, `public/og-home.*`, `public/og-square.jpg`, `public/favicon.ico`, `public/apple-touch-icon.png` | Self-hosted font subsets, static share cards, icons |
 | `examples.json` | Example links on the home page |
 | `schema.sql` | D1 tables |
 | `build.py` | Minifies JS/CSS (esbuild, Chrome 70 / Safari 12 targets), embeds fonts, script, card and HTML into `dist/worker.js` |
@@ -230,7 +230,7 @@ Each row shows the shop, price (and "was" price), the difference against this pa
 - `GET /api/compare?url=<product url>` → which shops will be searched for this product, plus any cached answers. Only for products someone checked first.
 - `GET /api/compare/shop?url=<product url>&shop=<id>` → one shop's answer: `match` (with title, price, was, link, in stock, match level, time checked), `none`, `blocked`, `error`, `busy` or `skipped`. Cached 12 h (20 min after an error).
 - `GET /api/shops`, `/api/config`, `/api/others` (old pages; answers from the compare cache), `POST /api/verdict`, `POST /api/request`, `POST /api/alert`.
-- `GET /og-home.jpg`, `/og-square.jpg`, `/og-home.png`, `/og.png?u=…`, `/robots.txt`.
+- `GET /og-home.jpg`, `/og-square.jpg`, `/og-home.png`, `/og.png?u=…`, `/favicon.ico`, `/apple-touch-icon.png`, `/robots.txt`.
 - `POST /api/m` (body: a button name such as `share`) → counts one click. Always 204. Only known names from the same site are counted.
 
 ### Price extraction (in order)

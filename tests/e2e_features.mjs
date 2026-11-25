@@ -229,7 +229,7 @@ for (const base of [...new Set([BASE, "https://eish.veldwire.com", "https://bf-p
 {
   const html = await (await fetch(BASE + "/?u=" + encodeURIComponent(PC), { headers: { "user-agent": "WhatsApp/2.24.1 A" } })).text();
   const img = (html.match(/property="og:image" content="([^"]+)"/) || [])[1] || "";
-  ok("shared link has an absolute og:image (product card when ready, else the fixed card)", /^https:\/\/[^/]+\/(og\.png\?u=|og-home\.png$)/.test(img), img.slice(0, 100));
+  ok("shared link has an absolute og:image (product card when ready, else the fixed card)", /^https:\/\/[^/]+\/(og\.png\?u=|og-home\.jpg$)/.test(img), img.slice(0, 100));
   for (const t of ["og:url", "og:site_name", "og:image:width", "og:image:height", "og:image:type", "og:description"]) ok(`shared link has ${t}`, html.includes(`property="${t}"`));
   ok("shared link has twitter:card summary_large_image", html.includes('name="twitter:card" content="summary_large_image"'));
   ok("shared link og:title has product", /og:title" content="[^"]{8,}/.test(html));
@@ -242,7 +242,7 @@ for (const base of [...new Set([BASE, "https://eish.veldwire.com", "https://bf-p
     ok(`${ua}: home is 200 with OG tags early`, hr.status === 200 && home.indexOf('property="og:image"') > 0 && home.indexOf('property="og:image"') < 2000);
     const hi = (home.match(/property="og:image" content="([^"]+)"/) || [])[1] || "";
     ok(`${ua}: home og:image is absolute og-home.jpg`, /^https:\/\/[^/]+\/og-home\.jpg$/.test(hi), hi);
-    ok(`${ua}: home has a square second og:image`, /property="og:image" content="https:\/\/[^"]+\/og-square\.jpg"/.test(home));
+    ok(`${ua}: home has exactly one og:image`, (home.match(/property="og:image"/g) || []).length === 1);
     const ir = await fetch(hi, { headers: { "user-agent": ua }, redirect: "manual" }); const ib = Buffer.from(await ir.arrayBuffer());
     ok(`${ua}: home card is a static JPG under 100 KB with length and long cache`, ir.status === 200 && ir.headers.get("content-type") === "image/jpeg" && Number(ir.headers.get("content-length")) === ib.length && ib.length < 100000 && /max-age=\d{5,}/.test(ir.headers.get("cache-control") || ""), ib.length + " bytes");
   }

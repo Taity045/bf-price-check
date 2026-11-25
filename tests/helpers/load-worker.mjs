@@ -28,7 +28,7 @@ export const NAMES = [
 
 const source = [
   "const FONTS = {};",
-  "const STATIC_IMG = {};",
+  "const STATIC_IMG = " + JSON.stringify(Object.fromEntries(["og-home.png", "og-home.jpg", "og-square.jpg", "favicon.ico", "apple-touch-icon.png"].map((n) => [n, readFileSync(new URL("public/" + n, root)).toString("base64")]))) + ";",
   'const APP = { name: "app.0123456789.js", js: "", lazy_name: "result.0123456789.js", lazy: "" };',
   read("src/shops.js"),
   read("src/worker.js"),
