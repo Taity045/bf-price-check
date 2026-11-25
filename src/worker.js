@@ -902,6 +902,7 @@ export default {
       if (/^\/api\/(check|archive|snap|others|verdict|request|alert)$/.test(url.pathname)) { const g = apiGuard(req); if (g) return g; }
       if (url.pathname === "/api/request") return statsTap(req, env, ctx, "request", await apiRequest(req, env, ctx));
       if (url.pathname === "/api/m") return await statsBeacon(req, env, ctx);
+      if (url.pathname === "/api/e2e/stats-probe") return await statsProbe(req, env);
       if (url.pathname === "/api/alert") return await apiAlert(req, env, ctx);
       if (url.pathname === "/api/e2e/cleanup") return await apiE2ECleanup(req, env);
       if (url.pathname === "/api/e2e/mail-test") return await apiMailTest(req, env);

@@ -133,6 +133,21 @@ describe("counting page views (cookieless)", () => {
   });
 });
 
+describe("live probe (/api/e2e/stats-probe)", () => {
+  test("needs the test key; counts one made-up visit, then removes it and leaves real counts alone", async (t) => {
+    const key = "p".repeat(20);
+    const { call, counts, db } = setup(t, { E2E_KEY: key });
+    await call("https://eish.veldwire.com/", { headers: { "cf-connecting-ip": "203.0.113.70" }, cf: { country: "ZA" } });
+    const real = counts();
+    assert.equal((await call("https://eish.veldwire.com/api/e2e/stats-probe", { method: "POST" })).status, 404);
+    assert.equal((await call("https://eish.veldwire.com/api/e2e/stats-probe", { method: "POST", headers: { "x-e2e-key": "wrong".repeat(5) } })).status, 404);
+    const r = await call("https://eish.veldwire.com/api/e2e/stats-probe", { method: "POST", headers: { "x-e2e-key": key } });
+    assert.deepEqual(await r.json(), { page_view_counted: true, visitor_counted: true, removed_again: true });
+    assert.deepEqual(counts(), real);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM m_seen").get().n, 1);
+  });
+});
+
 describe("counting checks and clicks", () => {
   test("a refused check (bad link) is counted as invalid", async (t) => {
     const { call, counts } = setup(t);

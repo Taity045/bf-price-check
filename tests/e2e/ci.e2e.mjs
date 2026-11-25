@@ -186,6 +186,11 @@ await step("stats", async () => {
   const inv = (d) => (d.outcomes.find((o) => o.key === "invalid") || {}).n || 0;
   ok("a refused check is counted", inv(after) === inv(before) + 1);
   ok("a link-preview bot is counted as a bot, not a visit", after.totals.bot === before.totals.bot + 1, `${before.totals.bot} -> ${after.totals.bot}`);
+  if (KEY) {
+    const pr = await (await fetch(BASE + "/api/e2e/stats-probe", { method: "POST", headers: H })).json();
+    const again = await data();
+    ok("stats probe counts a visit and removes it again", pr.page_view_counted && pr.visitor_counted && pr.removed_again && again.totals.pv === after.totals.pv, JSON.stringify(pr));
+  }
   for (const [name, o, scheme] of [["desktop", desktop, "light"], ["phone", mobile, "light"], ["desktop dark", desktop, "dark"]]) {
     const q = await open({ ...o, colorScheme: scheme }, { fake: false });
     const res = await q.goto(BASE + "/__stats/?days=30", { waitUntil: "load" });

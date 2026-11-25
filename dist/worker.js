@@ -908,6 +908,7 @@ export default {
       if (/^\/api\/(check|archive|snap|others|verdict|request|alert)$/.test(url.pathname)) { const g = apiGuard(req); if (g) return g; }
       if (url.pathname === "/api/request") return statsTap(req, env, ctx, "request", await apiRequest(req, env, ctx));
       if (url.pathname === "/api/m") return await statsBeacon(req, env, ctx);
+      if (url.pathname === "/api/e2e/stats-probe") return await statsProbe(req, env);
       if (url.pathname === "/api/alert") return await apiAlert(req, env, ctx);
       if (url.pathname === "/api/e2e/cleanup") return await apiE2ECleanup(req, env);
       if (url.pathname === "/api/e2e/mail-test") return await apiMailTest(req, env);
@@ -1948,8 +1949,33 @@ async function statsPageView(req, env) {
   const s = [mInc(env, day, "pv")];
   if (ref) s.push(mInc(env, day, "ref", ref));
   if (url.searchParams.has("u")) s.push(mInc(env, day, "event", "shared_link_open"));
-  if (fresh.meta && fresh.meta.changes > 0) s.push(mInc(env, day, "visitors"), mInc(env, day, "country", mCountry(req)), mInc(env, day, "device", mDevice(ua)));
+  const isNew = !!(fresh.meta && fresh.meta.changes > 0);
+  if (isNew) s.push(mInc(env, day, "visitors"), mInc(env, day, "country", mCountry(req)), mInc(env, day, "device", mDevice(ua)));
   await env.DB.batch(s);
+  return { day, h, ref, isNew };
+}
+
+// POST /api/e2e/stats-probe (test key only): runs one made-up page view through the real counting
+// code on the live database, checks that it was counted, then takes it back out. Answers only
+// yes/no, never the stats themselves.
+async function statsProbe(req, env) {
+  if (req.method !== "POST" || !isE2E(req, env)) return json({ error: "not found" }, 404);
+  await mTables(env);
+  const day = mDay();
+  const get = async () => Object.fromEntries(((await env.DB.prepare("SELECT metric, n FROM m_counts WHERE day = ? AND key = '' AND metric IN ('pv', 'visitors')").bind(day).all()).results || []).map((r) => [r.metric, r.n]));
+  const before = await get();
+  const ip = "198.51.100." + (1 + Math.floor(Math.random() * 250)) + "-" + mHex(crypto.getRandomValues(new Uint8Array(4)));
+  const fake = new Request(new URL("/", req.url), { headers: { "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36", "cf-connecting-ip": ip, referer: "https://stats-probe.invalid/" } });
+  const r = await statsPageView(fake, env);
+  const after = await get();
+  const pv = (after.pv || 0) - (before.pv || 0) >= 1, visitor = (after.visitors || 0) - (before.visitors || 0) >= 1;
+  // take the made-up visit back out
+  const undo = [mInc(env, r.day, "pv", "", -1), mInc(env, r.day, "ref", r.ref, -1), env.DB.prepare("DELETE FROM m_seen WHERE day = ? AND h = ?").bind(r.day, r.h)];
+  if (r.isNew) undo.push(mInc(env, r.day, "visitors", "", -1), mInc(env, r.day, "country", "XX", -1), mInc(env, r.day, "device", "desktop", -1));
+  undo.push(env.DB.prepare("DELETE FROM m_counts WHERE day = ? AND n <= 0").bind(r.day));
+  await env.DB.batch(undo);
+  const back = await get();
+  return json({ page_view_counted: pv, visitor_counted: visitor, removed_again: (back.pv || 0) === (before.pv || 0) && (back.visitors || 0) === (before.visitors || 0) });
 }
 
 // Counts an API answer after it is sent (reads a copy of the response; never delays the answer).
