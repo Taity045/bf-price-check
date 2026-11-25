@@ -2,7 +2,8 @@
 // Pass: 403 from the worker (no valid Access sign-in), or a redirect to the Access login page.
 // Fail: any 200 or other answer that is not one of those. A host that does not answer yet (new
 // custom domain, certificate still being issued) is a warning, not a failure.
-// Usage: node tests/stats_smoke.mjs [https://stats.veldwire.com] [https://eish.veldwire.com]
+// Usage: [E2E_KEY=…] node tests/stats_smoke.mjs [https://stats.veldwire.com] [https://eish.veldwire.com]
+// With E2E_KEY (the live worker's test key) it also checks that a page view is counted on the live database.
 const STATS = (process.argv[2] || "https://stats.veldwire.com").replace(/\/$/, "");
 const SITE = (process.argv[3] || "https://eish.veldwire.com").replace(/\/$/, "");
 const UA = { "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36 bf-smoke" };
@@ -28,6 +29,15 @@ const dev = await fetch(SITE + "/__stats/api/data", { headers: UA }).catch(() =>
 if (dev) check("the local-only dev shortcut is closed on the live site", dev.status === 404, `HTTP ${dev.status}`);
 const beacon = await fetch(SITE + "/api/m", { method: "POST", headers: UA, body: "nothing" }).catch(() => null);
 if (beacon) check("click counter answers 204", beacon.status === 204, `HTTP ${beacon.status}`);
+
+// With the live test key: one made-up page view goes through the real counting code and is removed again.
+if (process.env.E2E_KEY) {
+  const r = await fetch(SITE + "/api/e2e/stats-probe", { method: "POST", headers: { ...UA, "x-e2e-key": process.env.E2E_KEY } }).catch(() => null);
+  const d = r && r.ok ? await r.json() : {};
+  check("live: a page view is counted", d.page_view_counted === true, JSON.stringify(d));
+  check("live: a visitor is counted", d.visitor_counted === true);
+  check("live: the test visit is removed again", d.removed_again === true);
+}
 
 if (failures.length) { console.error(`\nSTATS SMOKE TEST FAILED: ${failures.join("; ")}`); process.exit(1); }
 console.log("\nStats smoke test passed");
