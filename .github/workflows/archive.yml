@@ -16,7 +16,7 @@ on:
       max_writes:
         description: "Most D1 rows to write in this run"
         required: false
-        default: "20000"
+        default: "15000"
 
 permissions:
   contents: read
@@ -69,7 +69,7 @@ jobs:
           ARCHIVE_LOAD_KEY: ${{ secrets.ARCHIVE_LOAD_KEY }}
         run: |
           if [ -z "$ARCHIVE_LOAD_KEY" ]; then echo "::warning::ARCHIVE_LOAD_KEY secret is not set; skipping the load."; exit 0; fi
-          node scripts/cc/archive.mjs upload --out "cc-archive/${{ steps.crawl.outputs.id }}" --endpoint "$ENDPOINT" --mode append --max-writes "${{ inputs.max_writes || '20000' }}"
+          node scripts/cc/archive.mjs upload --out "cc-archive/${{ steps.crawl.outputs.id }}" --endpoint "$ENDPOINT" --mode append --max-writes "${{ inputs.max_writes || '15000' }}"
       - name: Summary
         if: always() && steps.crawl.outputs.id != ''
         run: |
