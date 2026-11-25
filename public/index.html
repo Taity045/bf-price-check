@@ -64,7 +64,8 @@ h1{font-size:clamp(26px,6.4vw,40px);line-height:1.15;letter-spacing:-.02em;margi
 #u:focus{outline:none;border-color:var(--ink);background:var(--bg)}
 .go{height:50px;padding:0 20px;border:0;border-radius:var(--r);background:var(--acc);color:var(--bg);font-weight:600;white-space:nowrap;width:100%}
 .go[disabled]{opacity:.65;cursor:progress}
-.tries{margin-top:14px;font-size:14px;color:var(--mut);text-align:center;line-height:2}
+html.q main:has(#result.hidden) footer{display:none}
+.tries{margin-top:14px;font-size:14px;color:var(--mut);text-align:center;line-height:2;min-height:44px}
 .tries a{display:inline-flex;align-items:center;min-height:44px;margin:0 6px;color:var(--ink)}
 .err{margin-top:18px;padding:12px 14px;border-radius:var(--r);background:rgba(204,36,24,.08);background:color-mix(in srgb,var(--bad) 10%,var(--bg));color:var(--bad);font-size:15px}
 
@@ -206,7 +207,7 @@ dialog.dlg-fb[open]{display:block;position:fixed;z-index:20;left:12px;right:12px
 .wall li{flex-direction:column;align-items:flex-start;gap:2px}
 .tbl{width:100%;overflow-x:auto}
 @media (min-width:480px){
-  #f{flex-direction:row}#u{flex:1;width:auto}#f .go{width:auto}
+  #f{flex-direction:row}#u{flex:1;width:auto}#f .go{width:auto;min-width:11em}
   .manual{grid-template-columns:1fr 1fr 90px}.manual label:last-child{grid-column:auto}
   .badges{grid-template-columns:repeat(3,minmax(0,1fr))}
   .sharelist{grid-template-columns:1fr 1fr}
@@ -279,6 +280,9 @@ footer{border-top:2px dashed var(--ink)}
   main{max-width:900px;display:flex;flex-direction:column;min-height:100vh;padding-bottom:0}
   .hero{padding:24px 0}
   .hero:has(~#result.hidden){min-height:64vh;display:flex;flex-direction:column;justify-content:center}
+  /* a link with ?u= opens straight into a result: lay the top out as a result page from the first paint (no jump) */
+  html.q .hero:has(~#result.hidden){min-height:0;display:block}
+  html.q .hero .steps{display:none}
   h1{font-size:clamp(56px,5.4vw,76px)}
   .sub{font-size:18px;max-width:36em}
   #f{max-width:760px;margin:32px auto 0;gap:12px;width:100%}
@@ -605,6 +609,7 @@ function showError(msg) { const e = $("error"); e.textContent = msg; e.classList
 
 async function run(url, fresh) {
   if (!url) return;
+  document.documentElement.classList.add("q");
   const my = ++runId;
   $("error").classList.add("hidden");
   const go = $("go"); go.disabled = true; go.innerHTML = '<span class="spin"></span>Checking…';
@@ -1003,12 +1008,16 @@ async function loadOthers(my) {
     const inStock = matches.filter((r) => r.match.in_stock).map((r) => r.match.price);
     const herePrice = here && here.currency === plan.product.currency ? here.price : null;
     const low = Math.min(...inStock, herePrice ?? Infinity);
+    // every in-stock offer at the lowest price gets the tag; on a tie it says so
+    const isLow = (p) => p != null && Math.abs(p - low) < 0.5;
+    const nLow = inStock.filter(isLow).length + (isLow(herePrice) ? 1 : 0);
+    const lowTag = matches.length && nLow ? `<span class="tag cheap">${nLow > 1 ? "Same lowest price" : "Cheapest"}</span>` : "";
     const rows = [];
-    if (herePrice != null) rows.push({ here: true, price: herePrice, html: `<span class="os"><b>${esc(state.shop ? state.shop.name : state.host)}</b><span class="ot">This page</span>${matches.length && herePrice <= low ? '<span class="tag cheap">Cheapest</span>' : ""}</span><span class="op"><b class="num">${esc(money(herePrice, here.currency))}</b></span>` });
+    if (herePrice != null) rows.push({ here: true, price: herePrice, html: `<span class="os"><b>${esc(state.shop ? state.shop.name : state.host)}</b><span class="ot">This page</span>${isLow(herePrice) ? lowTag : ""}</span><span class="op"><b class="num">${esc(money(herePrice, here.currency))}</b></span>` });
     for (const r of matches.sort((a, b) => (b.match.in_stock - a.match.in_stock) || a.match.price - b.match.price)) {
       const m = r.match, d = herePrice != null ? m.price - herePrice : null;
-      const diff = d == null || Math.abs(d) < 0.5 || !m.in_stock ? "" : `<span class="diff ${d < 0 ? "less" : ""}">${esc(money(Math.abs(Math.round(d)), m.currency))} ${d < 0 ? "less" : "more"}</span>`;
-      rows.push({ price: m.price, html: `<span class="os"><b>${esc(r.name)}</b><span class="ot">${esc(m.title)}</span><span class="tag ${m.level === "name" ? "" : "sure"}">${LEVEL[m.level]}</span>${m.in_stock && m.price <= low && (herePrice == null || m.price < herePrice) ? '<span class="tag cheap">Cheapest</span>' : ""}${m.in_stock ? "" : '<span class="tag oos">Out of stock</span>'}</span><span class="op"><b class="num">${esc(money(m.price, m.currency))}</b>${m.was ? `<span class="was small">${esc(money(m.was, m.currency))}</span>` : ""}${diff}<a href="${esc(m.url)}" target="_blank" rel="noopener nofollow">Open ↗</a><span class="small">${esc(ago(r.checked_at))}</span></span>`, oos: !m.in_stock });
+      const diff = d == null || !m.in_stock ? "" : Math.abs(d) < 0.5 ? '<span class="diff">Same price</span>' : `<span class="diff ${d < 0 ? "less" : ""}">${esc(money(Math.abs(Math.round(d)), m.currency))} ${d < 0 ? "less" : "more"}</span>`;
+      rows.push({ price: m.price, html: `<span class="os"><b>${esc(r.name)}</b><span class="ot">${esc(m.title)}</span><span class="tag ${m.level === "name" ? "" : "sure"}">${LEVEL[m.level]}</span>${m.in_stock && isLow(m.price) ? lowTag : ""}${m.in_stock ? "" : '<span class="tag oos">Out of stock</span>'}</span><span class="op"><b class="num">${esc(money(m.price, m.currency))}</b>${m.was ? `<span class="was small">${esc(money(m.was, m.currency))}</span>` : ""}${diff}<a href="${esc(m.url)}" target="_blank" rel="noopener nofollow">Open ↗</a><span class="small">${esc(ago(r.checked_at))}</span></span>`, oos: !m.in_stock });
     }
     const waiting = shops.filter((s) => !results[s.id]);
     $("otherList").innerHTML = rows.map((r) => `<li class="${r.here ? "here" : ""}${r.oos ? " oos" : ""}">${r.html}</li>`).join("")
@@ -1019,11 +1028,13 @@ async function loadOthers(my) {
     sec.setAttribute("aria-busy", done < shops.length ? "true" : "false");
     $("cmpStatus").textContent = done < shops.length ? `${done} of ${shops.length} shops checked` : `${shops.length} shop${shops.length === 1 ? "" : "s"} checked`;
     const none = shops.filter((s) => results[s.id] && results[s.id].status === "none").map((s) => s.name);
-    const failed = shops.filter((s) => results[s.id] && !["match", "none", "skipped"].includes(results[s.id].status)).map((s) => s.name);
+    const failed = shops.filter((s) => results[s.id] && !["match", "none", "skipped", "robots"].includes(results[s.id].status)).map((s) => s.name);
+    const asked = shops.filter((s) => results[s.id] && results[s.id].status === "robots").map((s) => s.name);
     const parts = [];
     if (done === shops.length && !matches.length) parts.push(`We didn't find this exact product at the ${shops.length} other shop${shops.length === 1 ? "" : "s"} we searched.`);
     if (matches.length && none.length) parts.push(`Not found at: ${none.join(", ")}.`);
     if (failed.length) parts.push(`Couldn't check: ${failed.join(", ")} (try again later).`);
+    if (asked.length) parts.push(`Not searched: ${asked.join(", ")} (the shop asks tools not to use its search).`);
     $("cmpSum").textContent = parts.join(" ");
   };
   render();

@@ -953,6 +953,8 @@ async function pageHtml(req, env, ctx) {
   const origin = new URL(req.url).origin;
   let html = HTML.split("__ORIGIN__").join(origin).replace("<!--CANONICAL-->", `<link rel="canonical" href="${origin}/">`);
   if (new URL(req.url).pathname === "/") { try { html = await homeWithMeta(req, env, html, ctx); } catch {} }
+  // A shared or bookmarked result link (?u= / ?url=): the page starts in its result layout, so nothing moves when the result appears.
+  { const q = new URL(req.url).searchParams; if (new URL(req.url).pathname === "/" && (q.get("u") || q.get("url"))) html = html.replace('<html lang="en">', '<html lang="en" class="q">'); }
   return html.replace("<!--NOSCRIPT-->", '<noscript><p class="note" style="text-align:center">Turn on JavaScript to see price history. You can still paste a link and press Check price.</p></noscript>');
 }
 

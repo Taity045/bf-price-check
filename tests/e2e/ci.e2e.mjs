@@ -168,6 +168,20 @@ for (const [name, o] of [["desktop", desktop], ["phone", mobile], ["1440", { vie
   await p.locator("#others").screenshot({ path: `${SHOTS}/compare-${name}.png` });
   await p.context().close();
 });
+for (const [name, o] of [["1440", { viewport: { width: 1440, height: 900 } }], ["390", { ...mobile, viewport: { width: 390, height: 844 } }]]) await step(`compare tie ${name}`, async () => {
+  const p = await open(o);
+  const tie = { okfurniture: { ...CMP_SHOP.okfurniture, match: { ...CMP_SHOP.okfurniture.match, price: 999 } }, hirschs: { ...CMP_SHOP.hirschs, match: { ...CMP_SHOP.hirschs.match, price: 1099, was: null } } };
+  await p.route(/\/api\/compare\?/, (r) => r.fulfill({ json: { ...CMP_PLAN, shops: CMP_PLAN.shops.filter((x) => tie[x.id]), results: {} } }));
+  await p.route(/\/api\/compare\/shop\?/, (r) => r.fulfill({ json: tie[new URL(r.request().url()).searchParams.get("shop")] }));
+  await p.goto(BASE + "/");
+  await p.fill("#u", PRODUCT); await p.click("#go");
+  await p.waitForFunction(() => document.querySelectorAll("#otherList li").length === 3, null, { timeout: 10000 });
+  const rows = await p.$$eval("#otherList li", (ls) => ls.map((l) => l.textContent.replace(/\s+/g, " ").trim()));
+  ok(`compare tie ${name}: this page and the shop at the same price are both tagged`, /Same lowest price/.test(rows[0]) && /OK Furniture/.test(rows[1]) && /Same lowest price/.test(rows[1]) && /Same price/.test(rows[1]), rows.join(" | "));
+  ok(`compare tie ${name}: the dearer shop is not tagged`, !/Cheapest|Same lowest/.test(rows[2]), rows[2]);
+  await p.locator("#others").screenshot({ path: `${SHOTS}/compare-tie-${name}.png` });
+  await p.context().close();
+});
 await step("compare: nothing found", async () => {
   const p = await open(mobile);
   await p.route(/\/api\/compare\?/, (r) => r.fulfill({ json: { ...CMP_PLAN, shops: CMP_PLAN.shops.slice(0, 2), results: {} } }));
@@ -176,6 +190,22 @@ await step("compare: nothing found", async () => {
   await p.fill("#u", PRODUCT); await p.click("#go");
   await p.waitForFunction(() => /didn't find this exact product/.test(document.querySelector("#cmpSum").textContent), null, { timeout: 10000 });
   ok("compare: says plainly when no shop has the same product", /2 other shops/.test(await p.textContent("#cmpSum")), await p.textContent("#cmpSum"));
+  await p.context().close();
+});
+
+// 3c. A shared result link (?u=) must not move the page while the result and other shops load (CLS)
+for (const [name, o] of [["1440", { viewport: { width: 1440, height: 900 } }], ["1280", desktop], ["390", { ...mobile, viewport: { width: 390, height: 844 } }], ["360", mobile]]) await step(`shared link CLS ${name}`, async () => {
+  const p = await open(o);
+  await p.route(/\/api\/check\?/, async (r) => { await new Promise((ok) => setTimeout(ok, 700)); r.fulfill({ json: checkAnswer() }); });
+  await p.route(/\/api\/compare\?/, (r) => r.fulfill({ json: CMP_PLAN }));
+  await p.route(/\/api\/compare\/shop\?/, async (r) => { await new Promise((ok) => setTimeout(ok, 300)); r.fulfill({ json: CMP_SHOP[new URL(r.request().url()).searchParams.get("shop")] }); });
+  await p.addInitScript(() => { window.__cls = 0; window.__src = []; new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput) { window.__cls += e.value; window.__src.push((e.sources || []).map((x) => x.node && (x.node.id || x.node.nodeName)).join(",") + ":" + e.value.toFixed(3)); } }).observe({ type: "layout-shift", buffered: true }); });
+  await p.goto(BASE + "/?u=" + encodeURIComponent(PRODUCT));
+  await p.waitForFunction(() => /shops checked/.test(document.querySelector("#cmpStatus")?.textContent || "") && !/ of /.test(document.querySelector("#cmpStatus").textContent), null, { timeout: 15000 });
+  await p.waitForTimeout(800);
+  const cls = await p.evaluate(() => window.__cls), src = await p.evaluate(() => window.__src);
+  ok(`shared link CLS ${name}: layout shift under 0.02 while the result and other shops load`, cls < 0.02, cls.toFixed(4) + " " + src.join(" | "));
+  ok(`shared link CLS ${name}: no JS errors`, p._errs.length === 0, p._errs.join(" | "));
   await p.context().close();
 });
 
