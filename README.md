@@ -83,6 +83,32 @@ Cloudflare resources: Worker `bf-price-check`, D1 database `bf-price-check-db` (
 
 Note: the URL contains the account's workers.dev subdomain. If the subdomain is renamed, the URL changes to `https://bf-price-check.<new-subdomain>.workers.dev`.
 
+## Tests and CI/CD
+
+| Command | What it does | Network |
+|---|---|---|
+| `npm test` | Unit and integration tests (`tests/unit/*.test.mjs`, `tests/regression.test.mjs`): price readers on saved pages in `tests/fixtures`, verdict rules, SSRF guard, shop request form, rate limiter, HTML escaping. Under 1 second. | none |
+| `npm run test:e2e -- http://127.0.0.1:8787` | Browser tests (desktop and phone) against `wrangler dev` with a local D1. Price checks are faked in the browser; pages, forms and D1 are real. | local only |
+| `npm run test:smoke -- URL` | Post-deploy check of a live site: home page, one real price check, input validation. | live site |
+| `node scripts/cf_token_check.mjs` | Shows what the Cloudflare API token can do (read-only calls, never prints the token). | Cloudflare API |
+
+Run the browser tests locally:
+
+```bash
+npm ci && python3 build.py
+npx wrangler d1 execute bf-price-check-db --local --file schema.sql
+npx wrangler dev --port 8787 &       # local Worker + local D1
+npm run test:e2e -- http://127.0.0.1:8787
+```
+
+`.github/workflows/ci.yml` runs on every pull request and every push to `main`:
+
+1. **Build and test**: `npm ci`, `python3 build.py`, `npm test`, then the browser tests against `wrangler dev`. Screenshots and the worker log are kept as the `e2e-artifacts` artifact.
+2. **Cloudflare token permissions**: read-only report in the job summary (never blocks).
+3. **Deploy to Cloudflare** (push to `main` only, after the tests pass, one deploy at a time): applies `schema.sql` to D1 when the token has D1 Edit (skipped otherwise; the Worker creates its tables itself), `wrangler deploy`, then the smoke test on the workers.dev address and on the custom domain. A failed smoke test fails the run.
+
+Secrets used: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`.
+
 ## Known limits
 
 - Many big stores block requests from cloud servers (HTTP 403/bot checks): in tests Argos, Currys, bol.com, Zalando, Incredible, iStore, Makro, Dis-Chem; John Lewis returned 520, Otto 400. For these the tool shows the latest archived price (if any) and lets the user type the price.
