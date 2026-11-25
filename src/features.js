@@ -268,3 +268,68 @@ function apiGuard(req) {
   if (origin && origin !== new URL(req.url).origin) return json({ error: "Use the website to check prices." }, 403);
   return null;
 }
+
+// ---------- price history per shop (shops list) ----------
+// Counted from what we really hold, never a fixed list: per product, its older prices (older than a day,
+// last 12 months) from our saved checks (daily saving included), Wayback copies we read, and Common Crawl
+// rows. Cached in D1; a stale copy is served at once and rebuilt in the background.
+const SHOP_HISTORY_KEY = "shop-history-v1";
+const SHOP_HISTORY_FRESH_MS = 6 * 3600e3;
+const SHOP_HISTORY_KEEP_MS = 7 * DAY_MS;
+const HISTORY_GOOD = 25;      // products with 3+ older prices for "good"
+const HISTORY_SOME = 3;       // products with 3+ older prices for "some" ...
+const HISTORY_SOME_ANY = 10;  // ... or products with at least one older price
+function historyLevel(full, any) {
+  if (full >= HISTORY_GOOD) return "good";
+  if (full >= HISTORY_SOME || any >= HISTORY_SOME_ANY) return "some";
+  return "building";
+}
+// One key per product across sources: host without www, path without a trailing slash, query kept.
+function historyProductKey(u) {
+  try { const x = new URL(String(u).replace(/^http:/i, "https:")); return stripWww(x.hostname.toLowerCase()) + (x.pathname.replace(/\/+$/, "") || "/") + x.search; } catch { return null; }
+}
+async function computeShopHistory(env) {
+  const t = now(), since = t - HISTORY_DAYS * DAY_MS, older = t - DAY_MS;
+  const per = new Map();   // product key -> { n, url }
+  const add = (url, n) => { const k = historyProductKey(url); if (!k || !(n > 0)) return; const e = per.get(k) || { n: 0, url }; e.n += n; per.set(k, e); };
+  const q = async (sql, ...b) => { try { return (await env.DB.prepare(sql).bind(...b).all()).results || []; } catch { return []; } };
+  const [checks, snaps, cc] = await Promise.all([
+    q("SELECT url, COUNT(DISTINCT CAST(ts / 86400000 AS INTEGER)) AS n FROM checks WHERE price IS NOT NULL AND ts >= ? AND ts < ? AND source IS NOT 'page-data' GROUP BY url", since, older),
+    q("SELECT url, COUNT(*) AS n FROM product_snaps WHERE status = 'ok' AND price IS NOT NULL AND snap_ts >= ? GROUP BY url", ymd(new Date(since))),
+    q("SELECT product_key AS url, SUM(CASE WHEN last_seen > captured_at AND last_seen >= ? THEN 2 ELSE 1 END) AS n FROM archive_prices WHERE last_seen >= ? AND captured_at < ? GROUP BY product_key", since, since, older),
+  ]);
+  for (const r of checks) add(r.url, r.n);
+  for (const r of snaps) add(r.url, r.n);
+  for (const r of cc) add(r.url, r.n);
+  const shops = {};
+  for (const s of SHOPS) shops[s.name] = { any: 0, full: 0 };
+  for (const e of per.values()) {
+    const s = shopFor(e.url);
+    if (!s || !shops[s.name]) continue;
+    shops[s.name].any++;
+    if (e.n >= 3) shops[s.name].full++;
+  }
+  for (const k of Object.keys(shops)) shops[k].level = historyLevel(shops[k].full, shops[k].any);
+  return { updated_at: t, shops };
+}
+async function shopHistory(env, ctx) {
+  let c = null;
+  try { c = await cacheGet(env, SHOP_HISTORY_KEY); } catch {}
+  const rebuild = async () => { const v = await computeShopHistory(env); try { await cachePut(env, SHOP_HISTORY_KEY, v, SHOP_HISTORY_KEEP_MS); } catch {} return v; };
+  if (c && c.shops) {
+    if (now() - c.updated_at > SHOP_HISTORY_FRESH_MS && ctx && ctx.waitUntil) ctx.waitUntil(rebuild().catch(() => {}));
+    return c;
+  }
+  return rebuild();
+}
+async function apiShops(env, ctx) {
+  let h = null;
+  try { h = await shopHistory(env, ctx); } catch {}
+  return json({
+    shops: SHOPS.map(({ name, cc, d }) => {
+      const x = h && h.shops[name];
+      return { name, cc, host: d[0], history: x ? x.level : null, products_with_history: x ? x.full : null, products_with_any: x ? x.any : null };
+    }),
+    history_updated_at: h ? h.updated_at : null,
+  }, 200, { "cache-control": "public, max-age=900" });
+}

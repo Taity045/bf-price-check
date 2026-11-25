@@ -75,3 +75,56 @@ describe("copy spacing", () => {
     assert.equal(p.length, 2);
   });
 });
+
+import { testDb } from "../helpers/db.mjs";
+describe("price history per shop", () => {
+  const DAY = 864e5, ago = (d) => Date.now() - d * DAY;
+  const ymdOf = (ms) => new Date(ms).toISOString().slice(0, 10).replace(/-/g, "") + "120000";
+  test("levels: good / some / building up", () => {
+    assert.equal(W.historyLevel(25, 25), "good");
+    assert.equal(W.historyLevel(3, 3), "some");
+    assert.equal(W.historyLevel(0, 10), "some");
+    assert.equal(W.historyLevel(2, 9), "building");
+    assert.equal(W.historyLevel(0, 0), "building");
+  });
+  test("one product key across www, trailing slash and http", () => {
+    assert.equal(W.historyProductKey("http://www.dunelm.com/product/a-1/"), W.historyProductKey("https://dunelm.com/product/a-1"));
+  });
+  test("counted from saved checks, Wayback copies and Common Crawl rows; today's check and failed copies don't count", async (t) => {
+    const { db, env } = testDb(t);
+    await W.ensureArchiveTables(env);
+    const dun = "https://www.dunelm.com/product/duvet-1000215618";
+    // Dunelm: 1 older check + 1 Wayback copy + 1 Common Crawl run (first and last copy) = 4 older prices
+    db.prepare("INSERT INTO checks (url, ts, price, currency, source) VALUES (?, ?, 85, 'GBP', 'json-ld')").run(dun, ago(10));
+    db.prepare("INSERT INTO checks (url, ts, price, currency, source) VALUES (?, ?, 85, 'GBP', 'json-ld')").run(dun, Date.now() - 3600e3); // today: not older
+    db.prepare("INSERT INTO product_snaps (url, snap_ts, orig, price, currency, status) VALUES (?, ?, ?, 80, 'GBP', 'ok')").run(dun, ymdOf(ago(40)), dun);
+    db.prepare("INSERT INTO product_snaps (url, snap_ts, orig, status) VALUES (?, ?, ?, 'blocked')").run(dun, ymdOf(ago(50)), dun);
+    db.prepare("INSERT INTO archive_prices (product_key, captured_at, last_seen, n, price, currency, url) VALUES (?, ?, ?, 2, 90, 'GBP', ?)").run("https://www.dunelm.com/product/duvet-1000215618", ago(120), ago(90), dun);
+    // Takealot: only a check from today -> nothing older
+    db.prepare("INSERT INTO checks (url, ts, price, currency, source) VALUES (?, ?, 100, 'ZAR', 'takealot-api')").run("https://www.takealot.com/x/PLID1", Date.now() - 3600e3);
+    // Pep: one product with 1 older check
+    db.prepare("INSERT INTO checks (url, ts, price, currency, source) VALUES (?, ?, 50, 'ZAR', 'json-ld')").run("https://www.pepstores.com/products/kettle-sku-a1", ago(5));
+    const h = await W.computeShopHistory(env);
+    assert.deepEqual(h.shops["Dunelm"], { any: 1, full: 1, level: "building" });
+    assert.deepEqual(h.shops["Takealot"], { any: 0, full: 0, level: "building" });
+    assert.deepEqual(h.shops["Pep"], { any: 1, full: 0, level: "building" });
+  });
+  test("/api/shops gives every shop a history level and is cached", async (t) => {
+    const { db, env } = testDb(t);
+    for (let i = 0; i < 30; i++) for (let d = 2; d <= 4; d++) db.prepare("INSERT INTO checks (url, ts, price, currency, source) VALUES (?, ?, 10, 'GBP', 'json-ld')").run(`https://www.dunelm.com/product/p-${1000000 + i}`, ago(d));
+    const r = await (await W.apiShops(env, null)).json();
+    assert.equal(r.shops.length, W.SHOP_LIST.works.length);
+    const dun = r.shops.find((s) => s.name === "Dunelm");
+    assert.equal(dun.history, "good"); assert.equal(dun.products_with_history, 30);
+    assert.ok(r.shops.every((s) => ["good", "some", "building"].includes(s.history)));
+    // cached: a new row does not change the answer until the cache is rebuilt
+    db.prepare("DELETE FROM checks").run();
+    const r2 = await (await W.apiShops(env, null)).json();
+    assert.equal(r2.shops.find((s) => s.name === "Dunelm").history, "good");
+  });
+  test("works with no tables for archives yet (fresh database)", async (t) => {
+    const { env } = testDb(t);
+    const h = await W.computeShopHistory(env);
+    assert.ok(Object.values(h.shops).every((s) => s.level === "building"));
+  });
+});

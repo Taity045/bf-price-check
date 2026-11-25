@@ -1005,7 +1005,7 @@ export default {
       if (url.pathname === "/api/admin/archive-load") return await apiArchiveLoad(req, env);
       if (url.pathname === "/api/e2e/mail-test") return await apiMailTest(req, env);
       if (req.method !== "GET" && req.method !== "HEAD") return json({ error: "method not allowed" }, 405);
-      if (url.pathname === "/api/shops") return json({ shops: SHOPS.map(({ name, cc, d }) => ({ name, cc, host: d[0] })) }, 200, { "cache-control": "public, max-age=3600" });
+      if (url.pathname === "/api/shops") return await apiShops(env, ctx);
       if (url.pathname === "/api/check") return statsTap(req, env, ctx, "check", await apiCheck(req, env, ctx));
       if (url.pathname === "/api/daily-status") return await apiDailyStatus(env);
       if (url.pathname === "/api/archive-stats") return await apiArchiveStats(env);
