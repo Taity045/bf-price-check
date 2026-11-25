@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
 import { W } from "../helpers/load-worker.mjs";
+import { testDb } from "../helpers/db.mjs";
 
 const fx = (n) => readFileSync(new URL("../fixtures/shops/" + n, import.meta.url), "utf8");
 const id = (title, brand, more = {}) => W.cmpIdentity({ title, brand, price: 50, currency: "ZAR", ...more }, more.canon || "https://www.pnp.co.za/p/x");
@@ -106,6 +107,14 @@ describe("Pick n Pay search and detail", () => {
     const r = W.pnpProduct(d);
     assert.equal(r.gtin, "7613033745843");
     assert.ok(r.brand);
+  });
+  test("a close candidate whose barcode can't be read now (slow limit) is 'busy', not 'none'", async (t) => {
+    const { env } = testDb(t);
+    let n = 0; env.RL_CMP_SLOW = { limit: async () => ({ success: n++ < 1 }) };   // the search only, then busy
+    mockFetch(t, (url) => url.endsWith("/robots.txt") ? new Response("User-agent: *\nDisallow: */search/\n") : new Response(fx("pnp-search.json"), { headers: { "content-type": "application/json" } }));
+    const src = W.cmpIdentity({ title: "Nescafé Gold Instant Coffee 200 g", price: 149.99, currency: "ZAR" }, "https://www.woolworths.co.za/prod/_/A-7613033745843");
+    const r = await W.cmpSearchShop(env, shop("pnp"), src);
+    assert.equal(r.status, "busy");
   });
   test("Smart Shopper price only while the promotion runs, and only as a note", () => {
     const p = (start, end) => [{ promotionDisplayType: "SMART_SHOPPER", promotionTextMessage: "1 For R129.00 (Smart Price)", startDate: shift(start), endDate: shift(end) }];
