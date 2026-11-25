@@ -195,3 +195,17 @@ describe("archive rows in the history and verdicts", () => {
     assert.match(p[1].link, /CC-MAIN-2026-34-index/);
   });
 });
+
+describe("daily saving reads archive rows in its batch", () => {
+  test("statement only once the table is known; rows go to the right product", async (t) => {
+    const { env } = testDb(t);
+    env.ARCHIVE_LOAD_KEY = KEY;
+    await W.apiArchiveLoad(loadReq([row()]), env);
+    await W.archiveRows(env, W.archiveLookupKeys(DUNELM), 0);
+    const stmts = W.archiveBatchStmt(env, [DUNELM, "https://www.wickes.co.uk/x/p/1"], 0);
+    assert.equal(stmts.length, 1);
+    const [res] = await env.DB.batch(stmts);
+    assert.equal(W.archiveRowsFor(DUNELM, res.results).length, 1);
+    assert.equal(W.archiveRowsFor("https://www.wickes.co.uk/x/p/1", res.results).length, 0);
+  });
+});

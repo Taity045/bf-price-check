@@ -19,6 +19,8 @@ const CMP_ERR_TTL = 20 * 60e3;        // a failed or busy shop is retried sooner
 const CMP_SEARCH_TTL = 6 * 3600e3;    // one search on one shop (shared by all products)
 const CMP_SHOP_PER_MIN = 30;          // searches per shop per minute, all visitors together
 const CMP_PER_IP_PER_MIN = 240;       // shop calls per visitor per minute (one check makes up to ~20)
+// Bump when the matching rules or identity reading change, so cached answers from older rules are not shown.
+const CMP_VER = "v3";
 const CMP_MAX_SEARCHES = 2;           // searches per shop per product
 const CMP_MAX_DETAILS = 3;            // product-detail reads per shop per product (to read barcodes)
 
@@ -65,7 +67,10 @@ const CMP_GENERIC = new Set(["portable", "waterproof", "water", "resistant", "bl
 const CMP_STOP = new Set(["the", "and", "with", "of", "a", "an", "in", "on", "by", "to", "new", "edition", "version", "official", "genuine", "original", "brand", "free", "shipping", "sa", "south", "africa", "local", "stock", "local stock", "model", "series", "colour", "color", "size", "inch", "inches", "gen", "generation", "includes", "including", "incl", "w", "only", "set", "item", "product", "unit", "1pc", "pc", "piece"]);
 const CMP_ACCESSORY = /\b(compatible|replacement|protector|tempered|skins?|decals?|stickers?|refill|refills|spare)\b|\b(case|cover|sleeve|pouch|strap|band|stand|holder|mount|dock|charger|cable|adapter|controller|remote|lens|filter|bag)\s+(for|compatible|to\s+fit)\b|\bfor\s+(apple|samsung|iphone|ipad|airpods|galaxy|ps5|ps4|playstation|xbox|nintendo|switch|macbook|sony|huawei|xiaomi|oppo|garmin|fitbit|gopro|dji|nikon|canon|lg|hisense|tcl)\b/i;
 const CMP_CONDITION = /\b(refurbished|refurb|renewed|pre[- ]?owned|second[- ]?hand|used|demo|ex[- ]?demo|open[- ]?box|grade\s+[a-c]|parallel\s+import|imported|import|grey\s+import|b-grade|cpo)\b/i;
-const CMP_BUNDLE = /\s\+\s|\bbundle\b|\bcombo\b|\bvoucher\b|\bkit\b|\bwith\s+(?:game|controller|headset|voucher)|\b\d+\s*(?:x|pack|pk)\s+(?:of\s+)?/i;
+// Game or special editions (often a console with a game): the word must be on both sides or neither.
+const CMP_EDITION = /\b(fortnite|call of duty|cod|ea sports|fc ?2\d|fifa|spider-?man|marvel|astro bot|god of war|mario|kart|zelda|pokemon|minecraft|hogwarts|gta|grand theft auto|ghost of|battlefield|flowering|chaos|game ?pass|limited edition|special edition|anniversary|collectors?)\b/gi;
+const cmpEditions = (t) => new Set((cmpNorm(t).match(CMP_EDITION) || []).map((x) => x.toLowerCase().replace(/\s+/g, " ")));
+const CMP_BUNDLE = /\s\+\s|\bbundle\b|\bcombo\b|\bvoucher\b|\b(?<!(?:model|building|car|construction|lego|technic|brick|bricks)\s)kit\b|\bwith\s+(?:game|controller|headset|voucher)|\b\d+\s*(?:x|pack|pk)\s+(?:of\s+)?/i;
 
 function cmpNorm(s) {
   return decodeEntities(String(s || "")).toLowerCase()
@@ -76,6 +81,7 @@ function cmpNorm(s) {
     .replace(/\beau\s+de\s+parfum\b/g, " edp ").replace(/\beau\s+de\s+toilette\b/g, " edt ").replace(/\beau\s+de\s+cologne\b/g, " edc ")
     .replace(/\bplay\s*station\s*(\d)\b/g, " ps$1 ")
     .replace(/\bwi[\s-]?fi\b/g, " wifi ")
+    .replace(/\bbt\b/g, " bluetooth ")
     .replace(/\busb[\s-]?type[\s-]?c\b|\busb[\s-]?c\b/g, " usbc ")
     .replace(/\b(\d)\s?k\b/g, " $1k ")
     .replace(/\bactive[\s-]+noise[\s-]+cancell?(?:ation|ing)\b|\bnoise[\s-]+cancell?(?:ation|ing)\b/g, " anc ")
@@ -167,7 +173,10 @@ function cmpIdentity(cur, canon) {
   const codes = cmpCodes(title + " " + (cur.mpn || ""), brand);
   let urlCodes = [];
   try { urlCodes = cmpCodes(new URL(canon).pathname.replace(/\/PLID\d+/i, "").replace(/[-_]/g, " "), brand).filter((c) => !codes.includes(c)); } catch {}
-  return { title, brand, gtin: cmpGtin(cur.gtin), gtins: [cmpGtin(cur.gtin)].filter(Boolean), mpn: cur.mpn || null, codes, titleCodes, urlCodes, price: cur.price || null, currency: cur.currency || null };
+  let gtin = cmpGtin(cur.gtin);
+  // book shops often put the ISBN in the link
+  if (!gtin) { try { const m = new URL(canon).pathname.match(/(?:^|[^\d])(97[89]\d{10})(?!\d)/); if (m) gtin = m[1]; } catch {} }
+  return { title, brand, gtin, gtins: [gtin].filter(Boolean), mpn: cur.mpn || null, codes, titleCodes, urlCodes, price: cur.price || null, currency: cur.currency || null };
 }
 
 // What kind of product it is, so we only ask shops that sell it.
@@ -238,6 +247,7 @@ function cmpMatch(src, cand, opts = {}) {
   if (CMP_ACCESSORY.test(cn) && !CMP_ACCESSORY.test(sn)) return { level: null, why: "accessory" };
   if (CMP_CONDITION.test(cn) && !CMP_CONDITION.test(sn)) return { level: null, why: "used, refurbished or imported" };
   if (CMP_BUNDLE.test(cTitle) && !CMP_BUNDLE.test(src.title)) return { level: null, why: "bundle" };
+  if (!setEq(cmpEditions(src.title), cmpEditions(cTitle))) return { level: null, why: "different edition" };
   const A = cmpAttrs(src.title), B = cmpAttrs(cTitle);
   for (const k of ["storage", "inch", "ml", "g", "pack", "year", "gender"]) if (A[k].size && B[k].size && !setEq(A[k], B[k])) return { level: null, why: "different " + k };
   if (!A.inch.size && !B.inch.size && A.cm.size && B.cm.size && !setEq(A.cm, B.cm)) return { level: null, why: "different size" };
@@ -267,6 +277,8 @@ function cmpMatch(src, cand, opts = {}) {
   if (!setEq(A.nums, B.nums)) return { level: null, why: "different numbers" };
   if (A.watt.size && B.watt.size && !setEq(A.watt, B.watt)) return { level: null, why: "different power" };
   for (const k of ["storage", "inch", "ml", "g"]) if (A[k].size && !B[k].size) return { level: null, why: "missing spec" };
+  // the other shop names a size this page does not (a page with several sizes): we can't tell which size this price is for
+  for (const k of ["storage", "ml", "g"]) if (B[k].size && !A[k].size) return { level: null, why: "size not on this page" };
   const isCode = (w) => /\d/.test(w) && /[a-z]/.test(w) && w.length >= 5;
   const core = [...A.words].filter((w) => w !== sb && !sb.split(" ").includes(w) && !CMP_GENERIC.has(w) && !isCode(w));
   // a product line named by a variant word and a number (JBL Flip 7) is enough; otherwise it needs a name word
@@ -510,7 +522,7 @@ async function cmpIpLimited(env, ip) {
 
 // The identity of a checked product (cached). For Shopify shops the product's own .js gives the barcode.
 async function cmpIdentityFor(env, canon) {
-  const key = "cmpid-v1:" + canon;
+  const key = "cmpid-" + CMP_VER + ":" + canon;
   const c = await cacheGet(env, key);
   if (c) return c;
   const cur = await latestCurrent(env, canon);
@@ -551,7 +563,7 @@ async function apiCompare(req, env) {
   const plan = cmpPlan(id, host, id.currency);
   const results = {};
   if (plan.shops.length) {
-    const keys = plan.shops.map((s) => "cmp-v1:" + s.id + ":" + g.canon);
+    const keys = plan.shops.map((s) => "cmp-" + CMP_VER + ":" + s.id + ":" + g.canon);
     const rows = await env.DB.prepare(`SELECT k, v, exp FROM cache WHERE k IN (${keys.map(() => "?").join(",")})`).bind(...keys).all();
     for (const r of rows.results || []) if (r.exp > now()) { try { const v = JSON.parse(r.v); results[v.shop] = v; } catch {} }
   }
@@ -563,7 +575,7 @@ async function apiCompareShop(req, env, ctx) {
   const g = await cmpGuard(req, env); if (g.error) return g.error;
   const shop = cmpShopById(new URL(req.url).searchParams.get("shop") || "");
   if (!shop) return json({ error: "unknown shop" }, 400);
-  const key = "cmp-v1:" + shop.id + ":" + g.canon;
+  const key = "cmp-" + CMP_VER + ":" + shop.id + ":" + g.canon;
   const cached = await cacheGet(env, key);
   if (cached) return json({ ...cached, cached: true });
   const ip = req.headers.get("cf-connecting-ip") || "0";
@@ -596,7 +608,7 @@ async function cmpSaveHistory(env, m) {
 // Old pages (loaded before this version) still call /api/others: answer with the cached matches.
 async function apiOthersCompat(req, env) {
   const g = await cmpGuard(req, env); if (g.error) return g.error;
-  const rows = await env.DB.prepare("SELECT v, exp FROM cache WHERE k LIKE ? LIMIT 40").bind("cmp-v1:%:" + g.canon).all();
+  const rows = await env.DB.prepare("SELECT v, exp FROM cache WHERE k LIKE ? LIMIT 40").bind("cmp-" + CMP_VER + ":%:" + g.canon).all();
   const matches = [];
   for (const r of rows.results || []) if (r.exp > now()) { try { const v = JSON.parse(r.v); if (v.match) matches.push({ shop: v.name, title: v.match.title, price: v.match.price, currency: v.match.currency, url: v.match.url, match: v.match.level === "barcode" ? "barcode" : v.match.level === "model" ? "model number" : "name and specs" }); } catch {} }
   return json({ matches, searched: [] });

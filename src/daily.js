@@ -214,11 +214,11 @@ async function runDaily(env, scheduledTime, opts = {}) {
       ...batch.map((r) => env.DB.prepare("UPDATE tracked SET next_check_at = ?, fails = COALESCE(fails, 0) + 1 WHERE url = ? AND next_check_at <= ? RETURNING url").bind(t0 + CLAIM_MS, r.url, t0)),
       ...batch.map((r) => env.DB.prepare("SELECT ts, price, was, currency FROM checks WHERE url = ? AND ts >= ? AND source IS NOT 'page-data' ORDER BY ts").bind(r.url, since)),
       ...batch.map((r) => env.DB.prepare("SELECT snap_ts, orig, price, was, currency, status FROM product_snaps WHERE url = ? AND snap_ts >= ? AND status NOT IN ('pending', 'retry')").bind(r.url, ymd(new Date(since)))),
+      // Common Crawl rows for the whole batch (src/archive.js), in the same round trip.
+      ...archiveBatchStmt(env, batch.map((r) => r.url), since),
     ]);
     const k = batch.length, memo = { robots: new Map(), dns: new Map() };
-    const jobs = batch.map((r, i) => ({ row: r, claimed: (res[i].results || []).length > 0, hist: { checks: res[k + i].results || [], snaps: res[2 * k + i].results || [], cc: [] } })).filter((j) => j.claimed);
-    // Common Crawl rows for these products (src/archive.js), one query for the whole batch.
-    await archiveForJobs(env, jobs, since);
+    const jobs = batch.map((r, i) => ({ row: r, claimed: (res[i].results || []).length > 0, hist: { checks: res[k + i].results || [], snaps: res[2 * k + i].results || [], cc: archiveRowsFor(r.url, res[3 * k] && res[3 * k].results) } })).filter((j) => j.claimed);
     sum.picked = jobs.length;
     // Takealot products one after another (polite to one host); the page product at the same time.
     const lanes = ["takealot", "page"].map((lane) => jobs.filter((j) => (j.row.lane === "takealot" ? "takealot" : "page") === lane));
@@ -256,7 +256,8 @@ async function checkOne(env, job, alerts, memo, sum) {
   else if (blockedShopFor(v.url.href)) { gone = true; note = "blocked-shop"; }
   else {
     const canonInfo = canonicalize(v.url);
-    const target = canonInfo.kind === "takealot" ? new URL(takealotApiUrl(canonInfo.plid)) : canonInfo.kind === "amazon" ? new URL(canonInfo.canon) : v.url;
+    // robots.txt is checked for the URL we really fetch: the API for an API shop reader (src/readers.js).
+    const target = canonInfo.kind === "takealot" ? new URL(takealotApiUrl(canonInfo.plid)) : canonInfo.kind === "amazon" ? new URL(canonInfo.canon) : new URL(readerTarget(v.url.href));
     const checkHost = target.hostname.toLowerCase();
     // 1) The shop's address must be public (checked again on every run: DNS can change).
     if (!memo.dns.has(checkHost)) memo.dns.set(checkHost, await resolvesPublic(checkHost));

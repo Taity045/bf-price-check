@@ -147,7 +147,7 @@ async function collect() {
   const shops = args.shops ? CC_SHOPS.filter((s) => args.shops.split(",").includes(s.name)) : CC_SHOPS;
   log("crawls", crawls.join(" "), "shops", shops.length);
   const capFile = `${OUT}/captures.jsonl`, done = new Set();
-  if (existsSync(capFile)) for (const l of readFileSync(capFile, "utf8").split("\n")) if (l) { try { const c = JSON.parse(l); done.add(c.crawl + "|" + c.key); } catch {} }
+  if (existsSync(capFile)) for (const l of readFileSync(capFile, "utf8").split("\n")) if (l) { try { const c = JSON.parse(l); if (c.ok || !/^(HTTP|error)/.test(c.reason || "")) done.add(c.crawl + "|" + c.key); } catch {} }
   const conc = +(args.concurrency || 12);
   // With a local copy of the index lines (--cdx-dir), finish one shop at a time (strongest first);
   // otherwise read each crawl's index once and go through all shops.

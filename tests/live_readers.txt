@@ -1,0 +1,38 @@
+# shop | product link (real products, picked 2026-11-25). Used by tests/live_readers.mjs.
+TFG (Bash) | https://bash.com/markham-men-s-cargo-fatigue-shorts-020203acje7/p
+TFG (Bash) | https://bash.com/nike-goggle-case-black-62198322/p
+TFG (Bash) | https://bash.com/grace-softest-gold-seal-certified-egyptian-200-thread-count-cotton-duvet-cover-set-153301aaiu5/p
+Markham | https://www.markham.co.za/markham-men-s-regular-fit-swimshorts-020203achc0/p
+Foschini | https://www.foschini.co.za/brushed-fleece-barrel-leg-joggers-000007abea5/p
+Sportscene | https://www.sportscene.co.za/puma-men-s-inverse-mosiac-black-pink-sneaker-060601ahvh6/p
+Totalsports | https://www.totalsports.co.za/nike-mens-hybrid-rn-laser-crimson-grey-training-shoes-130609aejk8/p
+American Swiss | https://www.americanswiss.co.za/american-swiss-black-diamond-eau-de-parfum-62096907/p
+Mr Price | https://www.mrp.com/en_za/sneakers-107866752
+Mr Price | https://www.mrp.com/en_za/2-pack-regular-t-shirts-107879331
+Mr Price | https://www.mrp.com/en_za/regular-fit-shirt-107779844
+Mr Price Home | https://www.mrphome.com/en_za/velvet-swirl-scatter-cushion-40x60cm-106687619
+Mr Price Home | https://www.mrphome.com/en_za/jacquard-agate-scatter-cushion-60x60cm-107162114
+Mr Price Sport | https://www.mrpsport.com/en_za/joma-victory-running-shoes-105614664
+Mr Price Sport | https://www.mrpsport.com/en_za/venture-trail-running-shoes-105895811
+Pick n Pay | https://www.pnp.co.za/perfect-touch-mousse-volume-lift-300ml/p/000000000000669268_EA
+Pick n Pay | https://www.pnp.co.za/satiskin-bubble-bath-cocoa-butter-1l/p/000000000000757664_EA
+Pick n Pay | https://www.pnp.co.za/white-star-instant-maize-porridge-orig-1kg/p/000000000000714126_EA
+Cape Union Mart | https://www.capeunionmart.co.za/products/k-way-elements-mens-washed-pocket-t-shirt/108946365-C50.html
+Cape Union Mart | https://www.capeunionmart.co.za/products/the-north-face-base-camp-fuse-box-30l-backpack/108761320-C01.html
+Cape Union Mart | https://www.capeunionmart.co.za/products/k-way-mens-edge-migo-insulated-jacket/108271108-C01.html
+Cape Union Mart | https://www.capeunionmart.co.za/products/k-way-mens-edge-migo-insulated-jacket/108271108-C01.html
+Poetry | https://www.poetry.co.za/products/gatsby-tall-glass/102245137-C00.html
+Poetry | https://www.poetry.co.za/products/gold-plated-huggies-with-heart-charm/109051472-C93.html
+Poetry | https://www.poetry.co.za/products/julian-denim-pleated-waist-detailed-top/108631392-C55.html
+Poetry | https://www.poetry.co.za/products/athena-printed-linen-dress/109099909-C99.html
+NetFlorist | https://www.netflorist.co.za/shop/flowers/classic-red-rose-bouquet
+NetFlorist | https://www.netflorist.co.za/shop/flowers/flower-and-fresh-fruit-basket/
+NetFlorist | https://www.netflorist.co.za/shop/gifts/charlotte-rhys-serene-beauty-hat-box/
+Clicks | https://clicks.co.za/cerave_invisible-hydrating-sunscreen-spf50-177ml/p/410827
+Clicks | https://clicks.co.za/loreal_revitalift-anti-wrinkle-extra-firming-cream-50ml/p/308767
+Clicks | https://clicks.co.za/clicks_family-wipes-50-wipes/p/198620
+Clicks | https://clicks.co.za/gaviscon_liquid-suspension-original-aniseed-300ml/p/40754
+Absolute Pets | https://www.absolutepets.com/shop/product/festive-ostrich-sticks
+Absolute Pets | https://www.absolutepets.com/shop/product/dog/pup-ice-fruity-lollies-strawberry-banana-2-pack
+Absolute Pets | https://www.absolutepets.com/shop/product/dog/beef-twist
+Absolute Pets | https://www.absolutepets.com/shop/product/small-pet-food-treats-and-care/oxbow-banana-freeze-dried-treats

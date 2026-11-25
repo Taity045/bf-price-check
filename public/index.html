@@ -339,17 +339,6 @@ footer{border-top:2px dashed var(--ink)}
 
     <section class="card verdict unk" id="verdict"></section>
 
-    <section class="card hidden" id="others" aria-labelledby="othersTitle" aria-busy="false">
-      <div class="charthead"><h3 id="othersTitle">Other shops</h3><span class="small" id="cmpStatus" aria-live="polite"></span></div>
-      <div class="prog" id="cmpProg"><i></i></div>
-      <ul class="olist cmp" id="otherList"></ul>
-      <p class="small" id="cmpSum"></p>
-      <details id="cmpHow"><summary>How we match</summary>
-        <p class="note"><b>Same barcode</b> and <b>Same model number</b> mean it is the same product. <b>Same name and specs</b> means the name, size and storage match, but the shop shows no barcode or model number, so check the colour and model on the shop's page.</p>
-        <p class="note">We search each shop's own website and show only exact matches. Prices are from the shop when we checked (see the time on each row). Delivery is not included.</p>
-      </details>
-    </section>
-
     <div class="card">
       <div class="charthead"><h3>Price history</h3><span class="small num" id="cnt"></span></div>
       <div class="prog" id="prog"><i></i></div>
@@ -373,6 +362,17 @@ footer{border-top:2px dashed var(--ink)}
       <button type="button" id="alertBtn" class="hidden">Alert me</button>
       <button type="button" id="again">Check again</button>
     </div>
+
+    <section class="card hidden" id="others" style="margin-top:16px" aria-labelledby="othersTitle" aria-busy="false">
+      <div class="charthead"><h3 id="othersTitle">Other shops</h3><span class="small" id="cmpStatus" aria-live="polite"></span></div>
+      <div class="prog" id="cmpProg"><i></i></div>
+      <ul class="olist cmp" id="otherList"></ul>
+      <p class="small" id="cmpSum"></p>
+      <details id="cmpHow"><summary>How we match</summary>
+        <p class="note"><b>Same barcode</b> and <b>Same model number</b> mean it is the same product. <b>Same name and specs</b> means the name, size and storage match, but the shop shows no barcode or model number, so check the colour and model on the shop's page.</p>
+        <p class="note">We search each shop's own website and show only exact matches. Prices are from the shop when we checked (see the time on each row). Delivery is not included.</p>
+      </details>
+    </section>
   </section>
 
   <section id="wallView" class="page hidden" aria-labelledby="wallTitle">

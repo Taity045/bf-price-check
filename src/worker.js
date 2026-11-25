@@ -458,6 +458,10 @@ function extractFromHtml(html, host) {
   if (/(^|\.)amazon\./.test(host)) source = parseAmazon(html, out);
   if (!source) source = parseJsonLd(html, out);
   const metaSrc = parseMeta(html, out);
+  if (!out.gtin) {
+    const m = html.match(/itemprop=["']gtin(?:8|12|13|14)?["'][^>]{0,80}?content=["'](\d{8,14})["']/i) || html.match(/content=["'](\d{8,14})["'][^>]{0,80}?itemprop=["']gtin(?:8|12|13|14)?["']/i);
+    if (m) out.gtin = m[1];
+  }
   if (!source) source = metaSrc;
   if (!source) source = parseFallback(html, out);
   if (!source) source = parseDataLayer(html, out);
@@ -508,7 +512,7 @@ async function readLimitedText(response, truncate = false) {
   } finally { reader.releaseLock(); }
 }
 
-async function fetchStore(url, headers, timeout, verifiedHost) {
+async function fetchStore(url, headers, timeout, verifiedHost, init = {}) {
   const signal = AbortSignal.timeout(timeout);
   for (let hop = 0; hop <= 5; hop++) {
     const target = validateUrl(url);
@@ -518,7 +522,8 @@ async function fetchStore(url, headers, timeout, verifiedHost) {
       throw new PageReadError("Couldn't verify a public address for the store.");
     }
     const cookie = AMZ_COOKIE[stripWww(host)];
-    const r = await fetch(target.url.href, { headers: { ...headers, ...(cookie ? { cookie } : {}) }, redirect: "manual", signal, cf: { cacheTtl: 0 } });
+    // init: { method, body } for a POST API (Mr Price GraphQL); a redirect never repeats a POST.
+    const r = await fetch(target.url.href, { ...(hop === 0 ? init : {}), headers: { ...headers, ...(cookie ? { cookie } : {}) }, redirect: "manual", signal, cf: { cacheTtl: 0 } });
     if (![301, 302, 303, 307, 308].includes(r.status)) return r;
     const next = r.headers.get("location");
     await r.body?.cancel();
@@ -583,6 +588,13 @@ async function getCurrent(canonInfo, origUrl, verifiedHost, agent) {
       if (t.error) return { ...res, status: "noprice", message: t.error };
       return { ...res, ...t };
     }
+    // Shop readers (src/readers.js): an API reader replaces the page fetch; a page reader runs on the page.
+    const rd = canonInfo.kind === "amazon" ? null : readerFor(origUrl);
+    if (rd && rd.api) {
+      const t = await readApi(rd, agent, verifiedHost);
+      if (t.error) return { ...res, status: "noprice", message: t.error };
+      return { ...res, ...t };
+    }
     const target = canonInfo.kind === "amazon" ? canonInfo.canon : origUrl;
     const pg = await fetchPage(target, tldCur, verifiedHost, agent);
     const blocked = detectBlock(pg.status, pg.html);
@@ -590,6 +602,8 @@ async function getCurrent(canonInfo, origUrl, verifiedHost, agent) {
     if (pg.status === 404 || pg.status === 410) return { ...res, status: "error", http: pg.status, message: `The store says this page doesn't exist (HTTP ${pg.status}).` };
     if (pg.status >= 400) return { ...res, status: "error", http: pg.status, message: `The store answered HTTP ${pg.status}.` };
     const ex = extractFromHtml(pg.html, host);
+    const pr = rd ? readPage(rd, pg.html) : null;
+    if (pr && pr.price) { ex.price = pr.price; ex.was = pr.was || null; ex.currency = pr.currency || ex.currency; ex.source = pr.source; if (pr.title && !ex.title) ex.title = pr.title; }
     let currency = ex.currency, currencyGuessed = false;
     if (!currency && ex.price) { currency = tldCur; currencyGuessed = !!currency && canonInfo.kind !== "amazon"; }
     if (ex.price && canonInfo.kind === "amazon" && tldCur && currency !== tldCur) return { ...res, status: "noprice", http: pg.status, title: ex.title, image: ex.image, message: `Amazon showed us a price in ${currency} instead of ${tldCur} (it does this for visitors outside the country), so we can't read the local price.` };
@@ -922,6 +936,7 @@ async function apiSnap(req, env) {
 
 async function cron(env, scheduledTime) {
   await ensureFeatureTables(env);
+  await archiveProbe(env);
   await runDaily(env, scheduledTime);
   // Housekeeping: the cron runs every minute; clean up once every 6 hours, at minute 15.
   const at = new Date(scheduledTime);

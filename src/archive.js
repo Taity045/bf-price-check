@@ -37,20 +37,33 @@ function archiveLookupKeys(canon, origUrl) {
 }
 
 // Rows for a product from the last HISTORY_DAYS. Never throws: no table yet means no rows.
+let archiveTableSeen = false;
 async function archiveRows(env, keys, since) {
   if (!keys.length) return [];
   try {
     const r = await env.DB.prepare(`SELECT product_key, captured_at, last_seen, n, price, was, currency, url, crawl, last_crawl FROM archive_prices WHERE product_key IN (${keys.map(() => "?").join(", ")}) AND last_seen >= ? ORDER BY captured_at LIMIT 500`).bind(...keys, since).all();
+    archiveTableSeen = true;
     return r.results || [];
   } catch { return []; }
 }
 
-// Daily saving: fill hist.cc for a batch of products with one query.
-async function archiveForJobs(env, jobs, since) {
-  const byKey = new Map();
-  for (const j of jobs) for (const k of archiveLookupKeys(j.row.url)) { if (!byKey.has(k)) byKey.set(k, []); byKey.get(k).push(j); }
-  const rows = await archiveRows(env, [...byKey.keys()].slice(0, 90), since);
-  for (const r of rows) for (const j of byKey.get(r.product_key) || []) j.hist.cc.push(r);
+// Daily saving: one statement for a whole batch (run inside its D1 batch), then the rows per product.
+// No statement when the table does not exist yet would fail the batch, so the table is checked first.
+function archiveBatchStmt(env, urls, since) {
+  if (!archiveTableSeen) return [];
+  const keys = [...new Set(urls.flatMap((u) => archiveLookupKeys(u)))].slice(0, 90);
+  if (!keys.length) return [];
+  return [env.DB.prepare(`SELECT product_key, captured_at, last_seen, n, price, was, currency, url, crawl, last_crawl FROM archive_prices WHERE product_key IN (${keys.map(() => "?").join(", ")}) AND last_seen >= ? ORDER BY captured_at LIMIT 500`).bind(...keys, since)];
+}
+// Once per isolate (cron): does the table exist yet? Then the daily batches read it.
+async function archiveProbe(env) {
+  if (archiveTableSeen) return;
+  try { await env.DB.prepare("SELECT 1 FROM archive_prices LIMIT 1").all(); archiveTableSeen = true; } catch {}
+}
+function archiveRowsFor(url, rows) {
+  if (!rows || !rows.length) return [];
+  const keys = new Set(archiveLookupKeys(url));
+  return rows.filter((r) => keys.has(r.product_key));
 }
 
 // A public link that shows Common Crawl holds this copy: its index record for the page in that crawl.
@@ -79,6 +92,7 @@ async function ensureArchiveTables(env) {
     env.DB.prepare("CREATE TABLE IF NOT EXISTS archive_load (day TEXT PRIMARY KEY, written INTEGER NOT NULL DEFAULT 0, requests INTEGER NOT NULL DEFAULT 0)"),
   ]);
   archiveTablesReady = true;
+  archiveTableSeen = true;
 }
 
 function timingSafeEq(a, b) {

@@ -10,7 +10,7 @@ const read = (p) => readFileSync(new URL(p, root), "utf8");
 
 export const NAMES = [
   "SHOP_LIST", "RL", "MAX_TRACKED", "LIVE_CACHE_PREFIX",
-  "parsePrice", "parseTextPrice", "decodeEntities", "symbolCurrency", "tldCurrency",
+  "parsePrice", "parseTextPrice", "readerFor", "readerTarget", "readApi", "readPage", "vtexProduct", "mrpProduct", "pnpProduct", "sfccRsc", "netflorist", "clicksPage", "absolutePets", "decodeEntities", "symbolCurrency", "tldCurrency",
   "isPrivateIPv4", "isPrivateIPv6", "validateUrl", "resolvesPublic", "canonicalize",
   "parseJsonLd", "parseMeta", "parseAmazon", "parseDataLayer", "parseMainPriceBlock", "parseFallback",
   "pageAmount", "detectBlock", "extractFromHtml", "takealotBarcode", "takealotApi", "getCurrent",
@@ -22,7 +22,7 @@ export const NAMES = [
   "ensureDailySchema", "backfillLanes", "runDaily", "dueSeedDept", "refreshSeeds", "dailyHousekeeping", "apiDailyStatus",
   "DAILY_MS", "DAILY_CAPS", "SEED_CAPS", "MAX_FAILS", "MAX_SEEDS", "BOT_UA", "STALE_MS", "CLAIM_MS", "isE2E", "verifyTurnstile", "notifyOwnerOfRequest",
   "mDay", "mHuman", "mDevice", "mRefDomain", "mTeam", "verifyAccess", "statsData", "statsHtml", "M_CLICKS",
-  "archiveKey", "archiveLookupKeys", "archiveRows", "archivePoints", "ccIndexLink", "cleanArchiveRow", "apiArchiveLoad", "apiArchiveStats", "ensureArchiveTables", "ARCHIVE_DAILY_CAP", "storedHistory", "apiCheck",
+  "archiveKey", "archiveLookupKeys", "archiveBatchStmt", "archiveRowsFor", "archiveProbe", "archiveRows", "archivePoints", "ccIndexLink", "cleanArchiveRow", "apiArchiveLoad", "apiArchiveStats", "ensureArchiveTables", "ARCHIVE_DAILY_CAP", "storedHistory", "apiCheck",
   "CMP_SHOPS", "CMP_SEARCH", "cmpNorm", "cmpWords", "cmpCodes", "cmpCodesMatch", "cmpGtin", "cmpAttrs", "cmpIdentity", "cmpIdentityFromCurrent", "cmpApplyDetail", "cmpCodesConflict", "cmpCategory", "cmpPlan", "cmpQuery", "cmpMatch", "cmpSearchShop", "cmpShopForHost", "takealotAttr",
 ];
 
@@ -32,6 +32,7 @@ const source = [
   'const APP = { name: "app.0123456789.js", js: "" };',
   read("src/shops.js"),
   read("src/worker.js"),
+  read("src/readers.js"),
   read("src/features.js"),
   read("src/archive.js"),
   read("src/daily.js"),
