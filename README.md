@@ -279,7 +279,7 @@ Preview bots (WhatsApp, facebookexternalhit, etc.) can always fetch pages and sh
 | `verdicts` | Latest verdict per product (wall, scores, share card) |
 | `alerts` | Price alerts (off) |
 | `shop_requests` | "Ask us to add a shop" requests (made on first use) |
-| `cache` | Cache (shop pages, robots.txt, archive lists). `WITHOUT ROWID`, so each entry is one row written. The same value is not written again while more than half its time to live is left |
+| `cache` | Cache (shop pages, robots.txt, archive lists). The same value is not written again while more than half its time to live is left |
 | `rl` | Rate-limit counters, only when the `RL_*` bindings are missing, plus the daily mail counter |
 | `m_counts` | Stats: daily totals only (`day`, `metric`, `key`, `n`). Kept 400 days |
 | `m_seen`, `m_salt` | Stats: today's salted visitor hashes and today's random salt. Deleted at the start of each new day |

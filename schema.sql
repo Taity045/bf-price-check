@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS tracked (url TEXT PRIMARY KEY, orig_url TEXT, title T
 -- Dropped to save D1 rows written (each index entry counts): nothing reads by these.
 DROP INDEX IF EXISTS idx_tracked_last;
 DROP INDEX IF EXISTS idx_checks_via_ts;
-CREATE TABLE IF NOT EXISTS cache (k TEXT PRIMARY KEY, v TEXT, exp INTEGER) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS cache (k TEXT PRIMARY KEY, v TEXT, exp INTEGER);
 CREATE TABLE IF NOT EXISTS rl (k TEXT PRIMARY KEY, n INTEGER, win INTEGER);
 CREATE TABLE IF NOT EXISTS verdicts (url TEXT PRIMARY KEY, host TEXT, title TEXT, verdict TEXT, price REAL, was REAL, currency TEXT, low REAL, med REAL, high REAL, high90 REAL, n INTEGER, gap REAL, archived INTEGER DEFAULT 0, low_t INTEGER, updated_at INTEGER);
 CREATE INDEX IF NOT EXISTS idx_verdicts_v ON verdicts(verdict, gap);

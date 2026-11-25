@@ -65,11 +65,10 @@ describe("verdicts", () => {
 });
 
 describe("schema", () => {
-  test("no index that nothing reads; cache is WITHOUT ROWID (one row written per entry)", (t) => {
+  test("no index that nothing reads", (t) => {
     const { db } = testDb(t);
     const idx = db.prepare("SELECT name FROM sqlite_master WHERE type = 'index'").all().map((r) => r.name);
     assert.ok(!idx.includes("idx_tracked_last"));
     assert.ok(!idx.includes("idx_checks_via_ts"));
-    assert.match(db.prepare("SELECT sql FROM sqlite_master WHERE name = 'cache'").get().sql, /WITHOUT ROWID/);
   });
 });
