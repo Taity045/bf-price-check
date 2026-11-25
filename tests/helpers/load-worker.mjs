@@ -23,7 +23,7 @@ export const NAMES = [
   "DAILY_MS", "DAILY_CAPS", "SEED_CAPS", "MAX_FAILS", "MAX_SEEDS", "BOT_UA", "STALE_MS", "CLAIM_MS", "isE2E", "verifyTurnstile", "notifyOwnerOfRequest",
   "mDay", "mHuman", "mDevice", "mRefDomain", "mTeam", "verifyAccess", "statsData", "statsHtml", "M_CLICKS",
   "archiveKey", "apiPriceFix", "PRICE_FIX_BEFORE", "archiveLookupKeys", "archiveBatchStmt", "archiveRowsFor", "archiveProbe", "archiveRows", "archivePoints", "ccIndexLink", "cleanArchiveRow", "apiArchiveLoad", "apiArchiveStats", "ensureArchiveTables", "ARCHIVE_DAILY_CAP", "storedHistory", "apiCheck", "archivedCopyBlocked", "visibleTextLength", "pickSnaps", "fetchSnapshot", "getSnapshots", "historyLevel", "historyProductKey", "computeShopHistory", "shopHistory", "apiShops", "historyNote", "relabelOldSnaps", "SNAP_DETECT_SINCE",
-  "CMP_SHOPS", "CMP_SEARCH", "CMP_DETAIL", "cmpNorm", "cmpWords", "cmpCodes", "cmpCodesMatch", "cmpGtin", "cmpAttrs", "cmpIdentity", "cmpIdentityFromCurrent", "cmpApplyDetail", "cmpCodesConflict", "cmpCategory", "cmpCatOf", "cmpWooItem", "cmpPlan", "cmpQuery", "cmpCoreQuery", "cmpMatch", "cmpSearchShop", "cmpShopForHost", "takealotAttr",
+  "CMP_SHOPS", "CMP_SEARCH", "CMP_DETAIL", "cmpNorm", "cmpWords", "cmpCodes", "cmpCodesMatch", "cmpGtin", "cmpAttrs", "cmpIdentity", "cmpIdentityFromCurrent", "cmpApplyDetail", "cmpCodesConflict", "cmpCategory", "cmpCatOf", "cmpWooItem", "cmpPlan", "cmpQuery", "cmpCoreQuery", "cmpMatch", "cmpSearchShop", "cmpShopForHost", "takealotAttr", "cmpShortQuery", "cmpOwnBrand", "cmpGroceryCheck", "cmpGroceryClose", "cmpGtinCheck", "cmpPnpItem", "cmpPnpMember", "cmpMorrisonsItem", "CMP_NOT_SEARCHED", "pnpFacts",
 ];
 
 const source = [

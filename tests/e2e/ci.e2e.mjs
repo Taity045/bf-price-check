@@ -216,6 +216,45 @@ for (const [name, o] of [["1440", { viewport: { width: 1440, height: 900 } }], [
   await p.locator("#others").screenshot({ path: `${SHOTS}/compare-tie-${name}.png` });
   await p.context().close();
 });
+// groceries: member price as a note, "Same name and size", and the shops we can't search (with why)
+const GROC_PLAN = { product: { title: "CI Instant Coffee 200g", brand: "ci", gtin: "6001234567890", codes: [], currency: "ZAR", category: "groceries" },
+  noun: "groceries and toiletries", shopNoun: null, specialists: 2,
+  shops: [{ id: "pnp", name: "Pick n Pay" }, { id: "clicks", name: "Clicks" }, { id: "takealot", name: "Takealot", general: true }], skipped: [], results: {},
+  notSearched: [{ name: "Woolworths", why: "robots" }, { name: "Checkers", why: "browser" }, { name: "Shoprite", why: "browser" }, { name: "Makro", why: "blocks" }] };
+const GROC_SHOP = {
+  pnp: { shop: "pnp", name: "Pick n Pay", status: "match", checked_at: Date.now(), match: { title: "CI Instant Coffee 200g", price: 209.99, currency: "ZAR", url: "https://shop.example.co.za/pnp-coffee", in_stock: true, level: "barcode", member: { label: "Smart Shopper price", price: 129 } } },
+  takealot: { shop: "takealot", name: "Takealot", status: "none", checked_at: Date.now() },
+  clicks: { shop: "clicks", name: "Clicks", status: "match", checked_at: Date.now(), match: { title: "CI Instant Coffee Jar 200g", price: 199.95, currency: "ZAR", url: "https://shop.example.co.za/clicks-coffee", in_stock: true, level: "name" } },
+};
+for (const [name, o] of [["1440", { viewport: { width: 1440, height: 900 } }], ["390", { ...mobile, viewport: { width: 390, height: 844 } }]]) await step(`compare groceries ${name}`, async () => {
+  const p = await open(o);
+  await p.route(/\/api\/compare\?/, (r) => r.fulfill({ json: GROC_PLAN }));
+  await p.route(/\/api\/compare\/shop\?/, (r) => r.fulfill({ json: GROC_SHOP[new URL(r.request().url()).searchParams.get("shop")] }));
+  await p.goto(BASE + "/");
+  await p.fill("#u", PRODUCT); await p.click("#go");
+  await p.waitForFunction(() => /3 shops checked/.test(document.querySelector("#cmpStatus").textContent) && !/ of /.test(document.querySelector("#cmpStatus").textContent), null, { timeout: 10000 });
+  const rows = await p.$$eval("#otherList li", (ls) => ls.map((l) => l.textContent.replace(/\s+/g, " ").replace(/\u00a0/g, " ").trim()));
+  const pnp = rows.find((r) => /Pick n Pay/.test(r)) || "", clicks = rows.find((r) => /Clicks/.test(r)) || "";
+  ok(`compare groceries ${name}: shelf price shown, member price only as a note`, /R\s?209[.,]99/.test(pnp) && /Smart Shopper price R\s?129/.test(pnp), pnp);
+  ok(`compare groceries ${name}: name match says "Same name and size"`, /Same name and size/.test(clicks), clicks);
+  const sum = await p.textContent("#cmpSum");
+  ok(`compare groceries ${name}: names the shops checked`, /Checked 2 shops that sell groceries and toiletries \(Pick n Pay, Clicks\) and 1 general shop \(Takealot\)\./.test(sum), sum);
+  ok(`compare groceries ${name}: names the shops we can't search, and why`, /We can't search Woolworths \(ask tools not to use their search\); Checkers and Shoprite \(show search results only in a browser\); Makro \(block tools like ours\)\./.test(sum), sum);
+  ok(`compare groceries ${name}: no sideways scroll`, await noSideScroll(p));
+  ok(`compare groceries ${name}: no JS errors`, p._errs.length === 0, p._errs.join(" | "));
+  await p.locator("#others").screenshot({ path: `${SHOTS}/compare-groceries-${name}.png` });
+  await p.context().close();
+});
+await step("compare: own brand", async () => {
+  const p = await open(mobile);
+  await p.route(/\/api\/compare\?/, (r) => r.fulfill({ json: { ...GROC_PLAN, shops: [], reason: "own brand", ownBrand: true } }));
+  await p.goto(BASE + "/");
+  await p.fill("#u", PRODUCT); await p.click("#go");
+  await p.waitForSelector("#others:not(.hidden)", { timeout: 15000 });
+  const sum = await p.textContent("#cmpSum");
+  ok("compare: own brand is said, and not compared", /shop's own brand\. Other shops don't sell it/.test(sum), sum);
+  await p.context().close();
+});
 await step("compare: nothing found", async () => {
   const p = await open(mobile);
   const bikes = { ...CMP_PLAN, product: { ...CMP_PLAN.product, category: "cycling" }, noun: "bikes and cycling gear", shopNoun: "bike shop", specialists: 2,

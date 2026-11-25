@@ -130,7 +130,25 @@ function pnpProduct(d) {
   const price = priceOrNull(pr && pr.value);
   if (!price) return { error: "Pick n Pay shows no price for this product now." };
   const im = (d.images || []).find((x) => x && x.url);
-  return { price, was: wasIf(priceOrNull(pr.oldPrice), price), currency: pr.currencyIso || "ZAR", title: d.name, image: im ? new URL(im.url, "https://www.pnp.co.za/").href : null, source: "pnp-occ" };
+  const out = { price, was: wasIf(priceOrNull(pr.oldPrice), price), currency: pr.currencyIso || "ZAR", title: d.name, image: im ? new URL(im.url, "https://www.pnp.co.za/").href : null, source: "pnp-occ" };
+  // For compare: the barcode and brand from the product facts, and the shop's category path.
+  const f = pnpFacts(d);
+  if (f.barcode) out.gtin = f.barcode;
+  if (f.brand || d.brand) out.brand = f.brand || d.brand;
+  const cats = (d.categories || []).map((c) => c && c.name).filter((n) => n && n !== "All Products");
+  if (cats.length) out.category = cats.join(" > ").slice(0, 160);
+  return out;
+}
+// Pick n Pay product facts (classifications "base_info"): unit_barcode, brand.
+function pnpFacts(d) {
+  const out = {};
+  for (const c of (d && d.classifications) || []) for (const f of (c && c.features) || []) {
+    const v = f && f.featureValues && f.featureValues[0] && String(f.featureValues[0].value || "").trim();
+    if (!v) continue;
+    if (f.name === "unit_barcode" && /^\d{8,14}$/.test(v)) out.barcode = v;
+    if (f.name === "brand" && v.length < 60) out.brand = v;
+  }
+  return out;
 }
 
 // ---- page readers ----
@@ -189,7 +207,16 @@ function clicksPage(html) {
   const price = m && parseTextPrice(m[1].replace(/<[^>]+>/g, " "));
   if (!price) return null;
   const reg = html.match(/name="productPrice"\s+value="([\d.]+)"/);
-  return { price, was: wasIf(reg && parsePrice(reg[1]), price), currency: "ZAR", source: "clicks-page" };
+  const out = { price, was: wasIf(reg && parsePrice(reg[1]), price), currency: "ZAR", source: "clicks-page" };
+  // For compare: the brand and name from the page's data layer (the page title ends in "- Clicks"),
+  // and its category ("Toiletries > Body Moisturisers").
+  const brand = html.match(/'item_brand'\s*:\s*"([^"]{1,60})"/), name = html.match(/'item_name'\s*:\s*"([^"]{1,200})"/);
+  if (brand) out.brand = decodeEntities(brand[1]).trim();
+  if (name) out.title = decodeEntities((brand && !new RegExp("^" + brand[1].replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b", "i").test(name[1]) ? brand[1] + " " : "") + name[1]).replace(/\s+/g, " ").trim();
+  const cats = [1, 2, 3].map((i) => (html.match(new RegExp(`'item_category${i === 1 ? "" : i}'\\s*:\\s*\\[\\s*"([^"]{1,60})"`)) || [])[1]).filter(Boolean);
+  if (cats.length) out.category = cats.map((c) => decodeEntities(c)).join(" > ");
+  if (out.title || out.brand || out.category) out.titleFirst = true;
+  return out;
 }
 
 // Absolute Pets: the data layer value is without VAT. The main product price block (not related
