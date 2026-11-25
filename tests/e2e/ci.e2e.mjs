@@ -66,6 +66,7 @@ for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`h
   ok(`home ${name}: no sideways scroll`, await noSideScroll(p));
   ok(`home ${name}: fake discount wall link hidden`, !(await p.isVisible("#wallLink")));
   ok(`home ${name}: page weight ${Math.round(bytes / 1024)} KB within ${Math.round(HOME_BUDGET / 1024)} KB`, bytes > 0 && bytes <= HOME_BUDGET, bytes);
+  ok(`home ${name}: result view script is not part of the first view`, await p.evaluate(() => !performance.getEntriesByType("resource").some((e) => /\/result\.[0-9a-f]{10}\.js/.test(e.name))));
   ok(`home ${name}: no JS errors`, p._errs.length === 0, p._errs.join(" | "));
   await p.screenshot({ path: `${SHOTS}/home-${name}.png`, fullPage: true });
   await p.context().close();
@@ -96,6 +97,21 @@ for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`r
   ok(`result ${name}: no sideways scroll`, await noSideScroll(p));
   ok(`result ${name}: no JS errors`, p._errs.length === 0, p._errs.join(" | "));
   await p.screenshot({ path: `${SHOTS}/result-${name}.png`, fullPage: true });
+  await p.context().close();
+});
+
+// 3b. archive copies that are bot-check or empty pages: the note says so, they are not "no price"
+await step("blocked copies", async () => {
+  const p = await open(desktop);
+  await p.route(/\/api\/check\?/, (r) => r.fulfill({ json: { ...checkAnswer(), history: { ...checkAnswer().history, archive_blocked: 1 } } }));
+  await p.route(/\/api\/archive\?/, (r) => r.fulfill({ json: { status: "ok", captures_12mo: 3, sampled: 3, pending: [{ ts: "20260101120000", orig: PRODUCT }, { ts: "20260201120000", orig: PRODUCT }] } }));
+  await p.route(/\/api\/snap\?/, (r) => r.fulfill({ json: /20260101/.test(r.request().url()) ? { status: "blocked", reason: "bot-page" } : { status: "noprice" } }));
+  await p.goto(BASE + "/");
+  await p.fill("#u", PRODUCT); await p.click("#go");
+  await p.waitForFunction(() => /bot-check/.test(document.getElementById("archnote").textContent), null, { timeout: 15000 }).catch(() => {});
+  const note = await p.textContent("#archnote");
+  ok("blocked: archive note counts bot-check or empty pages apart from 'no price'", /1 had no price we could read\. 2 were bot-check pages or empty pages, not the product page\./.test(note), note);
+  ok("blocked: no JS errors", p._errs.length === 0, p._errs.join(" | "));
   await p.context().close();
 });
 
@@ -281,6 +297,12 @@ await step("API", async () => {
   ok("/api/wall is off", wall.status === 404, wall.status);
   const js = await fetch(BASE + "/app.0123456789.js");
   ok("old script names still load after a deploy", js.ok && /javascript/.test(js.headers.get("content-type")), js.status);
+  const old = await fetch(BASE + "/result.0123456789.js");
+  ok("old result script names still load after a deploy, not cached", old.ok && /no-cache/.test(old.headers.get("cache-control")), old.status);
+  const home = await (await fetch(BASE + "/")).text(), app = (home.match(/\/app\.[0-9a-f]{10}\.js/) || [""])[0];
+  const lazy = ((await (await fetch(BASE + app)).text()).match(/\/result\.[0-9a-f]{10}\.js/) || [""])[0];
+  const lr = lazy ? await fetch(BASE + lazy) : null;
+  ok("result script is served and cached for a year", !!lr && lr.ok && /immutable/.test(lr.headers.get("cache-control")) && /__dod/.test(await lr.text()), lazy);
 });
 
 // 8. private stats: counting works end to end, and the dashboard renders (local dev shortcut /__stats,

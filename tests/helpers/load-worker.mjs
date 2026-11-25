@@ -29,7 +29,7 @@ export const NAMES = [
 const source = [
   "const FONTS = {};",
   "const STATIC_IMG = {};",
-  'const APP = { name: "app.0123456789.js", js: "" };',
+  'const APP = { name: "app.0123456789.js", js: "", lazy_name: "result.0123456789.js", lazy: "" };',
   read("src/shops.js"),
   read("src/worker.js"),
   read("src/readers.js"),
