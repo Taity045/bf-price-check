@@ -89,6 +89,96 @@
     "mediamarkt.de"
    ],
    "live_status": "works"
+  },
+  {
+   "name": "Olympic Cycles",
+   "country": "ZA",
+   "domains": [
+    "olympiccycles.co.za"
+   ],
+   "live_status": "works",
+   "price_method": "json-ld (Shopify)"
+  },
+  {
+   "name": "Mellow Velo",
+   "country": "ZA",
+   "domains": [
+    "mellowvelo.co.za"
+   ],
+   "live_status": "works",
+   "price_method": "json-ld (Shopify)"
+  },
+  {
+   "name": "Dville Cyclery",
+   "country": "ZA",
+   "domains": [
+    "dvillecyclery.co.za"
+   ],
+   "live_status": "works",
+   "price_method": "woo-store-api"
+  },
+  {
+   "name": "Bicycle Power",
+   "country": "ZA",
+   "domains": [
+    "bicyclepower.co.za"
+   ],
+   "live_status": "works",
+   "price_method": "woo-store-api"
+  },
+  {
+   "name": "Evo Bikes",
+   "country": "ZA",
+   "domains": [
+    "evobikes.co.za"
+   ],
+   "live_status": "works",
+   "price_method": "woo-store-api"
+  },
+  {
+   "name": "Cyclestore",
+   "country": "UK",
+   "domains": [
+    "cyclestore.co.uk"
+   ],
+   "live_status": "works",
+   "price_method": "json-ld (Shopify)"
+  },
+  {
+   "name": "Biketart",
+   "country": "UK",
+   "domains": [
+    "biketart.com"
+   ],
+   "live_status": "works",
+   "price_method": "json-ld (Shopify)"
+  },
+  {
+   "name": "99 Bikes UK",
+   "country": "UK",
+   "domains": [
+    "99bikes.co.uk"
+   ],
+   "live_status": "works",
+   "price_method": "json-ld (Shopify)"
+  },
+  {
+   "name": "Robert Dyas",
+   "country": "UK",
+   "domains": [
+    "robertdyas.co.uk"
+   ],
+   "live_status": "works",
+   "price_method": "json-ld"
+  },
+  {
+   "name": "Peter Tyson",
+   "country": "UK",
+   "domains": [
+    "petertyson.co.uk"
+   ],
+   "live_status": "works",
+   "price_method": "json-ld"
   }
  ]
 }
