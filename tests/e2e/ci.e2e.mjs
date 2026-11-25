@@ -286,6 +286,9 @@ await step("compare: no shops known for this kind of product", async () => {
   await p.waitForFunction(() => /didn't compare/.test(document.querySelector("#cmpSum").textContent), null, { timeout: 10000 });
   const sum = await p.textContent("#cmpSum");
   ok("compare: says briefly when we know no shops for the kind of product", /We don't know other shops here that sell toys yet/.test(sum) && !/searched|checked \d/.test(sum), sum);
+  const slim = await p.evaluate(() => { const h = document.querySelector("#cmpHead"); return { cls: h.className, h: h.getBoundingClientRect().height, text: h.innerText.replace(/\s+/g, " ").trim() }; });
+  ok("compare: 'Not compared' is one small line above the verdict, not a big card", /\bslim\b/.test(slim.cls) && slim.h < 90 && /^Not compared with other shops: we don't know other shops that sell toys yet\./.test(slim.text), JSON.stringify(slim));
+  await p.screenshot({ path: `${SHOTS}/not-compared-slim.png` });
   await p.context().close();
 });
 

@@ -82,7 +82,8 @@ const CMP_NOT_SEARCHED = {
     { name: "Shoprite", hosts: ["shoprite.co.za"], why: "browser" },       // same site as Checkers
     { name: "Dis-Chem", hosts: ["dischem.co.za"], why: "blocks" },         // refuses our requests (HTTP 403); robots.txt also disallows its search
     { name: "Makro", hosts: ["makro.co.za"], why: "blocks" },              // bot check (PerimeterX); robots.txt disallows search
-    { name: "Game", hosts: ["game.co.za"], why: "blocks" },                // bot check (PerimeterX); robots.txt disallows search
+    { name: "Game", hosts: ["game.co.za"], why: "blocks" },
+    { name: "Amazon South Africa", hosts: ["amazon.co.za"], why: "blocks", cats: ["computer", "electronics", "appliances", "toys", "books", "home"] },   // bot check (captcha page) on product pages                // bot check (PerimeterX); robots.txt disallows search
   ],
   GBP: [
     { name: "Tesco", hosts: ["tesco.com"], why: "blocks" },
@@ -93,6 +94,7 @@ const CMP_NOT_SEARCHED = {
     { name: "Superdrug", hosts: ["superdrug.com"], why: "blocks" },
     { name: "Waitrose", hosts: ["waitrose.com"], why: "robots" },
     { name: "Iceland", hosts: ["iceland.co.uk"], why: "robots" },
+    { name: "Amazon UK", hosts: ["amazon.co.uk"], why: "blocks", cats: ["computer", "electronics", "appliances", "toys", "books", "home"] },   // bot check (captcha page) on product pages
     { name: "Kurt Geiger", hosts: ["kurtgeiger.com"], why: "blocks", cats: ["fashion"] },   // bot check (DataDome, HTTP 403) on its pages and search
   ],
 };

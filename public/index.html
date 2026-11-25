@@ -89,7 +89,7 @@ html.q main:has(#result.hidden) footer{display:none}
 .verdict .big{font-size:28px;font-weight:700;letter-spacing:-.02em;color:var(--v);line-height:1.15}
 .verdict.unk .big{color:var(--ink)}
 .vbody{margin:6px 0 0}
-.cmphead{border-left:4px solid var(--line);min-height:150px}@media(max-width:520px){.cmphead{min-height:178px}}.cmphead.good{border-left-color:var(--good)}
+.cmphead{border-left:4px solid var(--line);min-height:150px}@media(max-width:520px){.cmphead{min-height:178px}}.cmphead.good{border-left-color:var(--good)}.cmphead.slim{min-height:0;padding-top:10px;padding-bottom:10px}.cmphead.slim .lab,.cmphead.slim .cbig{display:none}.cmphead.slim .vbody{margin:0}
 .cbig{font-size:22px;font-weight:700;letter-spacing:-.01em;line-height:1.2;margin-top:4px;overflow-wrap:anywhere}.cmphead.good .cbig{color:var(--good)}
 .flag{margin-top:12px;padding:10px 12px;border-radius:10px;background:color-mix(in srgb,var(--bad) 9%,var(--bg));color:var(--bad);font-size:14px;font-weight:600}
 .flag.ok{background:color-mix(in srgb,var(--good) 9%,var(--bg));color:var(--good)}
@@ -533,6 +533,8 @@ $("f").addEventListener("submit", (e) => {
   const v = $("u").value.trim(); const m = v.match(/https?:\/\/\S+/);
   if (!v) { showError("Paste a product link first."); $("u").focus(); return; }
   if (!m && !/^[\w-]+(\.[\w-]+)+\//.test(v)) { showError("That doesn't look like a product link. It should start with https://"); return; }
+  // A shared Amazon text ends with the shop name ("…: Amazon.co.za: Electronics"): a currency hint for the price box.
+  window.pasteCur = /\bAmazon\.co\.za\b/i.test(v) ? "ZAR" : /\bAmazon\.co\.uk\b/i.test(v) ? "GBP" : "";
   run(m ? m[0] : "https://" + v);
 });
 
