@@ -100,6 +100,9 @@ const loadReq = (rows, { key = KEY, mode = "load" } = {}) => new Request("https:
 const row = (o = {}) => ({ key: DUNELM, captured_at: Math.round(ago(120)), last_seen: Math.round(ago(90)), n: 3, price: 85, was: null, currency: "GBP", url: DUNELM, crawl: "CC-MAIN-2026-25", last_crawl: "CC-MAIN-2026-34", ...o });
 
 describe("archive load endpoint", () => {
+  test("daily cap leaves the D1 free plan's 100k writes for the site (15,000 rows a day)", () => {
+    assert.equal(W.ARCHIVE_DAILY_CAP, 15000);
+  });
   test("hidden without the secret, or with a wrong key", async (t) => {
     const { env } = testDb(t);
     assert.equal((await W.apiArchiveLoad(loadReq([row()]), env)).status, 404);

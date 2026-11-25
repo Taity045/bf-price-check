@@ -5,7 +5,7 @@
 // through POST /api/admin/archive-load. A check reads these rows from D1; it never calls Common Crawl.
 
 const ARCHIVE_SOURCE = "common crawl";
-const ARCHIVE_DAILY_CAP = 35000;     // rows written per UTC day by the loader (D1 Free: 100,000 for everything)
+const ARCHIVE_DAILY_CAP = 15000;     // rows written per UTC day by the loader (D1 Free: 100,000 for everything)
 const ARCHIVE_MAX_ROWS = 400;        // rows per load request
 const ARCHIVE_SPREAD = 3;            // an archive price more than 3x away from today's price is not shown
 // Link parameters that never change the product or its price on these shops (seen in archived links).

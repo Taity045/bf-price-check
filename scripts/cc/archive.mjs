@@ -8,7 +8,7 @@
 //       Writes DIR/captures.jsonl (one line per page read; resumable).
 //   node scripts/cc/archive.mjs reduce --out DIR
 //       Sanity filter per product, then one row per run of the same price -> DIR/rows.jsonl (load order).
-//   node scripts/cc/archive.mjs upload --out DIR --endpoint URL [--max-writes 30000] [--mode load|append]
+//   node scripts/cc/archive.mjs upload --out DIR --endpoint URL [--max-writes 15000] [--mode load|append]
 //       Sends rows to the worker's admin endpoint (key in env ARCHIVE_LOAD_KEY, never printed).
 //       DIR/upload_state.json remembers what was sent, so the next day's run continues.
 //
@@ -265,7 +265,7 @@ async function upload() {
   const key = process.env.ARCHIVE_LOAD_KEY;
   if (!key) throw new Error("Set ARCHIVE_LOAD_KEY");
   const endpoint = args.endpoint || "https://eish.veldwire.com/api/admin/archive-load";
-  const maxWrites = +(args["max-writes"] || 30000);
+  const maxWrites = +(args["max-writes"] || 15000);
   const stateFile = `${OUT}/upload_state.json`;
   const state = existsSync(stateFile) ? JSON.parse(readFileSync(stateFile, "utf8")) : { written: 0, per_shop: {}, sent: [] };
   const sent = new Set(state.sent || []);
