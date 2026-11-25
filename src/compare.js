@@ -20,7 +20,7 @@ const CMP_SEARCH_TTL = 6 * 3600e3;    // one search on one shop (shared by all p
 const CMP_SHOP_PER_MIN = 30;          // searches per shop per minute, all visitors together
 const CMP_PER_IP_PER_MIN = 240;       // shop calls per visitor per minute (one check makes up to ~20)
 // Bump when the matching rules or identity reading change, so cached answers from older rules are not shown.
-const CMP_VER = "v4";
+const CMP_VER = "v5";
 const CMP_MAX_SEARCHES = 2;           // searches per shop per product
 const CMP_MAX_DETAILS = 3;            // product-detail reads per shop per product (to read barcodes)
 
