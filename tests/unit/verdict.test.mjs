@@ -33,9 +33,9 @@ describe("verdict", () => {
     assert.equal(j.high90, 100);
     assert.equal(j.gap, 0.5);
   });
-  test("Not enough history below 3 earlier prices", () => {
+  test("Not enough history below 3 earlier prices when they give no evidence", () => {
     for (const n of [0, 1, 2]) {
-      const j = W.judge(live(100), hist(Array(n).fill(100)));
+      const j = W.judge(live(100), hist(Array(n).fill(130)));
       assert.equal(j.verdict, "Not enough history", `${n} prices`);
       assert.equal(j.n, n);
     }
@@ -51,7 +51,7 @@ describe("verdict", () => {
     assert.ok(j.verdict);
   });
   test("prices from the last 24 hours do not count as history", () => {
-    const h = { checks: [{ ts: Date.now() - 3600e3, price: 100, currency: "ZAR" }, ...hist([100, 100]).checks], snaps: [] };
+    const h = { checks: [{ ts: Date.now() - 3600e3, price: 80, currency: "ZAR" }, ...hist([130, 130]).checks], snaps: [] };
     assert.equal(W.judge(live(100), h).verdict, "Not enough history");
   });
   test("several checks on the same day count once", () => {
@@ -60,7 +60,7 @@ describe("verdict", () => {
     assert.equal(W.judge(live(100), h).n, 1);
   });
   test("prices in another currency are ignored", () => {
-    const h = { checks: [...hist([100, 100]).checks, { ts: ago(30), price: 5, currency: "GBP" }], snaps: [] };
+    const h = { checks: [...hist([130, 130]).checks, { ts: ago(30), price: 5, currency: "GBP" }], snaps: [] };
     assert.equal(W.judge(live(100), h).verdict, "Not enough history");
   });
   test("archive snapshots count, failed snapshots do not", () => {
@@ -107,5 +107,45 @@ describe("public verdict", () => {
     assert.equal(W.median([3, 1, 2]), 2);
     assert.equal(W.median([4, 1, 2, 3]), 2.5);
     assert.equal(W.median([]), null);
+  });
+});
+
+describe("evidence from 1 or 2 older prices", () => {
+  const snap = (days, price) => ({ snap_ts: new Date(ago(days)).toISOString().replace(/\D/g, "").slice(0, 14), price, currency: "ZAR", status: "ok" });
+  test("one archive price far under the 'was' price: Likely inflated was price, with date and source", () => {
+    const j = W.judge(live(2700, 3000), { checks: [], snaps: [snap(70, 2300)] });
+    assert.equal(j.verdict, "Likely inflated was price");
+    assert.equal(j.evidence.price, 2300);
+    assert.equal(j.evidence.kind, "archive");
+    assert.ok(Math.abs(j.evidence.t - ago(70)) < DAY);
+  });
+  test("a price from the last 2 weeks is not enough to call the 'was' price inflated", () => {
+    const j = W.judge(live(2300, 3000), { checks: [], snaps: [snap(5, 2300)] });
+    assert.equal(j.verdict, "Seen at this price before");
+  });
+  test("an older price at or near the 'was' price is not called inflated", () => {
+    const j = W.judge(live(2700, 3000), { checks: [], snaps: [snap(70, 2950)] });
+    assert.notEqual(j.verdict, "Likely inflated was price");
+  });
+  test("one saved check under today's price: Seen cheaper before", () => {
+    const j = W.judge(live(1000), hist([900], { start: 20 }));
+    assert.equal(j.verdict, "Seen cheaper before");
+    assert.equal(j.evidence.kind, "check");
+  });
+  test("one older price about the same as today: Seen at this price before", () => {
+    assert.equal(W.judge(live(1000), hist([1010], { start: 20 })).verdict, "Seen at this price before");
+  });
+  test("older prices all higher than today: Not enough history (no claim)", () => {
+    assert.equal(W.judge(live(1000), hist([1200, 1300], { start: 20 })).verdict, "Not enough history");
+  });
+  test("prices older than 6 months are not used as single evidence", () => {
+    assert.equal(W.judge(live(1000), hist([800], { start: 200 })).verdict, "Not enough history");
+  });
+  test("the lowest recent price is the evidence", () => {
+    const j = W.judge(live(1000), hist([950, 900], { start: 10, step: 30 }));
+    assert.equal(j.evidence.price, 900);
+  });
+  test("3 or more prices use the full rules, not the evidence verdicts", () => {
+    assert.ok(!["Likely inflated was price", "Seen cheaper before", "Seen at this price before"].includes(W.judge(live(1000, 1500), hist([900, 950, 980])).verdict));
   });
 });

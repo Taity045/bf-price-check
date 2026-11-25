@@ -109,7 +109,7 @@ function ogMoney(v, cur) {
   if (v == null) return "";
   try { return new Intl.NumberFormat(OG_LOC[cur] || "en-GB", { style: "currency", currency: cur || "USD", ...(Number.isInteger(v) ? { minimumFractionDigits: 0 } : {}) }).format(v).replace(/[\u00a0\u202f]/g, " "); } catch { return (cur ? cur + " " : "") + v; }
 }
-const VCOL = { "Real deal": "#0b7a3e", "Decent deal": "#0b7a3e", "Fake discount": "#cc2418", "Pricier than usual": "#cc2418", "Same old price": "#8a5a00" };
+const VCOL = { "Real deal": "#0b7a3e", "Decent deal": "#0b7a3e", "Fake discount": "#cc2418", "Pricier than usual": "#cc2418", "Same old price": "#8a5a00", "Likely inflated was price": "#cc2418", "Seen cheaper before": "#8a5a00", "Seen at this price before": "#8a5a00" };
 async function renderOg(info) {
   const F = await loadGlyphs();
   const ink = "#111214", mut = "#5f6368", line = "#e3e5e8";

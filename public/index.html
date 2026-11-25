@@ -522,6 +522,7 @@ function shareInfo() {
   const v = state.v || {}, t = state.title || "this deal";
   let text;
   if (v.big === "Fake discount" && v.W) text = `Caught a fake discount! ${t}: the shop says it was ${money(v.W, v.C)}, but we did not see that price in the last 90 days.`;
+  else if (v.big === "Likely inflated was price" && v.W) text = `${t}: the shop says it was ${money(v.W, v.C)}, but it cost ${money(v.low, v.C)} on ${fmtDate(v.evT)}.`;
   else if (v.big === "Real deal") text = `Real deal! ${t} is at the lowest price we found in 12 months: ${money(v.P, v.C)}.`;
   else if (state.verdictText) text = `${state.verdictText}: ${t}`;
   else text = `Is this deal real? ${t}`;
@@ -716,6 +717,22 @@ function bestLine(P, C) {
   return `<p class="best">Lowest price we found in the last 12 months: <b>${esc(money(low.price, C))}</b> in ${esc(new Date(low.t).toLocaleDateString("en-GB", { month: "long", year: "numeric" }))}.</p>`;
 }
 
+// Evidence from 1 or 2 older prices (same rules as sparseEvidence in src/features.js).
+function sparseEvidence(P, W, h) {
+  const recent = h.filter((x) => x.t >= Date.now() - 183 * DAY && x.price > 0);
+  if (!P || !recent.length) return null;
+  const pt = recent.reduce((m, x) => (x.price < m.price || (x.price === m.price && x.t > m.t) ? x : m));
+  const maxOld = Math.max(...recent.map((x) => x.price));
+  // "Inflated" needs a price from at least 2 weeks ago: a sale that started a few days ago is not a fake.
+  const old = recent.filter((x) => x.t <= Date.now() - 14 * DAY);
+  if (W && W > P && old.length) {
+    const o = old.reduce((m, x) => (x.price < m.price ? x : m));
+    if (o.price <= W * 0.9 && maxOld < W * 0.97) return { verdict: "Likely inflated was price", pt: o };
+  }
+  if (pt.price < P * 0.98) return { verdict: "Seen cheaper before", pt };
+  if (pt.price <= P * 1.02) return { verdict: "Seen at this price before", pt };
+  return null;
+}
 function renderVerdict() {
   let cur = curPrice(); const { pts, other, ccy } = points();
   let hist = pts.filter((x) => x.t < Date.now() - DAY);
@@ -736,6 +753,19 @@ function renderVerdict() {
   }
   const P = cur.price, W = cur.was, C = cur.currency;
   if (pr.length < 3) {
+    const ev = sparseEvidence(P, W, hist);
+    if (ev) {
+      const pt = ev.pt;
+      const src = pt.kind === "archive" ? `<a href="https://web.archive.org/web/${esc(pt.ts)}/${esc(pt.orig || state.canonical)}" target="_blank" rel="noopener">web archive copy</a>` : "our saved check";
+      const when = `${esc(money(pt.price, C))} on ${esc(fmtDate(pt.t))} (${src})`;
+      let vb;
+      if (ev.verdict === "Likely inflated was price") { cls = "bad"; vb = `Was cheaper before: ${when}. The shop's "was" price of ${esc(money(W, C))} looks inflated.`; }
+      else if (ev.verdict === "Seen cheaper before") { cls = "meh"; vb = `Seen cheaper before: ${when}. Today's price is ${esc(pct((P - pt.price) / pt.price))} higher.`; }
+      else { cls = "meh"; vb = `Same price before: ${when}. Today's price is not a special deal.`; }
+      state.v = { big: ev.verdict, P, W, C, low: pt.price, evT: pt.t };
+      setVerdict(cls, ev.verdict, `<p class="vbody">${vb}</p><p class="note">Based on ${pr.length} older price${pr.length === 1 ? "" : "s"} from the last 6 months. We give a full verdict from 3 older prices.</p>`);
+      state.verdictText = ev.verdict; return;
+    }
     body = pr.length >= 1 ? `We found only ${pr.length} older price${pr.length === 1 ? "" : "s"} in ${C} (latest ${money(pr[pr.length - 1], C)} on ${fmtDate(hist[hist.length - 1].t)}). We need at least 3 to judge.` : `We found no older prices in ${C} for this product yet.`;
     body += " Why: we found few or no older copies of this page in web archives. We saved today's price, so the next check will have more history.";
     if (W) body += ` The shop claims ${Math.round((W - P) / W * 100)}% off ${money(W, C)}. We can't confirm that.`;

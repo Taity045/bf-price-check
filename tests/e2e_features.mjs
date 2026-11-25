@@ -268,6 +268,26 @@ for (const [n, o] of [["1440", wide(1440)], ["390", phone()]]) {
   await p.screenshot({ path: `${OUT}/not-enough-history-390.png`, fullPage: true });
   await p.context().close();
 }
+// evidence from one older price (mocked data: one archive copy 70 days ago)
+for (const [n, o] of [["390", phone()], ["1440", wide(1440)]]) {
+  const p = await page(o);
+  const t70 = Date.now() - 70 * 864e5, ts = new Date(t70).toISOString().replace(/\D/g, "").slice(0, 14);
+  const fake = { ...rec, current: { ...rec.current, status: "ok", price: 2700, was: 3000, currency: "ZAR" }, history: { archive: [], checks: [] } };
+  await p.route("**/api/check?**", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(fake) }));
+  await p.route("**/api/archive?**", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "ok", captures_12mo: 1, sampled: 1, pending: [{ ts, orig: PC }] }) }));
+  await p.route("**/api/snap?**", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "ok", ts, orig: PC, t: t70, price: 2300, currency: "ZAR" }) }));
+  await p.route("**/api/verdict?**", (r) => r.fulfill({ status: 200, contentType: "application/json", body: "{}" }));
+  await p.route("**/api/others?**", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ matches: [] }) }));
+  await p.goto(BASE + "/?u=" + encodeURIComponent(PC)); await p.waitForSelector("#result:not(.hidden)", { timeout: 30000 });
+  await p.waitForFunction(() => /Likely inflated|Not enough/.test(document.querySelector("#verdict .big")?.textContent || ""), null, { timeout: 30000 }).catch(() => {});
+  const big = (await p.textContent("#verdict .big")).trim(), body = await p.innerText("#verdict");
+  ok(`${n}: one older price gives "Likely inflated was price"`, big === "Likely inflated was price", big);
+  ok(`${n}: evidence line has price, date and source`, /Was cheaper before: R\s?2\s?300 on .+ \(web archive copy\)\. The shop's "was" price of R\s?3\s?000 looks inflated\./.test(body), body.slice(0, 200));
+  const href = await p.getAttribute("#verdict a[href*='web.archive.org/web/']", "href").catch(() => null);
+  ok(`${n}: link to the archived copy`, !!href && href.includes(ts), href);
+  await p.screenshot({ path: `${OUT}/evidence-${n}.png`, fullPage: n === "390" });
+  await p.context().close();
+}
 // 7. wall, counter, privacy, footer
 {
   const p = await page(phone());

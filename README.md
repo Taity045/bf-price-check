@@ -8,7 +8,7 @@ Paste a product link from an online shop. The site shows:
 
 1. **Today's price and the "was" price**, read on the server from the shop's product page.
 2. **A price history chart**, made from public web archive copies of the page (Internet Archive) and from prices we save when people check the product.
-3. **A verdict**: Real deal, Decent deal, Same old price, Pricier than usual, Fake discount, or Not enough history.
+3. **A verdict**: Real deal, Decent deal, Same old price, Pricier than usual, Fake discount (from 3 or more older prices). With only 1 or 2 older prices from the last 6 months: Likely inflated was price, Seen cheaper before, or Seen at this price before, each with the date, the source and a link to the archived copy. Otherwise: Not enough history.
 
 The site never invents prices. If a shop blocks the check, or there is no history, the page says so. You can type the price you see to get a verdict anyway (shown as "entered by you").
 
@@ -74,7 +74,7 @@ Set a secret: `npx wrangler secret put OWNER_EMAIL`.
 ### API
 
 - `GET /api/check?url=<product url>` → today's price and saved history. Cached 6 h (30 min after a failed check).
-- `GET /api/archive?url=<canonical>&orig=<pasted url>` → archive index (last 365 days). Cached 12 h.
+- `GET /api/archive?url=<canonical>&orig=<pasted url>` → archive index (last 365 days, any capture). Cached 12 h (cache key `cdx-v5:`). It asks the Wayback CDX index for these URL forms and keeps only captures of the same product: the canonical URL, with and without a trailing slash, the pasted URL (with its query, without `#…`), the canonical URL without its query, and the `m.` mobile host. `http`/`https` and `www.`/`m.` count as the same page. Product-ID-only URLs (for example `/PLID123` without the name part) are not searched, because the CDX index has no wildcard in the middle of a path.
 - `GET /api/snap?url=…&ts=…&orig=…` → price from one archive copy, kept in D1.
 - `GET /api/shops`, `/api/config`, `/api/others`, `POST /api/verdict`, `POST /api/request`, `POST /api/alert`.
 - `GET /og-home.jpg`, `/og-square.jpg`, `/og-home.png`, `/og.png?u=…`, `/robots.txt`.
@@ -92,7 +92,12 @@ Currency comes from the page or a supported country domain (.co.za → ZAR, .co.
 ### Verdict rules (client side)
 
 Older prices = archive points + saved checks older than 24 h, last 365 days.
-- fewer than 3 older prices → "Not enough history" (the shop's claim is shown but not confirmed, with a line that says why)
+- 1 or 2 older prices → evidence verdicts, using only prices from the last 183 days (same rules in `src/features.js` `sparseEvidence` and the client mirror in `public/index.html`):
+  - **Likely inflated was price**: the shop shows a "was" price above today's price, a price from at least 14 days ago is ≤ 90 % of the "was" price, and no recent older price reached 97 % of it. (A price from the last 2 weeks is not enough: a sale may have started a few days ago.)
+  - **Seen cheaper before**: the lowest recent older price is more than 2 % under today's price.
+  - **Seen at this price before**: the lowest recent older price is within 2 % of today's price.
+  - The line shows the price, the date and the source ("web archive copy" links to `web.archive.org/web/<ts>/<url>`, or "our saved check"), plus "Based on N older price(s) from the last 6 months. We give a full verdict from 3 older prices." These verdicts are not counted as "judged" on the wall.
+- no usable older price → "Not enough history" (the shop's claim is shown but not confirmed, with a line that says why)
 - price ≤ 12-month low and ≥ 5 % under the median → **Real deal**
 - "was" price > 103 % of the 90-day high (or 12-month high if < 2 points in 90 days) and price not ≥ 5 % under median → **Fake discount**
 - price > 103 % of median → **Pricier than usual**

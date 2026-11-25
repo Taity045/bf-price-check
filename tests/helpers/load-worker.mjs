@@ -16,7 +16,7 @@ export const NAMES = [
   "pageAmount", "detectBlock", "extractFromHtml", "takealotBarcode", "takealotApi", "getCurrent",
   "sameProduct", "matchShop", "shopFor", "blockedShopFor",
   "rateLimit", "cacheGet", "cachePut",
-  "median", "historyPoints", "judge", "publicVerdict",
+  "median", "historyPoints", "judge", "sparseEvidence", "cdxQueries", "publicVerdict",
   "escHtml", "apiGuard", "isE2E", "verifyTurnstile", "notifyOwnerOfRequest",
 ];
 

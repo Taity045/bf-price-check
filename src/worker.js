@@ -558,7 +558,8 @@ function lastBlackFriday() {
   return now() >= bfOf(y) + 4 * 864e5 ? bfOf(y) : bfOf(y - 1);
 }
 // http/https and a trailing slash on the path don't make a different product page.
-const sameKey = (s) => s.replace(/^http:/, "https:").replace(/\/+(?=\?|$)/, "");
+// The mobile host (m.) and www. show the same product page.
+const sameKey = (s) => s.replace(/^http:/, "https:").replace(/^https:\/\/(?:www\.|m\.)/, "https://").replace(/\/+(?=\?|$)/, "");
 function sameProduct(raw, canon) {
   const v = validateUrl(raw);
   if (v.error) return false;
@@ -586,13 +587,21 @@ function cdxQueries(canonInfo, origUrl) {
       u.pathname = u.pathname.endsWith("/") ? u.pathname.replace(/\/+$/, "") : u.pathname + "/";
       q.push({ url: u.href, prefix: false });
     }
+    // The pasted link with all its parameters, the page without parameters, and the mobile host.
+    // (The archive index already ignores http/https and www.) Results are kept only for the same product.
+    try { const full = new URL(origUrl); full.hash = ""; q.push({ url: full.href, prefix: false }); } catch {}
+    const bare = new URL(canonInfo.canon); bare.search = "";
+    if (bare.href !== canonInfo.canon) q.push({ url: bare.href, prefix: false });
+    const mob = new URL(canonInfo.canon); mob.hostname = "m." + stripWww(mob.hostname);
+    if (!/^m\./.test(new URL(canonInfo.canon).hostname)) q.push({ url: mob.href, prefix: false });
   }
-  return q;
+  const seenQ = new Set();
+  return q.filter((x) => (seenQ.has(x.url) ? false : seenQ.add(x.url)));
 }
 
 async function getSnapshots(env, canonInfo, origUrl) {
   const oKey = new URL(origUrl).pathname;
-  const key = "cdx-v4:" + JSON.stringify([canonInfo.canon, oKey]);
+  const key = "cdx-v5:" + JSON.stringify([canonInfo.canon, oKey]);
   const cached = await cacheGet(env, key);
   if (cached) return cached;
   const from = ymd(new Date(now() - HISTORY_DAYS * 864e5));

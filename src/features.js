@@ -30,6 +30,25 @@ function historyPoints(hist, ccy) {
   const pick = ccy || (all.find((x) => x.currency) || {}).currency;
   return { pts: all.filter((x) => pick && x.currency === pick).sort((a, b) => a.t - b.t), ccy: pick };
 }
+// With only 1 or 2 older prices we still show real evidence: one older price from the last 6 months
+// that is clearly under the shop's "was" price, or at or under today's price. Never a guess.
+const SPARSE_DAYS = 183;
+const SPARSE_VERDICTS = ["Likely inflated was price", "Seen cheaper before", "Seen at this price before"];
+function sparseEvidence(P, W, h) {
+  const recent = h.filter((x) => x.t >= now() - SPARSE_DAYS * DAY_MS && x.price > 0);
+  if (!P || !recent.length) return null;
+  const pt = recent.reduce((m, x) => (x.price < m.price || (x.price === m.price && x.t > m.t) ? x : m));
+  const maxOld = Math.max(...recent.map((x) => x.price));
+  // "Inflated" needs a price from at least 2 weeks ago: a sale that started a few days ago is not a fake.
+  const old = recent.filter((x) => x.t <= now() - 14 * DAY_MS);
+  if (W && W > P && old.length) {
+    const o = old.reduce((m, x) => (x.price < m.price ? x : m));
+    if (o.price <= W * 0.9 && maxOld < W * 0.97) return { verdict: "Likely inflated was price", pt: o };
+  }
+  if (pt.price < P * 0.98) return { verdict: "Seen cheaper before", pt };
+  if (pt.price <= P * 1.02) return { verdict: "Seen at this price before", pt };
+  return null;
+}
 function judge(current, hist) {
   let cur = current && current.status === "ok" && current.price && current.currency ? { price: current.price, was: current.was, currency: current.currency } : null;
   const { pts, ccy } = historyPoints(hist, cur && cur.currency);
@@ -38,7 +57,11 @@ function judge(current, hist) {
   const out = { verdict: null, n: h.length, pts, archived };
   if (!cur) return out;
   Object.assign(out, { price: cur.price, was: cur.was || null, currency: cur.currency });
-  if (h.length < 3) { out.verdict = "Not enough history"; return out; }
+  if (h.length < 3) {
+    const ev = sparseEvidence(cur.price, cur.was, h);
+    if (!ev) { out.verdict = "Not enough history"; return out; }
+    return Object.assign(out, { verdict: ev.verdict, low: ev.pt.price, low_t: ev.pt.t, evidence: { price: ev.pt.price, t: ev.pt.t, kind: ev.pt.kind } });
+  }
   const pr = h.map((x) => x.price), p90 = h.filter((x) => x.t >= now() - 90 * DAY_MS).map((x) => x.price);
   const low = Math.min(...pr), high = Math.max(...pr), med = median(pr), high90 = p90.length >= 2 ? Math.max(...p90) : high;
   const P = cur.price, W = cur.was, vsMed = (med - P) / med, inflated = W && W > high90 * 1.03;
@@ -92,7 +115,7 @@ async function wallData(env) {
   if (cached) return cached;
   await ensureFeatureTables(env);
   const fakes = await env.DB.prepare("SELECT url, host, title, price, was, currency, high90, gap, archived, updated_at FROM verdicts WHERE verdict = 'Fake discount' AND gap IS NOT NULL ORDER BY gap DESC LIMIT 30").all();
-  const shops = await env.DB.prepare("SELECT host, COUNT(*) AS products, SUM(CASE WHEN verdict <> 'Not enough history' THEN 1 ELSE 0 END) AS judged, SUM(CASE WHEN verdict = 'Fake discount' THEN 1 ELSE 0 END) AS fake FROM verdicts GROUP BY host ORDER BY judged DESC, products DESC LIMIT 40").all();
+  const shops = await env.DB.prepare("SELECT host, COUNT(*) AS products, SUM(CASE WHEN verdict IN ('Real deal', 'Decent deal', 'Same old price', 'Pricier than usual', 'Fake discount') THEN 1 ELSE 0 END) AS judged, SUM(CASE WHEN verdict = 'Fake discount' THEN 1 ELSE 0 END) AS fake FROM verdicts GROUP BY host ORDER BY judged DESC, products DESC LIMIT 40").all();
   const checks = await env.DB.prepare("SELECT t.url AS url, COUNT(c.id) AS n FROM tracked t JOIN checks c ON c.url = t.url GROUP BY t.url").all().catch(() => ({ results: [] }));
   const perHost = {};
   for (const r of checks.results || []) { try { const h = stripWww(new URL(r.url).hostname.toLowerCase()); perHost[h] = (perHost[h] || 0) + r.n; } catch {} }

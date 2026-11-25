@@ -59,7 +59,8 @@ for (const i of [0, 1, 2]) {
   ok(`example "${label}" URL updated`, p.url().includes("?u="));
   ok(`example "${label}" shop link set`, (await p.getAttribute("#plink", "href")).startsWith("https://"));
   ok(`example "${label}" no sideways scroll`, await noOverflow(p));
-  // chart tap
+  // chart tap (after archive copies finish loading, because the chart redraws as each one arrives)
+  await p.waitForFunction(() => document.getElementById("prog").classList.contains("hidden") && !document.getElementById("progtxt").textContent.trim(), null, { timeout: 30000 }).catch(() => {});
   await p.locator("#chart circle[data-i]").first().click({ force: true });
   ok(`example "${label}" chart tap updates tip`, !(await p.textContent("#tip")).includes("Tap a point"));
   await p.click("#pts summary"); ok(`example "${label}" all-prices table opens`, (await p.locator("#ptable tr").count()) >= 2);
@@ -80,7 +81,8 @@ for (const i of [0, 1, 2]) {
     await p.click("#share"); await p.click("#shareCopy"); await p.waitForTimeout(400);
     const clip = await p.evaluate(() => navigator.clipboard.readText().catch(() => ""));
     ok("share copies link", clip.includes("/?u="), clip.slice(0, 80));
-    ok("share shows toast", (await p.textContent("#toast")).includes("copied"));
+    const tq = await p.waitForFunction(() => /copied/.test(document.getElementById("toast")?.textContent || ""), null, { timeout: 6000 }).then(() => "").catch(async () => await p.textContent("#toast"));
+    ok("share shows toast", tq === "", tq);
     await p.click("#shareDlg .x");
     await p.click("#again"); await p.waitForFunction(() => !document.getElementById("go").disabled, null, { timeout: 60000 });
     ok("check again keeps result", await p.isVisible("#result"));
