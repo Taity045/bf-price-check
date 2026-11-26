@@ -373,7 +373,9 @@ function renderDeal() {
   const sc = d.score != null ? `<span class="dscore num" title="Deal Score: ${d.score} out of 100"><b>${d.score}</b><small>/100</small></span>` : `<span class="dscore none" title="No Deal Score yet"><b>–</b></span>`;
   el.innerHTML = `<div class="dtop">${sc}<span class="dpill">${esc(d.action)}</span><span class="dlab">${d.score != null ? "Deal Score" : "No Deal Score yet"}</span></div>`
     + `<div class="dwhys">${d.reasons.slice(0, 2).map((r) => `<p class="dwhy">${esc(r)}</p>`).join("")}</div>`;
-  const h = el.offsetHeight; if (h > (state.dealH || 0)) { state.dealH = h; el.style.minHeight = h + "px"; } else el.style.minHeight = state.dealH + "px";
+  // never shrink (exact height, not rounded): the chart and buttons below stay where they are
+  el.style.minHeight = (state.dealH || 0) + "px";
+  const h = el.getBoundingClientRect().height; if (h > (state.dealH || 0)) { state.dealH = h; el.style.minHeight = h + "px"; }
 }
 
 function renderChart() {
