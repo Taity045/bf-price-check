@@ -15,9 +15,9 @@ const SRCH_MIN = 2, SRCH_MAX = 120;      // characters in a search
 const SRCH_TTL = 20 * 60;                // seconds: one shop's answer for one search
 const SRCH_PER_SHOP = 8;                 // products per shop in the answer
 const SRCH_MAX_SHOPS = 12;               // shops per search
-const SRCH_TIMEOUT = 14000;              // ms for one shop's search
+const SRCH_TIMEOUT = 8000;               // ms for one shop's search (AB-43: was 14 s; a slower shop still fills the cache)
 const SRCH_CC = { ZA: "ZAR", GB: "GBP", UK: "GBP" };
-const SRCH_VER = "v2";               // v2: main products before accessories
+const SRCH_VER = "v3";               // v2: main products before accessories; v3: one-word forms, spelling fixes (AB-43)
 // When we can't tell the kind of product, search the general shops and the shops that sell many kinds of things.
 const SRCH_BROAD = ["electronics", "appliances", "home"];
 // Words that do not need to be in a product's name.
@@ -44,6 +44,22 @@ function srchClean(raw) {
   if (!srchWords(q).length) return { error: "Type a product name, for example PS5 Slim." };
   return { q };
 }
+// AB-43: a search with no product found goes on to the AI Shopping Assistant (once), except a bare number,
+// barcode or product code ("6001234567890", "SM-S928B", "KLF03CREU"): the AI can't do more with those.
+function srchAiOk(q) {
+  const s = String(q || "").trim();
+  if (!s || srchIsLink(s)) return false;
+  if (/^[\d\s.,\-\/#]+$/.test(s)) return false;
+  // one word of letters and numbers with 3 or more numbers, or letters and numbers mixed more than once ("MQD83ZM/A")
+  if (!/\s/.test(s) && s.length >= 6 && /^[a-z0-9][a-z0-9\-_.\/]*$/i.test(s)) {
+    const runs = s.replace(/[^a-z0-9]/gi, "").match(/[a-z]+|\d+/gi) || [];
+    if ((s.match(/\d/g) || []).length >= 3 || runs.length >= 3) return false;
+  }
+  if (typeof asOffTopic === "function" && asOffTopic(s)) return false;
+  return true;
+}
+// The visitor's country from Cloudflare (request.cf.country), for a search with no country: the UK or South Africa.
+const srchVisitorCc = (req) => (req && req.cf && req.cf.country === "GB" ? "GB" : "ZA");
 const srchCountry = (c) => { const k = String(c || "ZA").toUpperCase(); return SRCH_CC[k] ? (k === "UK" ? "GB" : k) : null; };
 // AB-41: everyday short names. A search and a product name are both read with the name the shops use, so
 // "coke" finds "Coca-Cola", "redbull" finds "Red Bull", "air pods" finds "AirPods" (and the other way).
@@ -57,15 +73,108 @@ const SRCH_ALIAS = [
   [/\bmac[\s-]+books?\b/g, "macbook"],
   [/\bplay[\s-]*station[\s-]*5\b/g, "ps5"],
 ];
+// AB-43: words written as one word or as two ("airfryer" = "air fryer", "smart watch" = "smartwatch"). A search
+// and a product name are both read as one word, so each finds the other. [pattern, one word, words for the shop]
+const SRCH_COMPOUND = [
+  [/\bair[\s-]*fryers?\b/g, "airfryer", "air fryer"],
+  [/\bsmart[\s-]*watch(?:es)?\b/g, "smartwatch", "smartwatch"],
+  [/\bsmart[\s-]*phones?\b/g, "smartphone", "smartphone"],
+  [/\bpower[\s-]*banks?\b/g, "powerbank", "power bank"],
+  [/\bhair[\s-]*dr[yi]ers?\b/g, "hairdryer", "hair dryer"],
+  [/\bhead[\s-]*sets?\b/g, "headset", "headset"],
+  [/\bhead[\s-]*phones?\b/g, "headphones", "headphones"],
+  [/\bear[\s-]*buds?\b/g, "earbuds", "earbuds"],
+  [/\bear[\s-]*phones?\b/g, "earphones", "earphones"],
+  [/\bsound[\s-]*bars?\b/g, "soundbar", "soundbar"],
+  [/\bdish[\s-]*washers?\b/g, "dishwasher", "dishwasher"],
+  [/\bplay[\s-]*station\b/g, "playstation", "playstation"],
+  [/\blap[\s-]+tops?\b/g, "laptop", "laptop"],
+  [/\bweb[\s-]*cams?\b/g, "webcam", "webcam"],
+  [/\btooth[\s-]*brush(?:es)?\b/g, "toothbrush", "toothbrush"],
+  [/\bmicro[\s-]+waves?\b/g, "microwave", "microwave"],
+  [/\bfoot[\s-]*balls?\b/g, "football", "football"],
+  [/\bback[\s-]*packs?\b/g, "backpack", "backpack"],
+  [/\bskate[\s-]*boards?\b/g, "skateboard", "skateboard"],
+  [/\btread[\s-]*mills?\b/g, "treadmill", "treadmill"],
+];
 function srchAlias(s) {
   let t = String(s == null ? "" : s).toLowerCase().replace(/[\u2010-\u2015]/g, "-");
   for (const [re, to] of SRCH_ALIAS) t = t.replace(re, to);
+  for (const [re, one] of SRCH_COMPOUND) t = t.replace(re, one);
   return t;
 }
-// The search words to send to a shop: the shops' own name when the search uses a short name ("coke" -> "coca cola").
-const srchShopQ = (q) => { const a = srchAlias(q).replace(/\s+/g, " ").trim(); return a === String(q).toLowerCase().replace(/\s+/g, " ").trim() ? q : a; };
+// ---------- AB-43: small spelling mistakes in a search ----------
+// A search word of 5 or more letters that is not a known word, and is one letter away (one letter more, less,
+// changed, or two letters in the wrong order) from exactly one known word, is read as that word:
+// "samsng" -> "samsung", "iphne" -> "iphone", "garmn" -> "garmin", "hisnse" -> "hisense", "frige" -> "fridge".
+// Known words are never changed ("cable" stays "cable", not "table"). Only the search is changed, never a product name.
+const SRCH_KNOWN = new Set(("samsung apple iphone ipad macbook airpods imac garmin hisense philips panasonic lenovo huawei xiaomi "
+  + "nokia motorola google pixel nintendo switch xbox playstation dyson bosch siemens whirlpool kelvinator smeg russell hobbs kenwood "
+  + "breville delonghi nespresso krups tefal sunbeam salton logitech razer corsair steelseries hyperx asus acer dell lenovo "
+  + "hewlett packard canon nikon fujifilm gopro bose sennheiser beats marshall sonos skullcandy fitbit amazfit polar coros suunto "
+  + "forerunner fenix venu vivoactive instinct realme honor tecno infinix alcatel nothing toshiba sharp microsoft surface "
+  + "kindle amazon chromecast roku lego barbie mattel hasbro adidas puma reebok asics salomon brooks saucony converse skechers "
+  + "crocs levis weber cadac makita dewalt ryobi stanley karcher hoover morphy richards ninja instant cuisinart nutribullet "
+  + "oneplus galaxy redmi seagate sandisk kingston crucial intel ryzen radeon nvidia geforce epson brother netgear linksys "
+  + "anker baseus ugreen volkano defy telefunken skyworth sinotec jameson johnnie walker heineken castle hennessy "
+  + "phone phones smartphone cellphone tablet tablets laptop laptops notebook computer desktop monitor monitors keyboard mouse "
+  + "router printer speaker speakers soundbar headphones headset earbuds earphones charger chargers cable cables adapter battery "
+  + "batteries camera cameras drone console consoles controller watch watches smartwatch tracker television screen projector "
+  + "fridge fridges freezer refrigerator kettle kettles toaster microwave stove blender mixer juicer airfryer fryer fryers vacuum "
+  + "cleaner washing machine washer dryer tumble dishwasher heater aircon steamer coffee espresso grinder shaver trimmer clipper "
+  + "clippers toothbrush hairdryer straightener curler purifier humidifier dehumidifier mattress pillow pillows duvet towel towels "
+  + "bedding couch chair chairs table tables desk curtain curtains cooker frying knife knives cutlery glass glasses braai grill "
+  + "cooler bicycle helmet scooter skateboard treadmill dumbbell dumbbells weights tent tents sleeping camping backpack luggage "
+  + "suitcase handbag wallet shoes sneaker sneakers trainer trainers boots sandals slippers jacket hoodie shirt shirts tshirt jeans "
+  + "dress shorts short socks perfume cologne fragrance lipstick mascara shampoo conditioner sunscreen moisturiser serum diapers "
+  + "nappies stroller formula puzzle games gaming books novel guitar piano drums ukulele microphone tripod lenses memory storage "
+  + "drive flash graphics processor motherboard powerbank solar inverter generator torch flashlight bulbs extension plug socket "
+  + "smart wireless bluetooth portable electric cordless digital analog stainless steel black white silver large small ultra "
+  + "lite slim edition series model version running fitness sport sports outdoor indoor kitchen bathroom bedroom garden office "
+  + "school children unisex water bottle flask house match stand stands cover covers cases charging station hdmi gold green "
+  + "brown purple orange yellow pink beige grey gray cream sleep power plate plates bowls bowl spoon spoons boxes paper "
+  + "bread butter cheese chicken coca cola juice drinks energy chips chocolate biscuits cereal sugar flour pasta sauce "
+  + "infant toddler womens girls ladies baby kids cycling bikes ebike mountain gravel tyres tubes pedals saddle "
+  + "light lights lamp lamps clock clocks frame frames mirror mirrors brush brushes razor razors blade blades oven ovens "
+  + "charge sync cooking baking travel music video photo gift gifts party "
+  + "airtag homepod echo ereader reader print prints inkjet laser toner office chair gamer racing wheel wheels pro max plus mini").split(" ").filter(Boolean));
+// One letter away: one letter more, less or changed, or two letters next to each other in the wrong order.
+function srchEd1(a, b) {
+  if (a === b) return false;
+  const la = a.length, lb = b.length;
+  if (Math.abs(la - lb) > 1) return false;
+  let i = 0; while (i < la && i < lb && a[i] === b[i]) i++;
+  if (la === lb) return a.slice(i + 1) === b.slice(i + 1) || (a[i] === b[i + 1] && a[i + 1] === b[i] && a.slice(i + 2) === b.slice(i + 2));
+  return la > lb ? a.slice(i + 1) === b.slice(i) : a.slice(i) === b.slice(i + 1);
+}
+const srchKnown = (w) => SRCH_KNOWN.has(w) || SRCH_SKIP.has(w) || (w.endsWith("s") && SRCH_KNOWN.has(w.slice(0, -1))) || (w.endsWith("es") && SRCH_KNOWN.has(w.slice(0, -2)));
+const SRCH_KNOWN_LONG = [...SRCH_KNOWN].filter((w) => w.length >= 5);
+// The known word for a search word with a small spelling mistake, or the word itself.
+function srchFixWord(w) {
+  if (w.length < 5 || !/^[a-z]+$/.test(w) || srchKnown(w)) return w;
+  let hit = null;
+  // a letter more or less at the end is another form of the word, not a mistake ("charge", "charger")
+  for (const k of SRCH_KNOWN_LONG) if (srchEd1(w, k) && !k.startsWith(w) && !w.startsWith(k)) { if (hit && hit !== k) return w; hit = k; }
+  return hit || w;
+}
+const srchFix = (t) => String(t).replace(/[a-z]+/g, (w) => srchFixWord(w));
+// The search as we read it: short names, one-word forms, spelling fixed ("samsng airfryer" -> "samsung airfryer").
+const srchRead = (q) => srchFix(srchAlias(q));
+// The search words to send to a shop: the shops' own name when the search uses a short name ("coke" -> "coca cola"),
+// the spelling fixed ("samsng" -> "samsung"), and the words most shops use ("airfryer" -> "air fryer").
+function srchShopQ(q) {
+  let a = srchRead(q);
+  for (const [, one, shop] of SRCH_COMPOUND) a = a.replace(new RegExp("\\b" + one + "\\b", "g"), shop);
+  a = a.replace(/\s+/g, " ").trim();
+  return a === String(q).toLowerCase().replace(/\s+/g, " ").trim() ? q : a;
+}
+// The spelling we used instead of the search, when a word was changed ("samsung galaxy" for "samsng galaxy"), or null.
+function srchFixed(q) {
+  const a = srchAlias(q), b = srchFix(a);
+  return a === b ? null : srchShopQ(q);
+}
 // The words that must be in a product's name (normalised the same way as compare: "PlayStation 5" = "ps5").
-const srchWords = (q) => [...new Set(cmpWords(srchAlias(q)).filter((w) => !SRCH_SKIP.has(w) && w !== "-" && w !== "+"))];
+const srchWords = (q) => [...new Set(cmpWords(srchRead(q)).filter((w) => !SRCH_SKIP.has(w) && w !== "-" && w !== "+"))];
 const srchKey = (q) => srchWords(q).join(" ");
 
 // Which shops to search: same currency, not off (robots.txt or no search), shops that sell this kind of product.
@@ -74,7 +183,8 @@ function srchPlan(q, country) {
   // In-store flyer deals (src/flyer.js): a flyer is a searched shop only when one of its live deals has these words.
   const hits = cur === "ZAR" ? flyerHits(q) : [], flyers = hits.map((h) => h.f);
   // a flyer deal names a grocery ("chicken wings", "watermelons"): search the grocery shops too
-  const cat = cmpCatOf(q) || (flyersGrocery(hits) ? "groceries" : null);
+  const fq = srchShopQ(q);
+  const cat = cmpCatOf(fq) || cmpCatOf(q) || (flyersGrocery(hits) ? "groceries" : null);
   const words = new Set(srchWords(q));
   const want = (s) => s.sells.includes("*") || (cat ? s.sells.includes(cat) : s.sells.some((x) => SRCH_BROAD.includes(x)));
   const shops = [], notSearched = [];
@@ -95,7 +205,7 @@ function srchPlan(q, country) {
     const cats = x.cats || CMP_NOT_SEARCHED_CATS;
     if (cat ? cats.includes(cat) : cats.some((c) => SRCH_BROAD.includes(c))) notSearched.push({ name: x.name, why: x.why });
   }
-  const dev = srchDevice(q);
+  const dev = srchDevice(fq);
   return { category: cat, noun: cat ? CMP_CAT_NOUN[cat] || null : null, currency: cur, device: dev ? dev.label : null, accessory_example: dev ? q + " " + dev.ex : null, shops: shops.slice(0, SRCH_MAX_SHOPS).map(({ id, name, flyer }) => (flyer ? { id, name, flyer: true } : { id, name })), notSearched };
 }
 
@@ -112,7 +222,10 @@ function srchHasTok(words, { tw, set }) {
   return words.every((w) => {
     if (set.has(w)) return true;
     if (/^\d+$/.test(w)) return tw.some((t) => t === w || new RegExp("^" + w + "(st|nd|rd|th)$").test(t));
-    if (w.length >= 4) return tw.some((t) => t === w + "s" || t === w + "es" || w === t + "s" || w === t + "es");
+    if (w.length >= 4 && tw.some((t) => t === w + "s" || t === w + "es" || w === t + "s" || w === t + "es")) return true;
+    // AB-43: a long search word we do not know, with one letter wrong in the search or in the shop's name
+    // ("forrunner" = "forerunner"). Known words must match ("cable" never finds "table").
+    if (w.length >= 6 && /^[a-z]+$/.test(w) && !srchKnown(w)) return tw.some((t) => t.length >= 5 && srchEd1(w, t));
     return false;
   });
 }
@@ -165,10 +278,10 @@ const SRCH_RANK = { main: 0, other: 1, acc: 2 };
 // unless the search asks for them. A search for a main product: the products themselves first, then
 // products we can't tell, cheapest first in each; clear accessories are left out (counted in "hidden").
 function srchFilter(q, shop, list, info) {
-  const words = srchWords(q), nq = cmpNorm(q);
+  const words = srchWords(q), fq = srchShopQ(q), nq = cmpNorm(fq);
   const wantAcc = CMP_ACCESSORY.test(nq) || /\b(case|cover|charger|cable|stand|strap|controller|skin|protector)\b/.test(nq);
   const wantUsed = CMP_CONDITION.test(nq);
-  const dev = srchDevice(q);
+  const dev = srchDevice(fq);
   const seen = new Set(), out = [];
   let hidden = 0;
   for (const c of list || []) {
@@ -214,12 +327,13 @@ const srchIp = (req) => req.headers.get("cf-connecting-ip") || "0";
 async function apiSearch(req, env) {
   const sp = new URL(req.url).searchParams;
   const v = srchClean(sp.get("q")); if (v.error) return json({ error: v.error }, 400);
-  const country = srchCountry(sp.get("c")); if (!country) return json({ error: "Choose South Africa or the UK." }, 400);
+  const country = srchCountry(sp.get("c") || srchVisitorCc(req)); if (!country) return json({ error: "Choose South Africa or the UK." }, 400);
   if (!isE2E(req, env) && await rateLimit(env, srchIp(req), "search")) return json({ error: "Too many searches. Wait a minute and try again." }, 429);
   const plan = srchPlan(v.q, country);
   // a plan with flyer deals is never kept past the end of any of their deals
   const age = Math.min(300, ...plan.shops.filter((s) => s.flyer).map((s) => flyerSecondsLeft(flyerById(s.id))));
-  return json({ q: v.q, country, ...plan }, 200, { "cache-control": "public, max-age=" + age });
+  const fixed = srchFixed(v.q);
+  return json({ q: v.q, country, ...plan, ...(fixed ? { fixed } : {}), ai_fallback: srchAiOk(v.q) }, 200, { "cache-control": "public, max-age=" + age });
 }
 
 // GET /api/search/shop?q=&c=&shop=  -> { shop, name, status, items }
@@ -227,7 +341,7 @@ async function apiSearch(req, env) {
 async function apiSearchShop(req, env, ctx) {
   const sp = new URL(req.url).searchParams;
   const v = srchClean(sp.get("q")); if (v.error) return json({ error: v.error }, 400);
-  const country = srchCountry(sp.get("c")); if (!country) return json({ error: "Choose South Africa or the UK." }, 400);
+  const country = srchCountry(sp.get("c") || srchVisitorCc(req)); if (!country) return json({ error: "Choose South Africa or the UK." }, 400);
   const shop = cmpShopById(sp.get("shop") || "");
   // Flyer deals: from memory, no shop fetch, no cache (so nothing shows after the flyer ends).
   if (shop && shop.flyer) {
@@ -247,10 +361,17 @@ async function apiSearchShop(req, env, ctx) {
   if (rb === false) { const out = { ...base, status: "robots", items: [], checked_at: now() }; await srchCachePut(key, out, 6 * 3600); return json(out); }
   if (rb === "retry") return json({ ...base, status: "error", items: [] });
   if (await cmpShopBusy(env, shop)) return json({ ...base, status: "busy", items: [] });
-  let list, status = "ok";
+  let list, status = "ok", timer = null;
+  // AB-43: the page waits SRCH_TIMEOUT at most. A slower shop goes on in the background (ctx.waitUntil) and its
+  // answer is kept in the cache, so the next search (or Search again) shows it at once.
+  const run = CMP_SEARCH[shop.kind](shop, srchShopQ(v.q));
   try {
-    list = await Promise.race([CMP_SEARCH[shop.kind](shop, srchShopQ(v.q)), new Promise((_, no) => setTimeout(() => no(new CmpError("timeout", "error")), SRCH_TIMEOUT))]);
-  } catch (e) { status = e instanceof CmpError && e.kind === "blocked" ? "blocked" : "error"; }
+    list = await Promise.race([run, new Promise((_, no) => { timer = setTimeout(() => no(new CmpError("timeout", "slow")), SRCH_TIMEOUT); })]);
+  } catch (e) { status = e instanceof CmpError && e.kind === "blocked" ? "blocked" : e instanceof CmpError && e.kind === "slow" ? "slow" : "error"; }
+  finally { clearTimeout(timer); }
+  if (status === "slow" && ctx && ctx.waitUntil) {
+    ctx.waitUntil(run.then((l) => { const items = srchFilter(v.q, shop, l, {}); return srchCachePut(key, { ...base, status: items.length ? "ok" : "none", items, checked_at: now() }, SRCH_TTL); }).catch(() => {}));
+  } else if (status === "slow") run.catch(() => {});
   if (status !== "ok") return json({ ...base, status, items: [] });
   const info = {};
   const items = srchFilter(v.q, shop, list, info);

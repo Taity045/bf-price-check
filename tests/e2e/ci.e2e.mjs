@@ -99,6 +99,8 @@ await step("link box errors", async () => {
   const [req] = await Promise.all([p.waitForRequest(/\/api\/check\?/), (async () => { await p.fill("#u", "takealot.com"); await p.click("#go"); })()]);
   ok("a shop address without https is checked as a link (never searched as words)", new URL(req.url()).searchParams.get("url") === "https://takealot.com", req.url());
   await p.route(/\/api\/search\/shop\?/, (r) => r.fulfill({ json: { status: "none", items: [] } }));
+  // AB-43: 0 products go on to Ask AI; here the AI says "wait" so the search shows again
+  await p.route(/\/api\/assist\?/, (r) => r.fulfill({ status: 429, json: { error: "Wait a minute and try again.", limited: "minute" } }));
   // (AB-32: a greeting such as "hello there" is general chat and gets the shopping-only message instead)
   await p.fill("#u", "garden chair"); await p.click("#go");
   await p.waitForSelector("#search:not(.hidden)", { timeout: 10000 });
@@ -358,7 +360,8 @@ for (const [name, o] of [["1440", { viewport: { width: 1440, height: 900 } }], [
 });
 
 // 3e. Home page picks: group chips switch the list; a tap or Enter on a product checks it (answer faked)
-const PICKS = JSON.parse(readFileSync(new URL("../../examples.json", import.meta.url), "utf8")).groups;
+// AB-43: the home page shows South African picks only (build.py leaves out UK products)
+const PICKS = JSON.parse(readFileSync(new URL("../../examples.json", import.meta.url), "utf8")).groups.map((g) => ({ ...g, items: g.items.filter((i) => i.cc !== "UK") })).filter((g) => g.items.length);
 for (const [name, o] of [["desktop", desktop], ["1440", { viewport: { width: 1440, height: 900 } }], ["phone", mobile], ["390", { ...mobile, viewport: { width: 390, height: 844 } }]]) await step(`home picks ${name}`, async () => {
   const p = await open(o);
   const asked = [];
@@ -411,7 +414,7 @@ for (const [name, o] of [["desktop", desktop], ["1440", { viewport: { width: 144
   await p.context().close();
 });
 
-// 3f. Product search by name: one box for a link or a name, SA / UK switch, results shop by shop (shop answers faked)
+// 3f. Product search by name: one box for a link or a name, no SA / UK switch (AB-43), results shop by shop (shop answers faked)
 const SRCH_ITEMS = {
   takealot: [{ title: "PlayStation 5 Slim Console with disc drive (PS5 Slim)", price: 15999, was: null, from: false, currency: "ZAR", url: "https://www.takealot.com/playstation-5-slim/PLID95228805" },
     { title: "PlayStation 5 Slim Console + DualSense Controller", price: 17990, was: 18999, from: false, currency: "ZAR", url: "https://www.takealot.com/ps5-slim-dualsense/PLID97993066" }],
@@ -425,7 +428,8 @@ const srchShop = (o = {}) => async (r) => {
   if (o.empty) return r.fulfill({ json: { shop: id, status: "none", items: [] } });
   if (id === "matrix") return r.fulfill({ json: { shop: id, status: "error", items: [] } });
   if (id === "hirschs") return r.fulfill({ json: { shop: id, status: "robots", items: [] } });
-  const items = SRCH_ITEMS[id] || [];
+  const cc = u.searchParams.get("c");
+  const items = SRCH_ITEMS[id] || (o.any ? [{ title: "CI Kettle 1.7L " + id, price: cc === "GB" ? 29 : 499, was: null, from: false, currency: cc === "GB" ? "GBP" : "ZAR", url: "https://www.example.com/ci-kettle-" + id }] : []);
   r.fulfill({ json: { shop: id, status: items.length ? "ok" : "none", items } });
 };
 for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`search ${name}`, async () => {
@@ -437,11 +441,11 @@ for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`s
   await p.route(/\/api\/search\/shop\?/, srchShop({ asked }));
   await p.goto(BASE + "/", { waitUntil: "networkidle" });
   ok(`search ${name}: the box says search, link or AI`, (await p.getAttribute("#u", "placeholder")) === "Search, paste a link or ask AI" && (await p.getAttribute("#u", "type")) === "text");
-  ok(`search ${name}: the SA / UK switch shows on the clean home page (the deals follow it)`, await p.isVisible("#ccrow"));
+  ok(`search ${name}: no SA / UK switch on the clean home page (South Africa first)`, (await p.$$("#ccrow, .ccb")).length === 0 && !/Shops in/.test(await p.textContent(".hero")));
   await p.fill("#u", "PS5 Slim");
-  ok(`search ${name}: a product name turns the button into Search and shows the switch`, (await p.textContent("#go")).trim() === "Search" && await p.isVisible("#ccrow") && (await p.getAttribute('#ccrow [data-c="ZA"]', "aria-pressed")) === "true");
+  ok(`search ${name}: a product name turns the button into Search`, (await p.textContent("#go")).trim() === "Search");
   await p.fill("#u", "https://www.takealot.com/x/PLID1");
-  ok(`search ${name}: a link keeps Check price and hides the switch`, (await p.textContent("#go")).trim() === "Check price" && !(await p.isVisible("#ccrow")));
+  ok(`search ${name}: a link keeps Check price`, (await p.textContent("#go")).trim() === "Check price");
   await p.fill("#u", "takealot.com/x/PLID1");
   ok(`search ${name}: a link without https is a link too`, (await p.textContent("#go")).trim() === "Check price");
   await p.fill("#u", "a"); await p.press("#u", "Enter");
@@ -464,28 +468,82 @@ for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`s
   ok(`search ${name}: no sideways page scroll`, await noSideScroll(p) && rows.every((r) => r.w));
   ok(`search ${name}: the popular picks step aside`, !(await p.isVisible("#tries")));
   await p.screenshot({ path: `${SHOTS}/search-${name}.png`, fullPage: !!o.isMobile });
-  // SA / UK: a tap searches again in the other country, and the choice is kept
-  asked.length = 0;
-  const uk = p.locator('#ccrow [data-c="GB"]'); if (o.hasTouch) await uk.tap(); else await uk.click();
-  await p.waitForFunction(() => /c=GB/.test(location.search) && !/Searching/.test(document.getElementById("sStatus").textContent), null, { timeout: 15000 });
-  ok(`search ${name}: UK searches UK shops only`, asked.length > 0 && asked.every((a) => a.startsWith("GB:")) && /shops in the UK/.test(await p.textContent("#sLab")), asked.join());
-  ok(`search ${name}: UK is kept on this device`, (await p.evaluate(() => localStorage.getItem("dod:cc"))) === '"GB"' && (await p.getAttribute('#ccrow [data-c="GB"]', "aria-pressed")) === "true");
-  // a shared link opens the search in its own country
+  // AB-43: a visitor in South Africa sees no link to UK shops in the results
+  ok(`search ${name}: no UK link for a visitor in South Africa`, !(await p.isVisible("#sOther")));
+  // a shared link opens the search in its own country; the same search again comes from this device (no shop calls)
   asked.length = 0;
   await p.goto(BASE + "/?q=PS5+Slim&c=ZA", { waitUntil: "networkidle" });
   await p.waitForFunction(() => !/Searching/.test(document.getElementById("sStatus").textContent) && document.querySelectorAll("#sList li").length === 4, null, { timeout: 15000 });
-  ok(`search ${name}: a shared link fills the box and searches its country`, (await p.inputValue("#u")) === "PS5 Slim" && (await p.getAttribute('#ccrow [data-c="ZA"]', "aria-pressed")) === "true" && asked.every((a) => a.startsWith("ZA:")), asked.join());
+  ok(`search ${name}: a shared link fills the box and searches its country`, (await p.inputValue("#u")) === "PS5 Slim" && /shops in South Africa/.test(await p.textContent("#sLab")) && asked.every((a) => a.startsWith("ZA:")), asked.join());
+  ok(`search ${name}: the same search again shows the kept answers (only the shop that failed is asked again)`, asked.every((a) => a === "ZA:matrix"), asked.join());
   // Check price history: runs the normal check on that product; Back shows the search again
   const first = p.locator("#sList li button").first(); if (o.hasTouch) await first.tap(); else await first.click();
   await p.waitForSelector("#result:not(.hidden)", { timeout: 10000 });
   ok(`search ${name}: Check price history checks that product`, checked.at(-1) === SRCH_ITEMS.loot[0].url && (await p.inputValue("#u")) === SRCH_ITEMS.loot[0].url, checked.join(" "));
-  ok(`search ${name}: the result replaces the search`, !(await p.isVisible("#search")) && /CI Test Kettle/.test(await p.textContent("#ptitle")) && !(await p.isVisible("#ccrow")));
+  ok(`search ${name}: the result replaces the search`, !(await p.isVisible("#search")) && /CI Test Kettle/.test(await p.textContent("#ptitle")));
   ok(`search ${name}: no sideways page scroll on the result`, await noSideScroll(p));
+  asked.length = 0;
+  const tBack = Date.now();
   await p.goBack();
   await p.waitForSelector("#search:not(.hidden)", { timeout: 10000 });
   await p.waitForFunction(() => document.querySelectorAll("#sList li").length === 4, null, { timeout: 15000 });
   ok(`search ${name}: Back shows the search again`, new URL(p.url()).searchParams.get("q") === "PS5 Slim" && (await p.inputValue("#u")) === "PS5 Slim");
+  // AB-43: Back restores at once from this device: no shop calls, and the slow shop (1.8 s) is not waited for
+  ok(`search ${name}: Back restores at once from the kept answers (only the shop that failed is asked again)`, asked.every((a) => a === "ZA:matrix") && Date.now() - tBack < 1500, `${asked.join()} ${Date.now() - tBack} ms`);
+  ok(`search ${name}: no sideways page scroll after Back`, await noSideScroll(p));
   ok(`search ${name}: no JS errors`, p._errs.length === 0, p._errs.join(" | "));
+  await p.context().close();
+});
+// 3f1b. AB-43: a visitor in the UK (Cloudflare's country): searches UK shops, with a link to South African shops;
+// the home page stays South Africa first. A pasted UK link is checked in pounds.
+const UK_CHECK = () => ({ ...checkAnswer(), url: "https://www.currys.co.uk/products/ci-test-10100000.html", canonical: "https://www.currys.co.uk/products/ci-test-10100000.html", host: "currys.co.uk", tld_currency: "GBP",
+  current: { status: "ok", checked_at: Date.now(), price: 249, was: 299, currency: "GBP", title: "CI UK Test TV 43in", source: "jsonld" }, shop: { name: "Currys" },
+  history: { archive: [], archive_failed: 0, checks: [60, 40, 20, 10].map((d, i) => ({ t: Date.now() - d * DAY, price: [299, 289, 299, 279][i], was: null, currency: "GBP" })) } });
+for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`uk ${name}`, async () => {
+  const p = await open(o);
+  const asked = [], checked = [];
+  await p.route(/\/api\/config$/, async (r) => { const res = await r.fetch(); r.fulfill({ json: { ...(await res.json()), country: "GB" } }); });
+  await p.route(/\/api\/search\/shop\?/, srchShop({ asked, lootMs: 50, any: true }));
+  await p.route(/\/api\/check\?/, (r) => { checked.push(new URL(r.request().url()).searchParams.get("url")); r.fulfill({ json: UK_CHECK() }); });
+  await p.route(/\/api\/compare\?/, (r) => r.fulfill({ json: { ...CMP_PLAN, shops: [], results: {}, specialists: 0, reason: "no shops" } }));
+  await p.goto(BASE + "/", { waitUntil: "networkidle" });
+  ok(`uk ${name}: the home page has no country switch, South African picks only`, (await p.$$("#ccrow, .ccb")).length === 0 && !/ · UK/.test(await p.textContent("#tries")));
+  await p.fill("#u", "kettle"); await p.press("#u", "Enter");
+  await p.waitForFunction(() => /c=GB/.test(location.search) && !/Searching/.test(document.getElementById("sStatus").textContent), null, { timeout: 15000 });
+  ok(`uk ${name}: a visitor in the UK searches UK shops`, asked.length > 0 && asked.every((a) => a.startsWith("GB:")) && /shops in the UK/.test(await p.textContent("#sLab")), asked.join());
+  ok(`uk ${name}: one tap searches South African shops too`, await p.isVisible("#sOther") && (await p.textContent("#sOther")).trim() === "Search shops in South Africa");
+  asked.length = 0;
+  const other = p.locator("#sOther"); if (o.hasTouch) await other.tap(); else await other.click();
+  await p.waitForFunction(() => /c=ZA/.test(location.search) && !/Searching/.test(document.getElementById("sStatus").textContent), null, { timeout: 15000 });
+  ok(`uk ${name}: the South Africa link searches South African shops`, asked.length > 0 && asked.every((a) => a.startsWith("ZA:")) && /shops in South Africa/.test(await p.textContent("#sLab")) && (await p.textContent("#sOther")).trim() === "Search shops in the UK", asked.join());
+  // a UK product link: checked in pounds
+  await p.fill("#u", "https://www.currys.co.uk/products/ci-test-10100000.html"); await p.press("#u", "Enter");
+  await p.waitForSelector("#result:not(.hidden)", { timeout: 10000 });
+  ok(`uk ${name}: a pasted UK link is checked, in pounds`, checked.at(-1) === "https://www.currys.co.uk/products/ci-test-10100000.html" && /£\s?249/.test((await p.textContent("#result")).replace(/\u00a0/g, " ")) && /CI UK Test TV/.test(await p.textContent("#ptitle")));
+  ok(`uk ${name}: no sideways page scroll`, await noSideScroll(p));
+  ok(`uk ${name}: no JS errors`, p._errs.length === 0, p._errs.join(" | "));
+  if (name === "phone") await p.screenshot({ path: `${SHOTS}/uk-link-phone.png` });
+  await p.context().close();
+});
+// 3f1c. AB-43: a new search stops the older one: a slow old answer never shows over the new results
+for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`abort ${name}`, async () => {
+  const p = await open(o);
+  await p.route(/\/api\/search\/shop\?/, async (r) => {
+    const u = new URL(r.request().url()), q = u.searchParams.get("q"), id = u.searchParams.get("shop");
+    if (/old/.test(q)) { await new Promise((ok) => setTimeout(ok, 2500)); return r.fulfill({ json: { shop: id, status: "ok", items: [{ title: "OLD kettle " + id, price: 100, was: null, from: false, currency: "ZAR", url: "https://www.takealot.com/old-" + id + "/PLID1" }] } }).catch(() => {}); }
+    const items = id === "takealot" ? [{ title: "NEW kettle", price: 200, was: null, from: false, currency: "ZAR", url: "https://www.takealot.com/new/PLID2" }] : [];
+    r.fulfill({ json: { shop: id, status: items.length ? "ok" : "none", items } });
+  });
+  await p.goto(BASE + "/", { waitUntil: "networkidle" });
+  await p.fill("#u", "old kettle"); await p.press("#u", "Enter");
+  await p.waitForSelector("#search:not(.hidden)", { timeout: 10000 });
+  ok(`abort ${name}: the button answers at once and stays on for a new search`, /Searching/.test(await p.textContent("#go")) && !(await p.isDisabled("#go")) && (await p.getAttribute("#go", "aria-busy")) === "true");
+  await p.fill("#u", "new kettle"); await p.press("#u", "Enter");
+  await p.waitForFunction(() => !/Searching/.test(document.getElementById("sStatus").textContent) && /NEW kettle/.test(document.getElementById("sList").textContent), null, { timeout: 15000 })
+    .catch(async (e) => { console.log("abort debug:", await p.textContent("#sStatus"), "|", await p.textContent("#sList"), "|", p.url(), "|", await p.isVisible("#assist")); throw e; });
+  await p.waitForTimeout(3000);
+  ok(`abort ${name}: only the new search shows, never the older answer`, !/OLD kettle/.test(await p.textContent("#sList")) && /NEW kettle/.test(await p.textContent("#sList")) && new URL(p.url()).searchParams.get("q") === "new kettle");
+  ok(`abort ${name}: no JS errors`, p._errs.length === 0, p._errs.join(" | "));
   await p.context().close();
 });
 // 3f2. bare "PS5": consoles first (rank 0 from /api/search/shop), accessories left out and counted
@@ -514,8 +572,15 @@ for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`s
 for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`search empty ${name}`, async () => {
   const p = await open(o);
   await p.route(/\/api\/search\/shop\?/, srchShop({ empty: true, lootMs: 50 }));
+  // the AI can't answer now (limit): the search shows its plain note again, and Ask AI instead
+  await p.route(/\/api\/assist\?/, (r) => r.fulfill({ status: 429, json: { error: "You asked many times in a short time. Wait a minute and try again.", limited: "minute" } }));
   await p.goto(BASE + "/?q=" + encodeURIComponent("zorbix 3000") + "&c=ZA", { waitUntil: "networkidle" });
   await p.waitForSelector("#sEmpty:not(.hidden)", { timeout: 15000 });
+  ok(`search empty ${name}: the AI limit shows in plain words, and Ask AI instead stays`, /Wait a minute/.test(await p.textContent("#error")) && await p.isVisible("#sAskAi") && await p.isVisible("#search") && !(await p.isVisible("#assist")));
+  // a bare barcode never goes to the AI
+  await p.goto(BASE + "/?q=6001234567890&c=ZA", { waitUntil: "networkidle" });
+  await p.waitForSelector("#sEmpty:not(.hidden)", { timeout: 15000 });
+  ok(`search empty ${name}: a barcode with no product stays on the search`, await p.isVisible("#search") && !(await p.isVisible("#assist")));
   ok(`search empty ${name}: no results says so in plain words`, /We found no products in stock with all of these words\. Use fewer words, or paste a product link\./.test(await p.textContent("#sEmpty")) && (await p.$$("#sList li")).length === 0, await p.textContent("#sEmpty"));
   ok(`search empty ${name}: the button is back to Search`, (await p.textContent("#go")).trim() === "Search" && !(await p.isDisabled("#go")));
   ok(`search empty ${name}: no sideways page scroll`, await noSideScroll(p));
@@ -668,12 +733,35 @@ for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`a
   await p.fill("#u", "Need a 4K TV under £500 for PS5"); await p.press("#u", "Enter");
   await p.waitForSelector("#asEmpty:not(.hidden)", { timeout: 10000 });
   ok(`assist empty ${name}: no match says so in plain words`, /We found no products in stock that match/.test(await p.textContent("#asEmpty")) && (await p.$$("#asPicks li")).length === 0 && !(await p.isVisible("#asH")) && !(await p.isVisible("#asAct")));
-  ok(`assist empty ${name}: a budget in pounds shows UK shops`, /shops in the UK/.test(await p.textContent("#asLab")) && (await p.getAttribute('#ccrow [data-c="GB"]', "aria-pressed")) === "true" && new URL(p.url()).searchParams.get("c") === "GB");
+  ok(`assist empty ${name}: a budget in pounds shows UK shops, with a link to South African shops`, /shops in the UK/.test(await p.textContent("#asLab")) && new URL(p.url()).searchParams.get("c") === "GB" && (await p.textContent("#asOther")).trim() === "Search shops in South Africa" && await p.isVisible("#asOther"));
   ok(`assist empty ${name}: the button is back to Find picks`, (await p.textContent("#go")).trim() === "Find picks" && !(await p.isDisabled("#go")));
   ok(`assist empty ${name}: no JS errors`, p._errs.length === 0, p._errs.join(" | "));
   await p.context().close();
 });
 
+// AB-43: a search with no product goes on to Ask AI by itself (once), with a plain note
+for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`search fallback ${name}`, async () => {
+  const p = await open(o);
+  const assisted = [];
+  await p.route(/\/api\/search\/shop\?/, srchShop({ empty: true, lootMs: 50 }));
+  await p.route(/\/api\/assist\?/, (r) => { const u = new URL(r.request().url()); assisted.push(u.searchParams.get("q") + ":" + u.searchParams.get("c")); r.fulfill({ json: { ...AS_ANSWER, q: u.searchParams.get("q"), intent: { ...AS_ANSWER.intent, category: "watch", maxBudget: null }, understanding: "Looking for: running watch (GPS)" } }); });
+  await p.goto(BASE + "/", { waitUntil: "networkidle" });
+  await p.fill("#u", "running watch"); await p.press("#u", "Enter");
+  await p.waitForSelector("#asPicks li", { timeout: 15000 });
+  ok(`search fallback ${name}: 0 products: Ask AI takes over with the same words`, assisted.join() === "running watch:ZA" && await p.isVisible("#assist") && !(await p.isVisible("#search")), assisted.join());
+  ok(`search fallback ${name}: a plain note says AI searched`, /^No product name had all of your words, so AI searched for you\./.test(await p.textContent("#asWhat")), await p.textContent("#asWhat"));
+  ok(`search fallback ${name}: real picks show, no dead end`, (await p.$$("#asPicks li")).length === 3 && !(await p.isVisible("#sEmpty")));
+  ok(`search fallback ${name}: the button works again`, !(await p.isDisabled("#go")));
+  // Back to the same search later: the search and the AI answer come from this device, the AI is asked once only
+  await p.goto(BASE + "/", { waitUntil: "networkidle" });
+  await p.fill("#u", "running watch"); await p.press("#u", "Enter");
+  await p.waitForSelector("#asPicks li", { timeout: 15000 });
+  ok(`search fallback ${name}: the same search again: kept answer, no second AI call`, assisted.length === 1, assisted.join());
+  ok(`search fallback ${name}: no sideways page scroll`, await noSideScroll(p));
+  ok(`search fallback ${name}: no JS errors`, p._errs.length === 0, p._errs.join(" | "));
+  if (name === "phone") await p.screenshot({ path: `${SHOTS}/search-fallback-phone.png` });
+  await p.context().close();
+});
 // 3f4. AB-40: natural-language phrases go to the assistant with no pill on; names stay on the normal search;
 // a "Find a product" pill forces the normal search; a 0-result search of 3+ words offers "Ask AI instead".
 const NL_Q = "iphone with a good camera";
@@ -713,7 +801,8 @@ for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`n
   ok(`nl routing ${name}: the Ask AI instead button fits the screen`, await inView(p, "#sAskAi") || (await p.evaluate(() => { const r = document.getElementById("sAskAi").getBoundingClientRect(); return r.width > 0 && r.left >= -1 && r.right <= innerWidth + 1; })));
   await p.click("#sAskAi");
   await p.waitForSelector("#asPicks li", { timeout: 10000 });
-  ok(`nl routing ${name}: Ask AI instead sends the same words to the assistant`, assisted.length === 2 && assisted[1] === NL_Q && !(await p.isVisible("#search")), JSON.stringify(assisted));
+  // AB-43: the same words were asked a moment ago, so the kept answer shows at once (no second AI call)
+  ok(`nl routing ${name}: Ask AI instead shows the assistant for the same words`, assisted.length === 1 && assisted[0] === NL_Q && (await p.textContent("#asTitle")) === "\u201c" + NL_Q + "\u201d" && !(await p.isVisible("#search")), JSON.stringify(assisted));
   // the Ask AI pill forces the assistant, even for a plain name
   await p.goto(BASE + "/", { waitUntil: "networkidle" });
   await p.click('#modes .mode[data-m="ai"]');
@@ -926,13 +1015,11 @@ for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`h
   const first = await p.textContent("#dealList li:first-child .dcard");
   ok(`home redesign ${name}: a price drop shows its label, price, saving and older prices`, /Lowest price we found/.test(first) && /CI Test Kettle/.test(first) && /R\s?999/.test(first.replace(/\u00a0/g, " ")) && /under the usual/.test(first) && /from 4 older prices/.test(first), first);
   const shown = () => p.$eval("#dealList", (e) => e.innerText);
-  ok(`home redesign ${name}: only South African deals with South Africa on`, !/CI UK Test TV/.test(await shown()) && /CI Test Kettle/.test(await shown()));
+  ok(`home redesign ${name}: only South African deals (South Africa first, no UK on the home page)`, !/CI UK Test TV/.test(await shown()) && /CI Test Kettle/.test(await shown()));
   ok(`home redesign ${name}: View all (5)`, (await p.textContent("#dealsAll")).trim() === "View all (5)" && (await p.$$eval("#dealList li", (l) => l.filter((x) => x.offsetParent !== null).length)) === 4);
   await p.click("#dealsAll");
   ok(`home redesign ${name}: View all opens every deal`, (await p.$$eval("#dealList li", (l) => l.filter((x) => x.offsetParent !== null).length)) === 5 && (await p.getAttribute("#dealsAll", "aria-expanded")) === "true");
-  await p.click('#ccrow [data-c="GB"]');
-  ok(`home redesign ${name}: UK on shows UK deals only`, /CI UK Test TV/.test(await shown()) && !/CI Flyer|CI Test Kettle/.test(await shown()) && /£249/.test(await shown()) && !(await p.isVisible("#dealsAll")));
-  await p.click('#ccrow [data-c="ZA"]');
+  ok(`home redesign ${name}: no UK deal and no country switch on the home page`, !/CI UK Test TV|£249/.test(await shown()) && (await p.$$("#ccrow")).length === 0);
   await p.click("#dealList li:first-child .dcard");
   await p.waitForSelector("#result:not(.hidden)", { timeout: 10000 });
   ok(`home redesign ${name}: a price drop card opens its live check`, checked[0] === PRODUCT && !(await p.isVisible("#deals")), checked.join());
@@ -1014,8 +1101,7 @@ for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`h
   await withCards(p, '<li class="dempty" data-empty="ZA">No genuine deals to show right now.</li><li class="dempty" data-empty="GB" hidden>No checked UK price drops right now.</li>');
   await p.goto(BASE + "/", { waitUntil: "networkidle" });
   ok(`home redesign ${name}: no deals: an honest note and no View all`, await p.isVisible('#dealList [data-empty="ZA"]') && !(await p.isVisible("#dealsAll")));
-  await p.click('#ccrow [data-c="GB"]');
-  ok(`home redesign ${name}: no UK deals: the UK note`, await p.isVisible('#dealList [data-empty="GB"]') && !(await p.isVisible('#dealList [data-empty="ZA"]')));
+  ok(`home redesign ${name}: no UK note on the home page`, !(await p.isVisible('#dealList [data-empty="GB"]')));
   await p.context().close();
 });
 

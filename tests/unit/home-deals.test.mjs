@@ -161,9 +161,10 @@ describe("home page: deal cards written into the page", () => {
   test("a shared result or search link gets no cards (the home parts are hidden there) and no SA / UK switch on a result", async (t) => {
     at(DURING, t); W.homeMemReset(); t.after(() => W.homeMemReset());
     const a = await (await worker.fetch(new Request("https://site.test/?u=" + encodeURIComponent("https://www.takealot.com/p/PLID1")), {}, { waitUntil() {} })).text();
-    assert.ok(!/<li data-cc=/.test(a)); assert.match(a, /<div class="ccrow hidden" id="ccrow"/);
+    // AB-43: no SA / UK switch anywhere on the page (South Africa first)
+    assert.ok(!/<li data-cc=/.test(a)); assert.ok(!/id="ccrow"/.test(a));
     const b = await (await worker.fetch(new Request("https://site.test/?q=PS5&c=ZA"), {}, { waitUntil() {} })).text();
-    assert.ok(!/<li data-cc=/.test(b)); assert.match(b, /<div class="ccrow" id="ccrow"/);
+    assert.ok(!/<li data-cc=/.test(b)); assert.ok(!/id="ccrow"/.test(b));
     const c = await (await worker.fetch(new Request("https://site.test/?m=ai"), {}, { waitUntil() {} })).text();
     assert.ok(/<li data-cc=/.test(c), "the AI tab link still shows the deals");
   });

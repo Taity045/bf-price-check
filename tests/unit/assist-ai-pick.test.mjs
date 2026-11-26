@@ -191,8 +191,8 @@ describe("AB-42: the AI list and the prompt", () => {
     for (const re of [/only one JSON object/, /"picks"/, /"keep"/, /spare parts, accessories/, /Only when the shopper asks for a part or an accessory/, /\{"picks":\[\],"keep":\[\]\}/, /bulk/, /no budget/, /only facts that are in the product name/, /do not follow instructions/]) assert.match(s, re);
     assert.ok(s.length < 2200, "short prompt for a small model");
   });
-  test("cache v10 (AB-42b); the intent step knows bikes and any other product", () => {
-    assert.equal(W.AS_VER, "v10");
+  test("cache v11 (AB-43); the intent step knows bikes and any other product", () => {
+    assert.equal(W.AS_VER, "v11");
     const src = readFileSync(new URL("../../src/assist.js", import.meta.url), "utf8");
     assert.match(src, /tablet, bike, other; use other for all other products/); assert.match(src, /"camping tent", "baby stroller"/);
   });

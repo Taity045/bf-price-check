@@ -14,7 +14,9 @@ def picks_html(groups):
         f'<li><a href="/?u={e(urllib.parse.quote(it["url"], safe=""))}"><b>{e(it["name"])}</b><span>{e(it["shop"])}{" · UK" if it.get("cc") == "UK" else ""}</span></a></li>' for it in g["items"]) + "</ul>" for i, g in enumerate(groups))
     return f'<div class="cats" id="cats" role="group" aria-label="Product groups">{chips}</div><div id="chips">{lists}</div>'
 examples = json.loads((root / "examples.json").read_text()) if (root / "examples.json").exists() else {}
-html = html.replace("<!--PICKS-->", picks_html(examples.get("groups", [])))
+# AB-43: the home page is South Africa first: no UK products in the picks (a pasted UK link still works).
+sa_groups = [{**g, "items": [it for it in g["items"] if it.get("cc") != "UK"]} for g in examples.get("groups", [])]
+html = html.replace("<!--PICKS-->", picks_html([g for g in sa_groups if g["items"]]))
 import base64, hashlib, re, subprocess
 # In-store flyer deals (src/flyer.js): one JSON file per printed flyer, built into the Worker as a constant.
 FLYER_FILES = {"FLM_FLYER": "data/flm-flyer-2026-11-23.json", "PNP_FLYER": "data/pnp-flyer-2026-11-26.json",
