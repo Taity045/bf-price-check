@@ -814,7 +814,9 @@ async function search(q, c, opt = {}) {
     items.sort((a, b) => (a.rank || 0) - (b.rank || 0) || a.price - b.price);
     const shown = items.slice(0, MAX_SHOWN);
     const dev = plan.device, hidden = done.reduce((n, s) => n + ((results[s.id] || {}).hidden || 0), 0);
-    const isLow = (it, i) => i === 0 && done.length === shops.length && (!dev || !it.rank);
+    const isLow = (it, i) => i === 0 && done.length === shops.length && !it.rank;
+    // AB-43b: any search: accessories and parts after the products themselves
+    const accAfter = !dev && items.some((x) => x.rank) && items.some((x) => !x.rank);
     const lowTxt = (it, i) => (isLow(it, i) && items.length > 1 ? (it.flyer && it.multi ? ` · lowest price for one, when you buy ${it.qty}` : dev ? ` · lowest price we found (${dev})` : " · lowest price we found") : "");
     $("sList").innerHTML = shown.map((it, i) => it.flyer
       // a flyer deal: the flyer's own words, the multi-buy rule, no price history (it is not a product page)
@@ -831,7 +833,7 @@ async function search(q, c, opt = {}) {
     const fixed = plan.fixed ? `We searched for \u201c${plan.fixed}\u201d. ` : "";
     if (!shops.length) $("sStatus").textContent = "";
     else if (done.length < shops.length) $("sStatus").innerHTML = `<span class="spin"></span>Searching ${shops.length} shop${shops.length === 1 ? "" : "s"}… ${done.length} of ${shops.length} done.`;
-    else $("sStatus").textContent = items.length ? fixed + `${items.length > MAX_SHOWN ? `The ${MAX_SHOWN} lowest of ${items.length}` : items.length} product${items.length === 1 ? "" : "s"} at ${shopsWith} shop${shopsWith === 1 ? "" : "s"}, ${dev ? `${dev} first, then lowest price` : "lowest price first"}. The prices come from each shop now.${flyerNote(items)}` : "";
+    else $("sStatus").textContent = items.length ? fixed + `${items.length > MAX_SHOWN ? `The ${MAX_SHOWN} lowest of ${items.length}` : items.length} product${items.length === 1 ? "" : "s"} at ${shopsWith} shop${shopsWith === 1 ? "" : "s"}, ${dev ? `${dev} first, then lowest price` : accAfter ? "main products first, then accessories and parts, lowest price first in each" : "lowest price first"}. The prices come from each shop now.${flyerNote(items)}` : "";
     if (done.length === shops.length && hidden) $("sStatus").textContent += `${items.length ? " " : ""}We did not show ${hidden} accessor${hidden === 1 ? "y" : "ies"}, games or covers. To find them, add the word to your search, for example \u201c${plan.accessory_example}\u201d.`;
     const empty = done.length === shops.length && !items.length;
     // AB-43: no product with all of the words: the AI Shopping Assistant searches for the same words (once), so a

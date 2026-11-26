@@ -546,6 +546,23 @@ for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`a
   ok(`abort ${name}: no JS errors`, p._errs.length === 0, p._errs.join(" | "));
   await p.context().close();
 });
+// 3f1d. AB-43b: any search: accessories and parts (rank 1 from /api/search/shop) after the products themselves
+for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`search main first ${name}`, async () => {
+  const p = await open(o);
+  await p.route(/\/api\/search\/shop\?/, (r) => {
+    const id = new URL(r.request().url()).searchParams.get("shop");
+    const items = id === "takealot" ? [{ title: "Philips Airfryer 3000 Series 4.1L", price: 1499, currency: "ZAR", url: "https://www.takealot.com/a/PLID1" }, { title: "Silicone Air Fryer Liner Round", price: 57, rank: 1, currency: "ZAR", url: "https://www.takealot.com/b/PLID2" }] : [];
+    r.fulfill({ json: { shop: id, status: items.length ? "ok" : "none", items } });
+  });
+  await p.goto(BASE + "/?q=airfryer&c=ZA", { waitUntil: "networkidle" });
+  await p.waitForFunction(() => !/Searching/.test(document.getElementById("sStatus").textContent) && document.querySelectorAll("#sList li").length === 2, null, { timeout: 15000 });
+  const rows = await p.$$eval("#sList li", (ls) => ls.map((l) => l.querySelector(".st").textContent));
+  ok(`search main first ${name}: the air fryer before the cheaper liner`, rows.join("|") === "Philips Airfryer 3000 Series 4.1L|Silicone Air Fryer Liner Round", rows.join("|"));
+  ok(`search main first ${name}: says so in plain words`, /main products first, then accessories and parts, lowest price first in each\./.test(await p.textContent("#sStatus")), await p.textContent("#sStatus"));
+  ok(`search main first ${name}: no sideways page scroll`, await noSideScroll(p));
+  ok(`search main first ${name}: no JS errors`, p._errs.length === 0, p._errs.join(" | "));
+  await p.context().close();
+});
 // 3f2. bare "PS5": consoles first (rank 0 from /api/search/shop), accessories left out and counted
 const PS5_ITEMS = {
   takealot: { items: [{ title: "PlayStation 5 Slim Console with disc drive (PS5 Slim)", price: 15999, rank: 0 }, { title: "EA Sports FC 27 Ultimate Bundle PS5", price: 1228, rank: 1 }], hidden: 3 },
