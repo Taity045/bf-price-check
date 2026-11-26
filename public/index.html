@@ -61,7 +61,7 @@ h1{font-size:clamp(26px,6.4vw,40px);line-height:1.15;letter-spacing:-.02em;margi
 #u:focus{outline:none;border-color:var(--ink);background:var(--bg)}
 .go{height:50px;padding:0 20px;border:0;border-radius:var(--r);background:var(--acc);color:var(--bg);font-weight:600;white-space:nowrap;width:100%}
 .go[disabled]{opacity:.65;cursor:progress}
-html.q main:has(#result.hidden):has(#search.hidden) footer{display:none}
+html.q main:has(#result.hidden):has(#search.hidden):has(#assist.hidden) footer{display:none}
 .tries{margin:22px 0 0;text-align:left}
 .tryh{font-size:15px;margin:0 0 8px;text-align:center}
 .cats{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 6px;margin:0 -2px;scrollbar-width:none;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity}
@@ -95,6 +95,31 @@ html.q main:has(#result.hidden):has(#search.hidden) footer{display:none}
 .slist li.low{border-color:var(--good)}
 .sshops{margin:12px 0 0}
 .hero:has(~#search:not(.hidden)) .tries,.hero:has(~#search:not(.hidden)) .steps{display:none}
+.asks{margin:10px 0 0;font-size:13px;color:var(--mut);display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:4px 6px}
+.asks button{min-height:32px;padding:0 10px;border:1px dashed var(--line);border-radius:99px;background:none;font-size:13px;color:var(--ink)}
+html.q .asks{display:none}
+#assist{margin-top:20px}
+#assist .sh{font-size:18px;line-height:1.3;margin:2px 0 4px;overflow-wrap:anywhere}
+.aswhat{margin:4px 0 0;font-weight:600;overflow-wrap:anywhere}
+.ash{font-size:16px;margin:16px 0 0}
+.asp{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:10px}
+.asp li{border:2px solid var(--line);border-radius:var(--r);padding:12px;min-width:0}
+.asp li:first-child{border-color:var(--ink)}
+.asp .rk{display:inline-block;font-size:12px;font-weight:700;font-family:var(--mono,inherit);text-transform:uppercase;letter-spacing:.03em;padding:2px 8px;border-radius:2px;background:var(--soft)}
+.asp li:first-child .rk{background:var(--acc,var(--ink));color:var(--acc-ink,var(--bg))}
+.obud{display:inline-block;margin-left:6px;font-size:12px;font-weight:700;color:var(--bad)}
+.asp .st{font-size:15px;font-weight:600;line-height:1.3;margin-top:6px;overflow-wrap:anywhere}
+.asp .sm{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px;margin-top:4px}
+.asp .sp{font-size:22px;font-weight:700;letter-spacing:-.01em}
+.asp .why{margin:6px 0 0;font-size:14px;line-height:1.4}
+.asp .sa{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.asp .sa button,.asp .sa a,.asact button{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 12px;border:2px solid var(--ink);border-radius:var(--r);background:var(--bg);font-size:14px;font-weight:600;text-decoration:none;color:var(--ink)}
+.asp .sa button{background:var(--acc,var(--ink));color:var(--acc-ink,var(--bg))}
+.asp .sa button[aria-busy=true]{opacity:.7}
+#asMore{margin-top:14px}
+#asMore summary{cursor:pointer;font-weight:600;min-height:40px;display:flex;align-items:center}
+.asact{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.hero:has(~#assist:not(.hidden)) .tries,.hero:has(~#assist:not(.hidden)) .steps{display:none}
 .err{margin-top:18px;padding:12px 14px;border-radius:var(--r);background:rgba(204,36,24,.08);background:color-mix(in srgb,var(--bad) 10%,var(--bg));color:var(--bad);font-size:15px}
 
 #result{margin-top:28px}
@@ -370,6 +395,7 @@ footer{border-top:2px dashed var(--ink)}
       <button class="go" id="go" type="submit">Check price</button>
     </form>
     <div class="ccrow hidden" id="ccrow" role="group" aria-label="Search shops in"><span>Shops in</span><button type="button" class="ccb" data-c="ZA" aria-pressed="true">South Africa</button><button type="button" class="ccb" data-c="GB" aria-pressed="false">UK</button></div>
+    <p class="asks" id="asks"><span>Or ask:</span><button type="button" class="ask" data-q="I have R15,000. I need a laptop for programming and Docker">Laptop for coding, R15,000</button><button type="button" class="ask" data-q="Best running watch under R6000">Running watch under R6,000</button><button type="button" class="ask" data-q="Good coffee machine under R3000">Coffee machine under R3,000</button></p>
     <section class="tries" id="tries" aria-labelledby="triesH">
       <h2 class="tryh" id="triesH">Try a popular product</h2>
       <!--PICKS-->
@@ -390,6 +416,23 @@ footer{border-top:2px dashed var(--ink)}
       <ol class="slist" id="sList"></ol>
       <p class="note hidden" id="sEmpty"></p>
       <p class="small sshops" id="sShops"></p>
+    </div>
+  </section>
+
+  <section id="assist" class="hidden" aria-label="Top picks for your budget">
+    <div class="card">
+      <span class="lab" id="asLab">AI Shopping Assistant</span>
+      <h2 class="sh" id="asTitle"></h2>
+      <p class="small aswhat" id="asWhat"></p>
+      <p class="small" id="asStatus" role="status"></p>
+      <h3 class="ash hidden" id="asH">Top 3 picks for your budget</h3>
+      <p class="note hidden" id="asNoteTop"></p>
+      <ol class="asp" id="asPicks"></ol>
+      <p class="note hidden" id="asEmpty"></p>
+      <details id="asMore" class="hidden"><summary id="asMoreSum">All matching results</summary><ol class="slist" id="asList"></ol></details>
+      <div class="asact hidden" id="asAct"><button type="button" id="asShare">Share results</button></div>
+      <p class="small sshops" id="asShops"></p>
+      <p class="note" id="asNote"></p>
     </div>
   </section>
 
@@ -616,22 +659,33 @@ document.querySelectorAll("#chips a").forEach((a) => a.addEventListener("click",
 
 // One box for a product link or a product name. Same rule as srchIsLink in src/search.js.
 const isLink = (v) => /https?:\/\/\S+/i.test(v) || /^(www\.)?[\w-]+(\.[\w-]+)+\/\S*/i.test(v) || (!/\s/.test(v) && /^(www\.)?[a-z0-9-]+(\.[a-z0-9-]+)*\.(com|co\.za|za|co\.uk|uk|net|org|eu|de|fr|nl|ie|io|shop|store|to|co)$/i.test(v));
+// A shopping need with a budget ("laptop for programming under R15000") goes to the AI Shopping Assistant;
+// a product name ("PS5") stays on the normal search. Same rule as AS_ASK_RE in src/assist.js.
+const ASK_RE = /(?:^|[^\w£])(?:R ?\d{1,3}(?:[ ,]\d{3})+|R ?\d{3,}(?:\.\d+)?|R ?\d+(?:\.\d+)? ?k)\b|£ ?\d|\b\d[\d ,.]* ?(?:rand|zar|pounds?|gbp|quid)\b|\b(?:budget|under|below|less than|max(?:imum)?|up to|at most|no more than|cheaper than)\b[^\d]{0,3}\d{2,}|\bbudget\b|\b(?:i need|i want|i have|i'?m looking for|looking for|need an?|want an?|recommend|suggest|help me (?:find|choose|pick)|which [a-z ]{2,30} should i|what (?:is|are) (?:the|a) (?:best|good))\b|\b(?:best|good|decent|great|cheap|affordable)\b(?: [\w'-]+){1,5} (?:for|under|below)\b/i;
+const isAsk = (v) => { const s = String(v || "").replace(/\s+/g, " ").trim(); return !!s && !isLink(s) && ASK_RE.test(s); };
 // Search country: South Africa (ZA) or the UK (GB). Kept on this device.
 let cc = store.get("cc", "ZA"); if (cc !== "ZA" && cc !== "GB") cc = "ZA";
-function setCc(c) { cc = c === "GB" ? "GB" : "ZA"; document.querySelectorAll("#ccrow .ccb").forEach((b) => b.setAttribute("aria-pressed", b.dataset.c === cc ? "true" : "false")); }
+// The example requests under the box follow the country (rand or pounds).
+const ASKS = { ZA: [["I have R15,000. I need a laptop for programming and Docker", "Laptop for coding, R15,000"], ["Best running watch under R6000", "Running watch under R6,000"], ["Good coffee machine under R3000", "Coffee machine under R3,000"]],
+  GB: [["Need a 4K TV under £500 for PS5", "4K TV for PS5, £500"], ["Best running watch under £250", "Running watch under £250"], ["Good coffee machine under £200", "Coffee machine under £200"]] };
+function setCc(c) {
+  cc = c === "GB" ? "GB" : "ZA"; document.querySelectorAll("#ccrow .ccb").forEach((b) => b.setAttribute("aria-pressed", b.dataset.c === cc ? "true" : "false"));
+  document.querySelectorAll("#asks .ask").forEach((b, i) => { const x = ASKS[cc][i]; if (x) { b.dataset.q = x[0]; b.textContent = x[1]; } });
+}
 setCc(cc);
 function boxMode() {
   const v = $("u").value.trim(), name = !!v && !isLink(v);
-  if (!$("go").disabled) $("go").textContent = name ? "Search" : "Check price";
-  $("ccrow").classList.toggle("hidden", !name && $("search").classList.contains("hidden"));
+  if (!$("go").disabled) $("go").textContent = !name ? "Check price" : isAsk(v) ? "Find picks" : "Search";
+  $("ccrow").classList.toggle("hidden", !name && $("search").classList.contains("hidden") && $("assist").classList.contains("hidden"));
 }
 $("u").addEventListener("input", boxMode);
-const search = (q) => loadApp().then((a) => a.search(q, cc), () => showError("Couldn't reach the search. Check your connection and try again."));
+const search = (q) => loadApp().then((a) => (isAsk(q) ? a.assist(q, cc) : a.search(q, cc)), () => showError("Couldn't reach the search. Check your connection and try again."));
+document.querySelectorAll("#asks .ask").forEach((b) => b.addEventListener("click", () => { $("u").value = b.dataset.q; boxMode(); search(b.dataset.q); }));
 document.querySelectorAll("#ccrow .ccb").forEach((b) => b.addEventListener("click", () => {
   if (b.dataset.c === cc) return;
   setCc(b.dataset.c); store.set("cc", cc);
   const v = $("u").value.trim();
-  if (v && !isLink(v) && (!$("search").classList.contains("hidden") || v.length >= 2)) search(v);
+  if (v && !isLink(v) && (!$("search").classList.contains("hidden") || !$("assist").classList.contains("hidden") || v.length >= 2)) search(v);
 }));
 
 $("f").addEventListener("submit", (e) => {
@@ -651,7 +705,7 @@ function showError(msg) { const e = $("error"); e.textContent = msg; e.classList
 let app = null, A = null;
 function loadApp() {
   return app || (app = new Promise((ok, no) => {
-    window.__dod = (init) => ok(A = init({ $, store, esc, money, toast, showError, openRequest, tsPrepare, tsToken, LOC, getSaved, renderSavedCount, boxMode }));
+    window.__dod = (init) => ok(A = init({ $, store, esc, money, toast, showError, openRequest, tsPrepare, tsToken, LOC, getSaved, renderSavedCount, boxMode, setCc }));
     const sc = document.createElement("script"); sc.src = "/*LAZY*/"; sc.onerror = () => { app = null; no(); }; document.head.appendChild(sc);
   }));
 }

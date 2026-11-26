@@ -521,6 +521,96 @@ for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`s
   await p.context().close();
 });
 
+// 3f3. AI Shopping Assistant (src/assist.js): a need and a budget in the main box -> top 3 real picks (answer faked)
+const AS_LQ = "I have R15,000. I need a laptop for programming and Docker";
+const asPick = (rank, title, price, shop, url, reason, over = false) => ({ rank, title, price, was: null, currency: "ZAR", shop, url, over_budget: over, reason, reason_by: "rules", specs: [] });
+const AS_ANSWER = {
+  q: AS_LQ, country: "ZA", currency: "ZAR",
+  intent: { category: "laptop", maxBudget: 15000, currency: "ZAR", searchQueries: ["16GB laptop", "laptop Ryzen"], mustHave: ["16gb"], prefer: ["ssd"], avoid: ["refurbished"], by: "rules" },
+  understanding: "Budget: up to R15,000 · Looking for: laptop (16GB, SSD)",
+  picks: [asPick(1, "ASUS Vivobook 15 15.6\" FHD AMD Ryzen 5 16GB RAM 512GB SSD Laptop", 12299, "Takealot", "https://www.takealot.com/asus-vivobook-15/PLID1", "The name shows 16GB, SSD, 512GB and Ryzen 5, and it costs R2,701 less than your budget."),
+    asPick(2, "HP 15 Laptop - AMD Ryzen 5 7520U, 16GB LPDDR5, 512GB SSD, 15.6\" FHD, Windows 11 Home - a long name to test wrapping on a small phone", 12999, "Computer Mania", "https://computermania.co.za/products/hp-15", "The name shows 16GB, SSD, 512GB and Ryzen 5, and it costs R2,001 less than your budget."),
+    asPick(3, "Lenovo Ideapad Slim 3 Ryzen 7 16GB 512GB Laptop", 15999, "Computer Mania", "https://computermania.co.za/products/ideapad-slim-3", "The name shows 16GB and Ryzen 7, but it costs R999 more than your budget.", true)],
+  more: [{ title: "Packard Bell Senna R32 Ryzen 3 16GB RAM 512GB SSD Laptop", price: 8999, was: null, currency: "ZAR", shop: "Computer Mania", url: "https://computermania.co.za/products/senna", over_budget: false }],
+  total: 4, within_budget: 3, note: "Only 2 matches are in your budget. The other picks cost more.",
+  shops: { searched: ["Takealot", "Computer Mania"], failed: ["Loot"], robots: [], notSearched: [{ name: "Amazon South Africa", why: "blocks" }] },
+  ai: { intent: false, reasons: false }, checked_at: Date.now(),
+};
+for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`assist ${name}`, async () => {
+  const p = await open(o);
+  const assisted = [], searched = [], checked = [];
+  await p.route(/\/api\/assist\?/, async (r) => { const u = new URL(r.request().url()); assisted.push(u.searchParams.get("q") + "|" + u.searchParams.get("c")); await new Promise((ok) => setTimeout(ok, 1500)); r.fulfill({ json: { ...AS_ANSWER, q: u.searchParams.get("q") } }); });
+  await p.route(/\/api\/search(\/shop)?\?/, (r) => { searched.push(r.request().url()); r.fulfill({ json: /\/shop\?/.test(r.request().url()) ? { shop: "takealot", status: "none", items: [] } : { q: "PS5", country: "ZA", currency: "ZAR", category: null, shops: [], notSearched: [] } }); });
+  await p.route(/\/api\/check\?/, (r) => { checked.push(new URL(r.request().url()).searchParams.get("url")); r.fulfill({ json: checkAnswer() }); });
+  await p.route(/\/api\/compare\?/, (r) => r.fulfill({ json: { ...CMP_PLAN, shops: [], results: {}, specialists: 0, reason: "no shops" } }));
+  await p.goto(BASE + "/", { waitUntil: "networkidle" });
+  ok(`assist ${name}: 3 example requests under the box`, (await p.$$eval("#asks .ask", (b) => b.length)) === 3 && await p.isVisible("#asks"));
+  await p.fill("#u", AS_LQ);
+  ok(`assist ${name}: a need with a budget turns the button into Find picks`, (await p.textContent("#go")).trim() === "Find picks");
+  await p.fill("#u", "PS5");
+  ok(`assist ${name}: a plain product name keeps Search`, (await p.textContent("#go")).trim() === "Search");
+  await p.press("#u", "Enter");
+  await p.waitForSelector("#search:not(.hidden)", { timeout: 10000 });
+  ok(`assist ${name}: plain "PS5" uses the normal search, not the assistant`, searched.some((u) => /\/api\/search\?q=PS5&/.test(u)) && assisted.length === 0, searched.join(" "));
+  await p.goto(BASE + "/", { waitUntil: "networkidle" });
+  await p.fill("#u", AS_LQ); await p.press("#u", "Enter");
+  await p.waitForFunction(() => /search the shops now/.test(document.getElementById("asStatus").textContent), null, { timeout: 5000 }).catch(() => {});
+  ok(`assist ${name}: a progress line while it works`, /search the shops now/.test(await p.textContent("#asStatus")) && (await p.textContent("#go")).includes("Finding picks"), await p.textContent("#asStatus"));
+  await p.waitForSelector("#asPicks li", { timeout: 10000 });
+  ok(`assist ${name}: the request goes to /api/assist with the country`, assisted[0] === AS_LQ + "|ZA", assisted.join());
+  ok(`assist ${name}: says what we understood in one line`, (await p.textContent("#asWhat")) === "Budget: up to R15,000 · Looking for: laptop (16GB, SSD)");
+  ok(`assist ${name}: Top 3 picks for your budget`, (await p.textContent("#asH")) === "Top 3 picks for your budget" && await p.isVisible("#asH"));
+  const cards = await p.$$eval("#asPicks li", (ls) => ls.map((l) => ({ rk: l.querySelector(".rk").textContent, t: l.querySelector(".st").textContent, p: l.querySelector(".sp").textContent, shop: l.querySelector(".sm .small").textContent, why: l.querySelector(".why").textContent, btn: l.querySelector("button").textContent, a: l.querySelector("a").textContent, href: l.querySelector("a").href, tgt: l.querySelector("a").target, ob: !!l.querySelector(".obud"), w: l.getBoundingClientRect().right <= innerWidth + 1 })));
+  ok(`assist ${name}: rank badges #1 Best match, #2, #3`, cards.map((c) => c.rk).join("|") === "#1 Best match|#2|#3", cards.map((c) => c.rk).join("|"));
+  ok(`assist ${name}: each card has title, live price, shop, reason, Check price history and Open at shop`, cards.every((c) => c.t && /^R\s?\d/.test(c.p.replace(/\u00a0/g, " ")) && c.shop && c.why.length > 20 && c.btn === "Check price history" && c.a === "Open at shop ↗" && c.tgt === "_blank") && cards[0].href === AS_ANSWER.picks[0].url, JSON.stringify(cards[0]));
+  ok(`assist ${name}: an over-budget pick says so`, !cards[0].ob && !cards[1].ob && cards[2].ob && /Only 2 matches are in your budget/.test(await p.textContent("#asNoteTop")));
+  ok(`assist ${name}: All matching results is folded below`, await p.isVisible("#asMore") && !(await p.$eval("#asMore", (d) => d.open)) && /All matching results \(1 more\)/.test(await p.textContent("#asMoreSum")));
+  await p.click("#asMoreSum");
+  ok(`assist ${name}: All matching results opens`, (await p.$$eval("#asList li", (l) => l.length)) === 1 && await p.isVisible("#asList li"));
+  ok(`assist ${name}: says which shops were searched`, /^Searched: Takealot, Computer Mania\. Couldn't search now: Loot/.test(await p.textContent("#asShops")), await p.textContent("#asShops"));
+  ok(`assist ${name}: a shareable link (/?q=…&c=ZA)`, new URL(p.url()).searchParams.get("q") === AS_LQ && new URL(p.url()).searchParams.get("c") === "ZA", p.url());
+  await p.evaluate(() => { window.__copied = ""; try { Object.defineProperty(navigator, "share", { value: undefined, configurable: true }); } catch {} navigator.clipboard.writeText = async (t) => { window.__copied = t; }; });
+  await p.click("#asShare");
+  await p.waitForFunction(() => window.__copied, null, { timeout: 5000 });
+  const copied = await p.evaluate(() => window.__copied);
+  ok(`assist ${name}: Share results copies the link`, new URL(copied).pathname === "/" && new URL(copied).searchParams.get("q") === AS_LQ && new URL(copied).searchParams.get("c") === "ZA", copied);
+  ok(`assist ${name}: the popular picks and examples step aside`, !(await p.isVisible("#tries")) && !(await p.isVisible("#asks")));
+  ok(`assist ${name}: no sideways page scroll`, await noSideScroll(p) && cards.every((c) => c.w));
+  ok(`assist ${name}: never shows a name or an email`, !/@|Tatenda/i.test(await p.textContent("#assist")));
+  await p.screenshot({ path: `${SHOTS}/assist-${name}.png`, fullPage: !!o.isMobile });
+  // Check price history: runs the full check on that exact product; Back shows the picks again
+  const first = p.locator("#asPicks li button").first(); if (o.hasTouch) await first.tap(); else await first.click();
+  await p.waitForSelector("#result:not(.hidden)", { timeout: 10000 });
+  ok(`assist ${name}: Check price history checks that exact product`, checked.at(-1) === AS_ANSWER.picks[0].url && !(await p.isVisible("#assist")), checked.join(" "));
+  await p.goBack();
+  await p.waitForSelector("#asPicks li", { timeout: 10000 });
+  ok(`assist ${name}: Back shows the picks again`, new URL(p.url()).searchParams.get("q") === AS_LQ && (await p.inputValue("#u")) === AS_LQ);
+  // a shared link opens the assistant; an example request runs it
+  assisted.length = 0;
+  await p.goto(BASE + "/?q=" + encodeURIComponent("Best running watch under R6000").replace(/%20/g, "+") + "&c=ZA", { waitUntil: "networkidle" });
+  await p.waitForSelector("#asPicks li", { timeout: 10000 });
+  ok(`assist ${name}: a shared link opens the picks`, assisted[0] === "Best running watch under R6000|ZA" && (await p.inputValue("#u")) === "Best running watch under R6000", assisted.join());
+  await p.goto(BASE + "/", { waitUntil: "networkidle" });
+  assisted.length = 0;
+  const ex = p.locator("#asks .ask").nth(2); if (o.hasTouch) await ex.tap(); else await ex.click();
+  await p.waitForSelector("#asPicks li", { timeout: 10000 });
+  ok(`assist ${name}: an example request runs the assistant`, assisted[0] === "Good coffee machine under R3000|ZA", assisted.join());
+  ok(`assist ${name}: no JS errors`, p._errs.length === 0, p._errs.join(" | "));
+  await p.context().close();
+});
+for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`assist empty ${name}`, async () => {
+  const p = await open(o);
+  await p.route(/\/api\/assist\?/, (r) => r.fulfill({ json: { ...AS_ANSWER, q: "Need a 4K TV under £500 for PS5", country: "GB", currency: "GBP", understanding: "Budget: up to £500 · Looking for: TV (4K, 120Hz, HDMI 2.1)", picks: [], more: [], total: 0, within_budget: 0, note: "We found no products in stock that match. Use other words, or a higher budget.", shops: { searched: ["Fenwick"], failed: [], robots: [], notSearched: [] } } }));
+  await p.goto(BASE + "/", { waitUntil: "networkidle" });
+  await p.fill("#u", "Need a 4K TV under £500 for PS5"); await p.press("#u", "Enter");
+  await p.waitForSelector("#asEmpty:not(.hidden)", { timeout: 10000 });
+  ok(`assist empty ${name}: no match says so in plain words`, /We found no products in stock that match/.test(await p.textContent("#asEmpty")) && (await p.$$("#asPicks li")).length === 0 && !(await p.isVisible("#asH")) && !(await p.isVisible("#asAct")));
+  ok(`assist empty ${name}: a budget in pounds shows UK shops`, /shops in the UK/.test(await p.textContent("#asLab")) && (await p.getAttribute('#ccrow [data-c="GB"]', "aria-pressed")) === "true" && new URL(p.url()).searchParams.get("c") === "GB");
+  ok(`assist empty ${name}: the button is back to Find picks`, (await p.textContent("#go")).trim() === "Find picks" && !(await p.isDisabled("#go")));
+  ok(`assist empty ${name}: no JS errors`, p._errs.length === 0, p._errs.join(" | "));
+  await p.context().close();
+});
+
 // 3g. Food Lover's Market flyer deals (src/flyer.js): flyer rows next to shop rows, honest label, multi-buy rule
 const FLM_LABEL = "Food Lover's Market (Western Cape flyer, valid 23\u201329 Nov)";
 const FLM_ITEM = (o) => ({ currency: "ZAR", url: "https://foodloversmarket.co.za/", flyer: true, label: FLM_LABEL, region: "Western Cape", valid_from: "2026-11-23", valid_to: "2026-11-29", need: null, limit: null, multi: false, qty: 1, unit: "each", ...o });

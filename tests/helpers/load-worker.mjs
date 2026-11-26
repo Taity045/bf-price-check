@@ -27,6 +27,7 @@ export const NAMES = [
   "cmpAiKind", "cmpAiPick", "cmpAiParse", "cmpAiJudge", "cmpAiText", "CMP_AI_MODEL", "CMP_AI_DAILY", "CMP_AI_TIMEOUT", "CMP_AI_SYSTEM", "CMP_VER", "cmpShopById",
   "FLM_FLYER", "FLM_FROM", "FLM_UNTIL", "FLM_LABEL", "FLM_HOME", "flmActive", "flmSecondsLeft", "flmDealText", "flmItem", "flmSearch", "flmMatchWhy", "flmCompare", "flmCompareAnswer", "flmVariants", "flmValidText",
   "srchIsLink", "srchClean", "srchCountry", "srchWords", "srchKey", "srchPlan", "srchHas", "srchFilter", "srchCacheUrl", "apiSearch", "apiSearchShop", "SRCH_TTL", "SRCH_MIN", "SRCH_MAX", "srchDevice", "srchKind",
+  "asIsAssist", "asClean", "asBudget", "asRules", "asMerge", "asAiJson", "asIntent", "asPairs", "asFits", "asCandidates", "asPick", "asScore", "asRuleReason", "asReasonOk", "asReasons", "asValidate", "asUnderstanding", "asModelKey", "asSameModel", "asTail", "asHasTerm", "apiAssist", "AS_AI_DAILY", "AS_AI_TIMEOUT", "AS_TTL", "AS_ASK_RE", "asAiReset",
   "dealScore", "dsRaw", "dsCompare", "publicDeal",
 ];
 
@@ -43,6 +44,7 @@ const source = [
   read("src/daily.js"),
   read("src/compare.js"),
   read("src/search.js"),
+  read("src/assist.js"),
   read("src/score.js"),
   read("src/flyer.js"),
   read("src/og.js"),
