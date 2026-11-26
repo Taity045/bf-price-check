@@ -10,7 +10,7 @@
 const STATS_HOST_DEFAULT = "stats.veldwire.com";
 const M_OFFSET_MS = 2 * 3600e3;            // Africa/Johannesburg is UTC+2 all year (no daylight saving)
 const M_KEEP_DAYS = 400;
-const M_CLICKS = ["share", "share_whatsapp", "share_copy", "share_more", "save", "compare_open", "request_open", "saved_open", "shops_open", "example"];
+const M_CLICKS = ["share", "share_whatsapp", "share_copy", "share_more", "save", "compare_open", "request_open", "saved_open", "shops_open", "example", "search_check", "search_open"];
 const M_OUTCOMES = ["ok", "noprice", "blocked", "error", "invalid", "rate_limited"];
 const M_BOT = /bot|crawl|spider|slurp|preview|facebookexternalhit|whatsapp|telegram|discord|slack|skype|headless|lighthouse|pagespeed|pingdom|uptime|monitor|curl|wget|python|node|axios|undici|go-http|java\/|okhttp|scrapy|httpx|libwww|smoke|playwright|puppeteer|phantom/i;
 
@@ -142,6 +142,8 @@ function statsTap(req, env, ctx, kind, res) {
       } else if (kind === "compare_shop" && status === 200) {
         const d = await copy.json();
         if (d.status === "match") await mInc(env, day, "event", "compare_found").run();
+      } else if (kind === "search" && status === 200) {
+        await mInc(env, day, "event", "product_search").run();   // one count per search (not per shop)
       } else if (kind === "request" && status === 200) {
         await mInc(env, day, "event", "request_sent").run();
       }
@@ -308,8 +310,8 @@ function statsHtml(d, base = "", phone = false) {
   const shares = d.clicks.filter((c) => /^share_/.test(c.key)).reduce((a, c) => a + c.n, 0);
   const outcomeTotal = d.outcomes.reduce((a, o) => a + o.n, 0);
   const OUT = { ok: ["Price read", "o1"], noprice: ["No price found", "o2"], blocked: ["Shop blocked us", "o3"], error: ["Error", "o4"], invalid: ["Bad link", "o5"], rate_limited: ["Rate limited", "o6"] };
-  const CLICK = { share: "Share (opened)", share_whatsapp: "Share → WhatsApp", share_copy: "Share → Copy link", share_more: "Share → More apps", save: "Save", compare_open: "Other shop opened (compare)", request_open: "Request a shop (opened)", saved_open: "Saved list opened", shops_open: "Shops list opened", example: "Example link" };
-  const EV = { request_sent: "Shop requests sent", compare_search: "Compare searches", compare_found: "Compare matches found (one per shop row)", shared_link_open: "Shared links opened" };
+  const CLICK = { share: "Share (opened)", share_whatsapp: "Share → WhatsApp", share_copy: "Share → Copy link", share_more: "Share → More apps", save: "Save", compare_open: "Other shop opened (compare)", request_open: "Request a shop (opened)", saved_open: "Saved list opened", shops_open: "Shops list opened", example: "Example link", search_check: "Search → Check price history", search_open: "Search → Open at shop" };
+  const EV = { request_sent: "Shop requests sent", compare_search: "Compare searches", compare_found: "Compare matches found (one per shop row)", shared_link_open: "Shared links opened", product_search: "Product searches (by name)" };
   const kpi = (label, v, prev, extra = "") => `<div class="kpi"><div class="kl">${label}</div><div class="kv num">${v}</div><div class="ks">${extra}${prev}</div></div>`;
   const updated = new Date(d.generated + M_OFFSET_MS).toISOString().slice(0, 16).replace("T", " ");
   const range = [7, 30, 90].map((n) => `<a href="${base}/?days=${n}"${n === d.days ? ' aria-current="page"' : ""}>${n} days</a>`).join("");

@@ -77,6 +77,12 @@ name = "RL_CMP_SLOW"
 namespace_id = "7108"
 simple = { limit = 6, period = 60 }
 
+# Product search by name (src/search.js, /api/search): searches per visitor per minute.
+[[ratelimits]]
+name = "RL_SEARCH"
+namespace_id = "7109"
+simple = { limit = 30, period = 60 }
+
 # Workers AI (src/compare.js, cmpAiJudge): a small model checks only borderline compare matches.
 # Free plan: 10,000 Neurons per day; the worker stops at CMP_AI_DAILY calls per day (about 4,500 Neurons).
 # Without this binding (or with AI_MATCH = "off"), compare uses the rules only. In `wrangler dev` the binding

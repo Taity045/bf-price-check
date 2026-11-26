@@ -1,6 +1,6 @@
 // Result view, Saved list, stats and alerts. Loaded on the first check (loadApp in index.html), so it
 // is not part of the first view. Core helpers come in from index.html.
-__dod(({ $, store, esc, money, toast, showError, openRequest, tsPrepare, tsToken, LOC, getSaved, renderSavedCount }) => {
+__dod(({ $, store, esc, money, toast, showError, openRequest, tsPrepare, tsToken, LOC, getSaved, renderSavedCount, boxMode }) => {
 const DAY = 864e5;
 const SITE = location.origin;
 let state = null, runId = 0;
@@ -94,7 +94,7 @@ $("mapply").addEventListener("click", () => {
 async function run(url, fresh) {
   if (!url) return;
   document.documentElement.classList.add("q");
-  const my = ++runId;
+  const my = ++runId; searchId++;
   $("error").classList.add("hidden");
   const go = $("go"); go.disabled = true; go.innerHTML = '<span class="spin"></span>Checking…';
   try {
@@ -106,6 +106,7 @@ async function run(url, fresh) {
     state = { ...d, title: d.current.title, archive_meta: null, archive: d.history.archive.slice(), cc: (d.history.cc || []).slice(), manual: null, failed: d.history.archive_failed, blocked: d.history.archive_blocked || 0, unusable: d.history.archive_unusable || 0 };
     $("mcur").value = d.current.currency || d.tld_currency || window.pasteCur || ""; window.pasteCur = "";
     $("result").classList.remove("hidden");
+    $("search").classList.add("hidden"); if (boxMode) boxMode();
     $("tip").textContent = "Tap a point to see its date and price."; $("pts").open = false;
     $("plink").href = d.url;
     $("others").classList.add("hidden"); state.revealed = null;
@@ -681,5 +682,93 @@ $("alertForm").addEventListener("submit", async (e) => {
     msg.textContent = "Check your email and click the link to start the alert."; msg.className = "fmsg ok"; btn.textContent = "Sent";
   } catch { bad("We could not reach the checker. Try again."); btn.disabled = false; btn.textContent = "Start alert"; }
 });
-return { run, openSaved, ask: () => (state && !state.shop ? [state.host, state.url] : ["", ""]) };
+// ---------- product search by name: /api/search (the shops), then /api/search/shop (one shop at a time) ----------
+// A slow shop never blocks the others: each shop's products show as soon as they come in, cheapest first.
+let searchId = 0;
+const NS_WHY = [["robots", "ask tools not to use their search"], ["browser", "show search results only in a browser"], ["blocks", "block tools like ours"]];
+const srchAnd = (a) => (a.length > 1 ? a.slice(0, -1).join(", ") + " and " + a[a.length - 1] : a[0] || "");
+const MAX_SHOWN = 30;
+async function search(q, c) {
+  q = String(q || "").replace(/\s+/g, " ").trim();
+  c = c === "GB" ? "GB" : "ZA";
+  const my = ++searchId; runId++;
+  const where = c === "GB" ? "the UK" : "South Africa";
+  document.documentElement.classList.add("q");
+  $("error").classList.add("hidden");
+  const S = $("search"), go = $("go");
+  const finish = () => { if (my !== searchId) return; go.disabled = false; boxMode(); };
+  go.disabled = true; go.innerHTML = '<span class="spin"></span>Searching…';
+  let plan;
+  try {
+    const r = await fetch(`/api/search?q=${encodeURIComponent(q)}&c=${c}`);
+    plan = await r.json().catch(() => ({ error: "The search sent an answer we cannot read. Try again." }));
+    if (my !== searchId) return;
+    if (!r.ok || plan.error) { finish(); showError(plan.error || "The search stopped. Try again."); return; }
+  } catch { if (my === searchId) { finish(); showError("Couldn't reach the search. Check your connection and try again."); } return; }
+  history.replaceState(null, "", "/?q=" + encodeURIComponent(plan.q).replace(/%20/g, "+") + "&c=" + c);
+  $("result").classList.add("hidden");
+  S.classList.remove("hidden"); boxMode();
+  $("sLab").textContent = "Search results · shops in " + where;
+  $("sTitle").textContent = "\u201c" + plan.q + "\u201d";
+  $("sList").innerHTML = ""; $("sEmpty").classList.add("hidden"); $("sShops").textContent = "";
+  document.title = plan.q + " · Search · Deal or Dud?";
+  const shops = plan.shops || [], results = {};
+  const render = () => {
+    if (my !== searchId) return;
+    const done = shops.filter((s) => results[s.id]);
+    const seen = new Set(), items = [];
+    for (const s of shops) for (const it of ((results[s.id] || {}).items || [])) if (!seen.has(it.url)) { seen.add(it.url); items.push({ ...it, shop: s.name }); }
+    items.sort((a, b) => a.price - b.price);
+    const shown = items.slice(0, MAX_SHOWN);
+    $("sList").innerHTML = shown.map((it, i) => `<li${i === 0 && done.length === shops.length ? ' class="low"' : ""}><div class="st">${esc(it.title)}</div>`
+      + `<div class="sm"><span class="sp num">${it.from ? "From " : ""}${esc(money(it.price, it.currency))}</span><span class="small">${esc(it.shop)}${i === 0 && done.length === shops.length && items.length > 1 ? " · lowest price we found" : ""}</span></div>`
+      + `<div class="sa"><button type="button" data-u="${esc(it.url)}">Check price history</button><a href="${esc(it.url)}" target="_blank" rel="noopener nofollow">Open at shop ↗</a></div></li>`).join("");
+    const shopsWith = new Set(items.map((x) => x.shop)).size;
+    if (!shops.length) $("sStatus").textContent = "";
+    else if (done.length < shops.length) $("sStatus").innerHTML = `<span class="spin"></span>Searching ${shops.length} shop${shops.length === 1 ? "" : "s"}… ${done.length} of ${shops.length} done.`;
+    else $("sStatus").textContent = items.length ? `${items.length > MAX_SHOWN ? `The ${MAX_SHOWN} lowest of ${items.length}` : items.length} product${items.length === 1 ? "" : "s"} at ${shopsWith} shop${shopsWith === 1 ? "" : "s"}, lowest price first. The prices come from each shop now.` : "";
+    const empty = done.length === shops.length && !items.length;
+    $("sEmpty").classList.toggle("hidden", !empty);
+    if (empty) $("sEmpty").textContent = shops.length ? `We found no products in stock with all of these words. Use fewer words, or paste a product link.` : `We have no shops in ${where} that we can search for this. Paste a product link to check its price.`;
+    const by = (st) => done.filter((s) => (Array.isArray(st) ? st : [st]).includes(results[s.id].status)).map((s) => s.name);
+    const parts = [];
+    const searched = by(["ok", "none"]);
+    if (searched.length) parts.push(`Searched: ${searched.join(", ")}.`);
+    const fail = by(["error", "busy", "blocked"]);
+    if (fail.length) parts.push(`Couldn't search now: ${fail.join(", ")} (try again later).`);
+    const robots = by("robots");
+    if (robots.length) parts.push(`Not searched: ${robots.join(", ")} (the shop asks tools not to use its search).`);
+    const ns = plan.notSearched || [];
+    const nsTxt = NS_WHY.map(([w, t]) => [ns.filter((x) => x.why === w).map((x) => x.name), t]).filter(([n]) => n.length).map(([n, t]) => `${srchAnd(n)} (${t})`);
+    if (nsTxt.length && done.length === shops.length) parts.push(`We can't search ${nsTxt.join("; ")}.`);
+    $("sShops").textContent = parts.join(" ");
+    if (done.length === shops.length) finish();
+  };
+  render();
+  const queue = shops.slice();
+  const worker = async () => {
+    while (queue.length) {
+      const s = queue.shift();
+      let r;
+      try { const res = await fetch(`/api/search/shop?q=${encodeURIComponent(plan.q)}&c=${c}&shop=${encodeURIComponent(s.id)}`); r = await res.json(); } catch { r = null; }
+      if (my !== searchId) return;
+      results[s.id] = r && r.status ? r : { shop: s.id, name: s.name, status: "error", items: [] };
+      render();
+    }
+  };
+  await Promise.all([worker(), worker(), worker(), worker(), worker()]);
+  finish();
+}
+// "Check price history": runs the normal check on that product (Back returns to the search)
+$("sList").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-u]"); if (!b) return;
+  const u = b.dataset.u;
+  $("sList").querySelectorAll('button[aria-busy="true"]').forEach((x) => { x.removeAttribute("aria-busy"); x.textContent = "Check price history"; });
+  b.setAttribute("aria-busy", "true"); b.textContent = "Checking…";
+  history.pushState(null, "", location.href);
+  $("u").value = u;
+  run(u).finally(() => { b.removeAttribute("aria-busy"); b.textContent = "Check price history"; });
+});
+
+return { run, search, openSaved, ask: () => (state && !state.shop ? [state.host, state.url] : ["", ""]) };
 });

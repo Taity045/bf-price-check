@@ -5,7 +5,7 @@ Live:
 - https://bf-price-check.tm-deal-lab.workers.dev (workers.dev, kept working)
 - https://stats.veldwire.com (private stats dashboard, owner only; see [Private stats](#private-stats))
 
-Paste a product link from an online shop. The site shows:
+Paste a product link from an online shop, or type a product name (such as "PS5 Slim") to find it at the shops we can search (see [Product search by name](#product-search-by-name)). For a link, the site shows:
 
 1. **Cheaper somewhere else?** (first, under the product): the cheapest exact match at another shop we searched, with the saving, or "No cheaper exact match found" with how many shops we checked and which we can't search. See [Other shops](#other-shops-price-compare).
 1. **Today's price and the "was" price**, read on the server from the shop's product page.
@@ -109,9 +109,23 @@ Simple English (ASD-STE100 style): short sentences, active voice. Confident and 
 
 Re-make it: `python3 scripts/make_shops.py --add "MediaMarkt Germany,DE,mediamarkt.de"`. Matching uses the host plus an optional path prefix (for example `samsung.com/za`).
 
+## Product search by name
+
+Type a product name in the main box (for example "PS5 Slim", "AirPods 4", "Smeg kettle") and press Search. The same box takes a product link: a link (`https://…`, or a shop address with a path such as `takealot.com/…`, or a shop address alone) is checked as before; anything else is a search. The rule is `srchIsLink` in `src/search.js`, and the page uses the same rule (`isLink` in `public/index.html`, tested to agree).
+
+- **SA / UK switch.** When you type a name, a small switch shows under the box: "Shops in South Africa | UK". South Africa is first. The choice is kept on this device (`localStorage` `dod:cc`). A tap on the other country searches again.
+- **How it searches.** `GET /api/search?q=&c=ZA|GB` checks the words (2 to 120 characters, letters or numbers, not a link; 30 searches a minute per visitor, `RL_SEARCH`) and gives the shops: same currency, not off (robots.txt), and only shops that sell this kind of product (`cmpCatOf`, as compare). When we can't tell the kind, the general shops and shops that sell electronics, appliances or homeware. At most 12 shops; the general shops (Takealot, Loot) first, slow grocery shops last. Then the page calls `GET /api/search/shop?q=&c=&shop=` for each shop, 5 at a time, so a slow shop (Loot) never blocks the fast ones. Each call uses that shop's own public search (the same `CMP_SEARCH` adapters as compare), after robots.txt (`cmpRobotsOk`) and the shop limits of compare (`cmpShopBusy`: 30 searches a minute per shop, 6 for shops that ask for 10 s between requests).
+- **Which products show.** Only products with every search word in the name (`srchHas`: "PlayStation 5" = "ps5", "ps5" is not "ps500", "Buds3" = "Buds 3", plural or singular), in stock, with an exact price, and a link on that shop's own site. No accessories ("… for PS5", skins, stands) or used / refurbished stock, unless the search asks for them. At most 8 per shop; all shops together, lowest price first (up to 30 on the page). The lowest one is marked when every shop has answered.
+- **Each row.** Product name, shop, the shop's live price (never changed or made up; "From" when the shop gives a price range), **Check price history** (runs the normal check on that product in the app; Back returns to the search) and **Open at shop ↗**.
+- **Honest shop list.** Under the results: "Searched: …", "Couldn't search now: … (try again later)", "Not searched: … (the shop asks tools not to use its search)", and the shops we can't search (Amazon, Makro, Game…: "block tools like ours"; Checkers: "show search results only in a browser"). We never search blocked shops or other price trackers.
+- **Shareable link.** A search changes the address to `/?q=PS5+Slim&c=ZA`. Opening that link runs the same search in the same country.
+- **Cache.** Each shop's answer for one search (the words in normal form) is kept 20 minutes in the Cloudflare cache (Cache API on `eish.veldwire.com`; no D1 rows). On `workers.dev` the Cache API does nothing, so each search goes to the shops (each shop request is still kept 10 minutes by `cmpFetch`). A shop whose robots.txt says no is kept 6 hours. Errors and "busy" are not kept.
+- **Stats.** One count per search (`product_search` in the private stats; one D1 row change a search), and the clicks `search_check` and `search_open`. No search words are saved.
+- **UK coverage.** We can search only a few UK shops (Fenwick, Robert Dyas, Peter Tyson, the beauty, grocery and bike shops). Amazon UK, Currys, Argos and John Lewis are not searched (bot checks or robots.txt). A UK search can show few or no results. The page then says so.
+
 ## Features
 
-The home page stays clean: heading, link box, Check price, "Try a popular product" picks, and a short 3-step line on desktop. Everything else is behind small links or on the result page.
+The home page stays clean: heading, one box (a product link or a product name), Check price (it says Search when you type a name), "Try a popular product" picks, and a short 3-step line on desktop. Everything else is behind small links or on the result page.
 
 **Popular product picks.** One row of group chips: Popular, Gaming, Audio & watches, Computers, Appliances, Beauty, Groceries, Fashion. On phones the row scrolls sideways; from 768 px the chips sit on one centred line. A chip shows 4–6 real products, each with its name and shop (and "UK" for UK shops). A tap (or Enter) fills the link box and checks that product at once. The picks show no prices: the price always comes from the live check.
 - The list is `examples.json` (groups, then name, shop, `ZA`/`UK`, link). `build.py` writes the chips and lists into the page, so there is no extra request and no layout shift. Only the Popular list shows at first; the others have `hidden`.
@@ -253,6 +267,7 @@ Each row shows the shop, price (and "was" price), the difference against this pa
 | `src/features.js` | Verdicts, wall, email, alerts, Turnstile, API bot checks |
 | `src/archive.js` | Common Crawl archive prices: product keys, D1 reads, points with source links, the admin load endpoint, `/api/archive-stats` |
 | `scripts/cc/` | Common Crawl backfill: `archive.mjs` (collect, recheck, reduce, upload), `read.mjs` (sanity filter), `shops.mjs` (shops and product link patterns) |
+| `src/search.js` | Product search by name: link or name, the words, the shops to search, the filter, `/api/search` and `/api/search/shop`, 20-minute Cloudflare cache |
 | `src/compare.js` | Other shops price compare: shop adapters, product identity, strict matching, AI check for borderline names (Workers AI), caching, history |
 | `src/daily.js` | Daily price saving: cron batches, back-off, robots.txt, Takealot seed list, `/api/daily-status` |
 | `src/stats.js` | Private stats: cookieless daily counts, click beacon, Cloudflare Access JWT check, dashboard |
@@ -277,6 +292,8 @@ Each row shows the shop, price (and "was" price), the difference against this pa
 - `GET /api/daily-status` → counts for the daily price saving (no links). Cached 5 min.
 - `GET /api/compare?url=<product url>` → which shops will be searched for this product, plus any cached answers. Only for products someone checked first.
 - `GET /api/compare/shop?url=<product url>&shop=<id>` → one shop's answer: `match` (with title, price, was, link, in stock, match level, time checked), `none`, `blocked`, `error`, `busy` or `skipped`. Cached 12 h (20 min after an error).
+- `GET /api/search?q=<words>&c=ZA|GB` → the shops we will search for these words (`shops`), and the shops we can't search (`notSearched`, with `why`: `robots`, `blocks`, `browser`). 400 with a plain-words `error` for a bad search or country; 429 after 30 searches a minute.
+- `GET /api/search/shop?q=<words>&c=ZA|GB&shop=<id>` → one shop's products: `status` `ok` (with `items`: title, price, was, from, currency, url), `none`, `robots`, `blocked`, `busy` or `error`. Only shops from the plan for these words. Kept 20 minutes in the Cloudflare cache.
 - `GET /api/shops`, `/api/config`, `/api/others` (old pages; answers from the compare cache), `POST /api/verdict`, `POST /api/request`, `POST /api/alert`.
 - `GET /og-home.jpg`, `/og-square.jpg`, `/og-home.png`, `/og.png?u=…`, `/favicon.ico`, `/apple-touch-icon.png` (also `-precomposed` and sized names such as `-120x120`, same icon), `/robots.txt` (names the sitemap), `/sitemap.xml` (home and privacy). An old hashed font name (`/fonts/display.<old hash>.woff2`, from a page loaded before a deploy) gets today's font, not a 404, like the old script names.
 - `POST /api/m` (body: a button name such as `share`) → counts one click. Always 204. Only known names from the same site are counted.
