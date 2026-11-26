@@ -539,10 +539,7 @@ async function asAiBudget(env) {
   const cached = await srchCacheGet(asAiCacheKey(day));
   if (cached) { if (cached.stop) { asAiMem.stop = true; return false; } n = Math.max(n, Number(cached.n) || 0); }
   if (n >= AS_AI_DAILY) return false;
-  try {
-    const r = await env.DB.prepare("SELECT v FROM cache WHERE k = ?").bind(cmpAiDay()).first();
-    if (r && Number(r.v) > CMP_AI_DAILY) return false;
-  } catch {}
+  try { if ((await cmpAiCount(env)) > CMP_AI_DAILY) return false; } catch {}
   asAiMem.n = n + 1;
   await srchCachePut(asAiCacheKey(day), { n: asAiMem.n }, 2 * 86400);
   return true;

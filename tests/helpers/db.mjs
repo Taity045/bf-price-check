@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS verdicts (url TEXT PRIMARY KEY, host TEXT, title TEXT
 CREATE TABLE IF NOT EXISTS alerts (id INTEGER PRIMARY KEY AUTOINCREMENT, url TEXT NOT NULL, orig_url TEXT, title TEXT, email TEXT NOT NULL, target REAL NOT NULL, currency TEXT, token TEXT NOT NULL, status TEXT NOT NULL, created_at INTEGER NOT NULL, sent_at INTEGER, last_price REAL, test INTEGER DEFAULT 0);`;
 
 export function testDb(t) {
+  if (typeof globalThis.__bfTestReset === "function") globalThis.__bfTestReset();
   const db = new DatabaseSync(":memory:");
   db.exec(schema + RUNTIME);
   const D1 = {

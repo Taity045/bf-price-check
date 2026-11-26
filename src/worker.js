@@ -864,15 +864,91 @@ async function fetchSnapshot(ts, orig, canon) {
   }
 }
 
-// ---------- D1 helpers ----------
+// ---------- caches: Cloudflare Cache API, no D1 writes ----------
+// Answers we can make again (live checks, compare answers, shop searches, robots.txt, AI verdicts,
+// archive lists, share images, small public summaries) are kept in the Cloudflare cache of the data
+// centre (caches.default, synthetic URLs on cache.eish.veldwire.com) and in this isolate's memory.
+// They write no rows to D1, so a busy day cannot use up the D1 free plan's 100,000 rows written per
+// day. The Cloudflare cache is per data centre and can drop an entry early: that only costs a new
+// read. Not on workers.dev and not in unit tests (no caches.default): memory only.
+// Each Cache API call counts as a subrequest (50 per request on the Free plan): memory first.
+const EDGE_CACHE_BASE = "https://cache.eish.veldwire.com/v1/";
+const MEM_CACHE_MAX = 400, MEM_CACHE_BIG = 64 * 1024;   // entries; values over 64 KB go to the Cloudflare cache only
+let memCache = new Map();   // k -> { v, exp }  (oldest first)
+function memCacheReset() { memCache = new Map(); }   // tests
+function memCacheGet(k) {
+  const e = memCache.get(k);
+  if (!e) return undefined;
+  if (e.exp <= now()) { memCache.delete(k); return undefined; }
+  return e.v;
+}
+function memCachePut(k, v, exp, size) {
+  memCache.delete(k);
+  if (size > MEM_CACHE_BIG) return;
+  memCache.set(k, { v, exp });
+  while (memCache.size > MEM_CACHE_MAX) memCache.delete(memCache.keys().next().value);
+}
+const edgeCache = () => { try { return typeof caches !== "undefined" && caches && caches.default ? caches.default : null; } catch { return null; } };
+const edgeCacheUrl = (k) => EDGE_CACHE_BASE + encodeURIComponent(k);
 async function cacheGet(env, k) {
+  const m = memCacheGet(k);
+  if (m !== undefined) return m;
+  const c = edgeCache();
+  if (!c) return null;
+  try {
+    const r = await c.match(edgeCacheUrl(k));
+    if (!r) return null;
+    const exp = Number(r.headers.get("x-exp")) || 0;
+    if (exp && exp <= now()) { await r.body?.cancel(); return null; }
+    const txt = await r.text();
+    const v = JSON.parse(txt);
+    memCachePut(k, v, exp || now() + 60e3, txt.length);
+    return v;
+  } catch { return null; }
+}
+// Several keys at once (memory first, then one Cache API call per key that is not in memory).
+// Returns values in the same order (null = not cached).
+async function cacheGetMany(env, keys) {
+  return Promise.all(keys.map((k) => cacheGet(env, k)));
+}
+// Never essential: on an error the value is simply not cached. ctx (optional): the Cloudflare cache
+// write runs after the answer is sent.
+async function cachePut(env, k, v, ttl, ctx) {
+  const exp = now() + ttl;
+  let txt;
+  try { txt = JSON.stringify(v); } catch { return; }
+  if (txt === undefined) return;
+  memCachePut(k, v, exp, txt.length);
+  const c = edgeCache();
+  if (!c) return;
+  const put = Promise.resolve().then(() => c.put(edgeCacheUrl(k), new Response(txt, { headers: { "content-type": "application/json", "cache-control": "public, max-age=" + Math.max(1, Math.ceil(ttl / 1000)), "x-exp": String(exp) } }))).catch(() => {});
+  if (ctx && typeof ctx.waitUntil === "function") { try { ctx.waitUntil(put); return; } catch {} }
+  await put;
+}
+// Removes a cached value from memory and from the Cloudflare cache of this data centre (other data
+// centres keep it until it runs out).
+async function cacheDel(env, k) {
+  memCache.delete(k);
+  const c = edgeCache();
+  if (c) { try { await c.delete(edgeCacheUrl(k)); } catch {} }
+}
+// Cached answers that show a product's price (live check, compare identity): after a price fix.
+async function cachePurgeProduct(env, canon) {
+  await Promise.all([cacheDel(env, LIVE_CACHE_PREFIX + canon), cacheDel(env, "cmpid-" + CMP_VER + ":" + canon)]);
+  for (const k of [...memCache.keys()]) if (k.endsWith(":" + canon) || k.includes(":" + canon + ":")) memCache.delete(k);
+}
+
+// ---------- D1 state that must stay (not caches) ----------
+// Scheduler state for the every-minute cron (seed list per department, robots.txt for the daily
+// check, one-time fix flags). The cron writes these a few times a day at most, never per visitor, and
+// they must be the same in every data centre. They use the old D1 `cache` table.
+async function keepGet(env, k) {
   const r = await env.DB.prepare("SELECT v, exp FROM cache WHERE k = ?").bind(k).first().catch(() => null);
   if (!r || r.exp < now()) return null;
   try { return JSON.parse(r.v); } catch { return null; }
 }
-// Cache writes are never essential: on a D1 error the value is simply not cached. The same value is
-// not written again while more than half its time to live is left (no rows written for it).
-async function cachePut(env, k, v, ttl) {
+// The same value is not written again while more than half its time to live is left.
+async function keepPut(env, k, v, ttl) {
   const exp = now() + ttl;
   await softWrite("cache", () => env.DB.prepare("INSERT INTO cache (k, v, exp) VALUES (?, ?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v, exp = excluded.exp WHERE cache.v IS NOT excluded.v OR cache.exp < ?")
     .bind(k, JSON.stringify(v), exp, exp - ttl / 2).run());
@@ -905,8 +981,16 @@ async function softWrite(what, fn, fallback = undefined) {
 }
 // via: null for a check a person asked for, "daily" for the scheduled check.
 const checkStmt = (env, canon, cur, via = null) => env.DB.prepare("INSERT INTO checks (url, ts, price, was, currency, source, title, via) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").bind(canon, cur.checked_at, cur.price, cur.was || null, cur.currency || null, cur.source || null, cur.title || null, via);
+// A person's check (or a compare match) saves a price row, but not when the same price (same was price
+// and currency) is already saved for this page on the same UTC day: one row a day says the same thing,
+// and a busy day must not spend D1 rows written on copies. A new price is always saved.
 async function recordCheck(env, canon, cur) {
-  if (cur.price) await checkStmt(env, canon, cur).run();
+  if (!cur.price) return false;
+  const day0 = Math.floor(cur.checked_at / 864e5) * 864e5;
+  const r = await env.DB.prepare(`INSERT INTO checks (url, ts, price, was, currency, source, title, via)
+    SELECT ?, ?, ?, ?, ?, ?, ?, NULL WHERE NOT EXISTS (SELECT 1 FROM checks WHERE url = ? AND ts >= ? AND ts < ? AND price = ? AND was IS ? AND currency IS ?)`)
+    .bind(canon, cur.checked_at, cur.price, cur.was || null, cur.currency || null, cur.source || null, cur.title || null, canon, day0, day0 + 864e5, cur.price, cur.was || null, cur.currency || null).run();
+  return !!(r && r.meta && r.meta.changes);
 }
 // A product someone checked: it joins the daily price saving (seed = 0, before the seed list).
 // Its next daily check is about a day after its last live check. A check by a person also
@@ -1042,9 +1126,10 @@ async function apiCheck(req, env, ctx) {
   let cached = !!current;
   if (!current) {
     current = await getCurrent(canonInfo, v.url.toString(), host);
-    // Saving is extra: if D1 refuses a write (for example the daily write limit), the person still
-    // gets today's price. softWrite logs the failure once per minute.
-    await softWrite("check-cache", () => cachePut(env, ckey, current, current.status === "ok" ? CHECK_TTL_MS : 10 * 60 * 1000));
+    // The answer is cached in the Cloudflare cache (no D1 write). Saving the price is extra: if D1 refuses
+    // a write (for example the daily write limit), the person still gets today's price. softWrite logs
+    // the failure once per minute.
+    await cachePut(env, ckey, current, current.status === "ok" ? CHECK_TTL_MS : 10 * 60 * 1000, ctx);
     await softWrite("check-save", () => recordCheck(env, canonInfo.canon, current));
   }
   const tracked = await softWrite("track", () => track(env, canonInfo.canon, v.url.toString(), current), false);
@@ -1114,10 +1199,10 @@ async function apiSnap(req, env) {
 const SNAP_DETECT_SINCE = Date.UTC(2026, 10, 25, 2, 45);
 const SNAP_RELABEL_KEY = "snap-relabel-v1";
 async function relabelOldSnaps(env) {
-  if (await cacheGet(env, SNAP_RELABEL_KEY)) return 0;
+  if (await keepGet(env, SNAP_RELABEL_KEY)) return 0;
   const r = await env.DB.prepare("UPDATE product_snaps SET status = 'retry', fetched_at = 0 WHERE status = 'noprice' AND COALESCE(fetched_at, 0) < ?").bind(SNAP_DETECT_SINCE).run();
   const n = (r && r.meta && r.meta.changes) || 0;
-  await cachePut(env, SNAP_RELABEL_KEY, { at: now(), n }, 400 * 864e5);
+  await keepPut(env, SNAP_RELABEL_KEY, { at: now(), n }, 400 * 864e5);
   return n;
 }
 

@@ -106,24 +106,24 @@ describe("D1 refuses writes: the check still answers", () => {
   });
 });
 
-describe("cachePut", () => {
+describe("keepPut (D1 state for the cron, not caches)", () => {
   test("the same value again: no write while more than half its time to live is left", async (t) => {
     const { env, db } = testDb(t);
     t.mock.timers.enable({ apis: ["Date"], now: 1_000_000 });
-    await W.cachePut(env, "k", { a: 1 }, 1000);
+    await W.keepPut(env, "k", { a: 1 }, 1000);
     const exp1 = db.prepare("SELECT exp FROM cache WHERE k = 'k'").get().exp;
     t.mock.timers.tick(100);
-    await W.cachePut(env, "k", { a: 1 }, 1000);
+    await W.keepPut(env, "k", { a: 1 }, 1000);
     assert.equal(db.prepare("SELECT exp FROM cache WHERE k = 'k'").get().exp, exp1, "not rewritten");
-    await W.cachePut(env, "k", { a: 2 }, 1000);
+    await W.keepPut(env, "k", { a: 2 }, 1000);
     assert.equal(JSON.parse(db.prepare("SELECT v FROM cache WHERE k = 'k'").get().v).a, 2, "a new value is written");
     t.mock.timers.tick(700);
-    await W.cachePut(env, "k", { a: 2 }, 1000);
+    await W.keepPut(env, "k", { a: 2 }, 1000);
     assert.equal(db.prepare("SELECT exp FROM cache WHERE k = 'k'").get().exp, 1_000_000 + 800 + 1000, "refreshed when under half is left");
   });
   test("D1 refuses the write: no error", async (t) => {
     const { env } = testDb(t);
     t.mock.method(console, "log", () => {});
-    await W.cachePut(writeEnv(env, { refuse: true }).env, "k", 1, 1000);
+    await W.keepPut(writeEnv(env, { refuse: true }).env, "k", 1, 1000);
   });
 });

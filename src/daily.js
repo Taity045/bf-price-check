@@ -168,8 +168,9 @@ async function backfillLanes(env, limit = 200) {
 // The host was checked for a public address just before (verifiedHost); redirects are checked by fetchStore.
 async function robotsRules(env, origin, memo) {
   if (memo.has(origin)) return memo.get(origin);
+  // D1 (keepGet/keepPut), not the Cloudflare cache: written by the cron only, a few rows per site per day.
   const key = "robots:" + origin;
-  let v = await cacheGet(env, key);
+  let v = await keepGet(env, key);
   if (!v) {
     try {
       const r = await fetchStore(origin + "/robots.txt", { "user-agent": BOT_UA, accept: "text/plain" }, 6000, new URL(origin).hostname);
@@ -178,7 +179,7 @@ async function robotsRules(env, origin, memo) {
       else if (!r.ok) { await r.body?.cancel(); v = { rules: [] }; }
       else v = { rules: parseRobots(await readLimitedText(r, true)) };
     } catch { v = { retry: true }; }
-    await cachePut(env, key, v, v.retry ? HOUR_MS : ROBOTS_TTL_MS);
+    await keepPut(env, key, v, v.retry ? HOUR_MS : ROBOTS_TTL_MS);
   }
   memo.set(origin, v);
   return v;
@@ -238,7 +239,7 @@ async function runDaily(env, scheduledTime, opts = {}) {
   // 3) Seed list refresh (one department per seed slot, each about once a week).
   if (dept) await refreshSeeds(env, dept, sum).catch(async (e) => {
     sum.seed_error = String(e && e.message || e).slice(0, 120);
-    await cachePut(env, "seed-dept:" + dept, { error: sum.seed_error }, HOUR_MS).catch(() => {});  // try this department again in an hour
+    await keepPut(env, "seed-dept:" + dept, { error: sum.seed_error }, HOUR_MS).catch(() => {});  // try this department again in an hour
   });
   sum.ms = now() - t0;
   console.log(JSON.stringify({ daily: sum }));
@@ -314,11 +315,11 @@ async function refreshSeeds(env, dept, sum) {
   const target = new URL(url);
   const robots = await robotsRules(env, target.origin, new Map());
   if (robots.retry) return;
-  if (!robotsAllows(robots.rules, target.pathname + target.search)) { await cachePut(env, "seed-dept:" + dept, { robots: true }, SEED_REFRESH_MS); return; }
+  if (!robotsAllows(robots.rules, target.pathname + target.search)) { await keepPut(env, "seed-dept:" + dept, { robots: true }, SEED_REFRESH_MS); return; }
   const r = await fetchStore(url, { ...BOT_HEADERS, accept: "application/json" }, 12000);
-  if (!r.ok) { await r.body?.cancel(); await cachePut(env, "seed-dept:" + dept, { http: r.status }, 6 * HOUR_MS); return; }
+  if (!r.ok) { await r.body?.cancel(); await keepPut(env, "seed-dept:" + dept, { http: r.status }, 6 * HOUR_MS); return; }
   const res = takealotSeeds(JSON.parse(await readLimitedText(r)), dept);
-  if (res.error) { await cachePut(env, "seed-dept:" + dept, { error: res.error }, SEED_REFRESH_MS); sum.seed_error = res.error; return; }
+  if (res.error) { await keepPut(env, "seed-dept:" + dept, { error: res.error }, SEED_REFRESH_MS); sum.seed_error = res.error; return; }
   // New seed products only while there are fewer than MAX_SEEDS; products already tracked are
   // marked as still popular (last_viewed), so they keep their daily check.
   const stmts = res.seeds.map((s) => env.DB.prepare(`
@@ -332,7 +333,7 @@ async function refreshSeeds(env, dept, sum) {
   const out = await env.DB.batch([count(), ...stmts, count()]);
   sum.seeds_added = out[out.length - 1].results[0].n - out[0].results[0].n;
   sum.seeds_seen = res.seeds.length;
-  await cachePut(env, "seed-dept:" + dept, { n: res.seeds.length }, SEED_REFRESH_MS);
+  await keepPut(env, "seed-dept:" + dept, { n: res.seeds.length }, SEED_REFRESH_MS);
 }
 
 async function dailyHousekeeping(env) {

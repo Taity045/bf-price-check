@@ -159,7 +159,7 @@ describe("counting checks and clicks", () => {
   test("a cached ok check counts the shop and a price read", async (t) => {
     const { counts, env, db } = setup(t);
     const canon = "https://www.takealot.com/x/PLID123";
-    db.prepare("INSERT INTO cache (k, v, exp) VALUES (?, ?, ?)").run(W.LIVE_CACHE_PREFIX + canon, JSON.stringify({ status: "ok", price: 999, currency: "ZAR", checked_at: Date.now() }), Date.now() + 1e7);
+    await W.cachePut(env, W.LIVE_CACHE_PREFIX + canon, { status: "ok", price: 999, currency: "ZAR", checked_at: Date.now() }, 1e7);
     const waits = [];
     const origFetch = globalThis.fetch;
     globalThis.fetch = async () => new Response(JSON.stringify({ Status: 0, Answer: [{ type: 1, data: "104.16.0.1" }] }), { headers: { "content-type": "application/dns-json" } });

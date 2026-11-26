@@ -15,7 +15,7 @@ export const NAMES = [
   "parseJsonLd", "parseMeta", "parseAmazon", "parseDataLayer", "parseMainPriceBlock", "parseFallback",
   "pageAmount", "detectBlock", "extractFromHtml", "takealotBarcode", "takealotApi", "getCurrent",
   "sameProduct", "matchShop", "shopFor", "blockedShopFor", "archivedGeoCheck", "ukArchiveShop",
-  "rateLimit", "overLimit", "softWrite", "cacheGet", "cachePut",
+  "rateLimit", "overLimit", "softWrite", "cacheGet", "cachePut", "cacheGetMany", "cacheDel", "cachePurgeProduct", "memCacheReset", "keepGet", "keepPut", "recordCheck", "checkStmt", "EDGE_CACHE_BASE", "CHECK_TTL_MS", "cmpAiReset", "cmpAiBudget", "cmpAiCount", "cmpAiDay",
   "median", "historyPoints", "judge", "sparseEvidence", "cdxQueries", "publicVerdict",
   "escHtml", "apiGuard", "verdictStmt", "shopScore", "track", "cron",
   "laneFor", "hostKey", "nextCheckAt", "pickBatch", "savedDays", "parseRobots", "robotsAllows", "takealotSeeds",
@@ -71,3 +71,5 @@ if (!existsSync(file)) {
 const mod = await import(pathToFileURL(fileURLToPath(file)).href);
 export const worker = mod.default;
 export const W = mod;
+// Each test starts with an empty memory cache (like a new D1 database had an empty cache table).
+globalThis.__bfTestReset = () => { mod.memCacheReset(); mod.cmpAiReset(); };

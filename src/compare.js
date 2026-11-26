@@ -771,8 +771,10 @@ function cmpRobotsTargets(shop) {
   return out;
 }
 async function cmpRobotsRules(env, origin) {
+  // robots.txt stays in D1 (keepGet): at most a few rows per shop site per day, whatever the traffic, and a
+  // search or Ask AI that reads 10+ shops must not spend Cache API calls (subrequests) on it. Memory first.
   const key = "robots-cmp:" + origin;
-  let v = await cacheGet(env, key);
+  let v = await keepGet(env, key);
   if (!v) {
     try {
       const r = await fetch(origin + "/robots.txt", { headers: { "user-agent": CMP_UA, accept: "text/plain" }, redirect: "follow", signal: AbortSignal.timeout(6000) });
@@ -780,7 +782,7 @@ async function cmpRobotsRules(env, origin) {
       else if (!r.ok) { await r.body?.cancel(); v = { rules: [] }; }
       else v = { rules: parseRobots(await readLimitedText(r, true), CMP_ROBOTS_TOKEN) };
     } catch { v = { retry: true }; }
-    await cachePut(env, key, v, v.retry ? 3600e3 : 864e5);
+    await keepPut(env, key, v, v.retry ? 3600e3 : 864e5);
   }
   return v;
 }
@@ -934,9 +936,8 @@ async function apiCompare(req, env) {
   const plan = cmpPlan(id, host, id.currency);
   const results = {};
   if (plan.shops.length) {
-    const keys = plan.shops.map((s) => "cmp-" + CMP_VER + ":" + s.id + ":" + g.canon);
-    const rows = await env.DB.prepare(`SELECT k, v, exp FROM cache WHERE k IN (${keys.map(() => "?").join(",")})`).bind(...keys).all();
-    for (const r of rows.results || []) if (r.exp > now()) { try { const v = JSON.parse(r.v); results[v.shop] = v; } catch {} }
+    const keys = plan.shops.filter((s) => !(cmpShopById(s.id) || {}).flyer).map((s) => "cmp-" + CMP_VER + ":" + s.id + ":" + g.canon);
+    for (const v of await cacheGetMany(env, keys)) if (v && v.shop) results[v.shop] = v;
   }
   return json({ product: { title: id.title, brand: id.brand, gtin: id.gtin, codes: id.codes, currency: id.currency, category: plan.category }, noun: plan.noun, shopNoun: plan.shopNoun, specialists: plan.specialists, shops: plan.shops, skipped: plan.skipped, notSearched: plan.notSearched || [], results, reason: plan.ownBrand ? "own brand" : plan.shops.length ? null : "no shops" });
 }
@@ -990,9 +991,12 @@ async function cmpSaveHistory(env, m) {
 // Old pages (loaded before this version) still call /api/others: answer with the cached matches.
 async function apiOthersCompat(req, env) {
   const g = await cmpGuard(req, env); if (g.error) return g.error;
-  const rows = await env.DB.prepare("SELECT v, exp FROM cache WHERE k LIKE ? LIMIT 40").bind("cmp-" + CMP_VER + ":%:" + g.canon).all();
+  // the shops in the plan (cached answers are in the Cloudflare cache, which cannot list keys)
+  const id = await cmpIdentityFor(env, g.canon);
+  const plan = id ? cmpPlan(id, new URL(g.canon).hostname, id.currency) : { shops: [] };
+  const vals = await cacheGetMany(env, plan.shops.filter((s) => !(cmpShopById(s.id) || {}).flyer).slice(0, 40).map((s) => "cmp-" + CMP_VER + ":" + s.id + ":" + g.canon));
   const matches = [];
-  for (const r of rows.results || []) if (r.exp > now()) { try { const v = JSON.parse(r.v); if (v.match) matches.push({ shop: v.name, title: v.match.title, price: v.match.price, currency: v.match.currency, url: v.match.url, match: v.match.level === "barcode" ? "barcode" : v.match.level === "model" ? "model number" : v.match.level === "ai" ? "AI check" : "name and specs" }); } catch {} }
+  for (const v of vals) if (v) { try { if (v.match) matches.push({ shop: v.name, title: v.match.title, price: v.match.price, currency: v.match.currency, url: v.match.url, match: v.match.level === "barcode" ? "barcode" : v.match.level === "model" ? "model number" : v.match.level === "ai" ? "AI check" : "name and specs" }); } catch {} }
   return json({ matches, searched: [] });
 }
 
@@ -1113,16 +1117,30 @@ function cmpClefParse(res, n) {
   return out;
 }
 const cmpAiDay = () => "cmpai-day:" + new Date(now()).toISOString().slice(0, 10);
-// One count per AI call per UTC day (Workers AI's free Neurons also reset at 00:00 UTC). On a D1 error: no AI.
+// One count per AI call per UTC day (Workers AI's free Neurons also reset at 00:00 UTC), in memory and in the
+// Cloudflare cache (cacheGet/cachePut: no D1 writes). The count is per data centre and approximate; when
+// Workers AI says the free Neurons are used up, cmpAiStop stops all AI calls for the day.
+let cmpAiMem = { day: "", n: 0 };
+function cmpAiReset() { cmpAiMem = { day: "", n: 0 }; }   // tests
+async function cmpAiCount(env) {
+  const day = cmpAiDay();
+  if (cmpAiMem.day !== day) cmpAiMem = { day, n: 0 };
+  const c = await cacheGet(env, day);
+  return Math.max(cmpAiMem.n, Number(c && c.n) || 0);
+}
 async function cmpAiBudget(env) {
   try {
-    const r = await env.DB.prepare("INSERT INTO cache (k, v, exp) VALUES (?, '1', ?) ON CONFLICT(k) DO UPDATE SET v = CAST(cache.v AS INTEGER) + 1 RETURNING v").bind(cmpAiDay(), now() + 2 * 86400e3).first();
-    return !!r && Number(r.v) <= CMP_AI_DAILY;
+    const n = await cmpAiCount(env);
+    if (n >= CMP_AI_DAILY) return false;
+    cmpAiMem.n = n + 1;
+    await cachePut(env, cmpAiDay(), { n: cmpAiMem.n }, 2 * 86400e3);
+    return true;
   } catch { return false; }
 }
 // Workers AI says the free daily Neurons are used up: no more AI calls today.
 async function cmpAiStop(env) {
-  await softWrite("cache", () => env.DB.prepare("UPDATE cache SET v = ? WHERE k = ?").bind(String(CMP_AI_DAILY + 1), cmpAiDay()).run());
+  cmpAiMem = { day: cmpAiDay(), n: CMP_AI_DAILY + 1 };
+  await cachePut(env, cmpAiDay(), { n: CMP_AI_DAILY + 1, stop: true }, 2 * 86400e3);
 }
 // Asks the AI about the candidates (cached per pair of names). Returns { verdicts: [..] | null, why }.
 async function cmpAiJudge(env, src, cands, shop) {
@@ -1134,12 +1152,7 @@ async function cmpAiJudge(env, src, cands, shop) {
   const keys = await Promise.all(names.map(async (t) => CMP_AI_KEY + (await sha256(srcText.toLowerCase() + "\n" + t.toLowerCase())).slice(0, 32)));
   const verdicts = names.map(() => null);
   try {
-    const rows = await env.DB.prepare(`SELECT k, v, exp FROM cache WHERE k IN (${keys.map(() => "?").join(",")})`).bind(...keys).all();
-    for (const r of rows.results || []) {
-      if (r.exp < now()) continue;
-      let v = null; try { v = JSON.parse(r.v); } catch {}
-      if (v === "same" || v === "different") keys.forEach((k, i) => { if (k === r.k) verdicts[i] = v; });
-    }
+    (await cacheGetMany(env, keys)).forEach((v, i) => { if (v === "same" || v === "different") verdicts[i] = v; });
   } catch {}
   const todo = verdicts.map((v, i) => (v ? -1 : i)).filter((i) => i >= 0);
   const done = (why) => ({ verdicts: verdicts.some(Boolean) ? verdicts : null, why });

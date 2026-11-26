@@ -135,11 +135,12 @@ describe("compare AI: in a shop search", () => {
   test("the same pair again: answer from the cache, no second AI call", async (t) => {
     quiet(t);
     const ai = fakeAI('{"1":"same"}');
-    const { env } = setup(t, [BUDS_ITEM], ai);
+    const { env, db } = setup(t, [BUDS_ITEM], ai);
     await W.cmpSearchShop(env, shop, BUDS);
     const r = await W.cmpSearchShop(env, shop, BUDS);
     assert.equal(r.match.level, "ai"); assert.equal(r.ai.why, "cached");
     assert.equal(ai.calls.length, 1);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM cache WHERE k LIKE 'cmpai%'").get().n, 0, "AB-44: verdicts and the day count are not in D1");
   });
 
   test("false match by name (other variant): AI says different, the match is dropped", async (t) => {
@@ -195,7 +196,7 @@ describe("compare AI: in a shop search", () => {
     assert.equal(r.status, "none"); assert.equal(r.ai.why, "daily limit");
     const r2 = await W.cmpSearchShop(env, shop, id("JBL Charge 5 Portable Speaker", { brand: "JBL" }));
     assert.equal(r2.ai, null, "no borderline candidate here");
-    db.prepare("DELETE FROM cache WHERE k LIKE 'cmpai-v1:%'").run();
+    W.memCacheReset();   // the cached AI verdicts go (the day's count stays)
     const r3 = await W.cmpSearchShop(env, shop, BUDS);
     assert.equal(r3.ai.why, "daily limit"); assert.equal(ai.calls.length, 1);
   });
@@ -203,7 +204,7 @@ describe("compare AI: in a shop search", () => {
   test("our own daily cap: no AI call above it", async (t) => {
     const ai = fakeAI('{"1":"same"}');
     const { env, db } = setup(t, [BUDS_ITEM], ai);
-    db.prepare("INSERT INTO cache (k, v, exp) VALUES (?, ?, ?)").run("cmpai-day:" + new Date().toISOString().slice(0, 10), String(W.CMP_AI_DAILY), Date.now() + 86400e3);
+    await W.cachePut(env, W.cmpAiDay(), { n: W.CMP_AI_DAILY }, 86400e3);
     const r = await W.cmpSearchShop(env, shop, BUDS);
     assert.equal(r.status, "none"); assert.equal(r.ai.why, "daily limit"); assert.equal(ai.calls.length, 0);
   });
