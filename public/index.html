@@ -196,6 +196,10 @@ dialog.dlg-fb[open]{display:block;position:fixed;z-index:20;left:12px;right:12px
 .badge b{display:block}
 .statrow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
 .sharelist{display:grid;gap:8px;margin-top:8px}
+.sharerow{margin-top:12px}
+.sharebtn{display:flex;align-items:center;justify-content:center;gap:8px}
+.sharebtn svg{width:18px;height:18px;flex:none}
+.sharetext{white-space:pre-line;border-left:3px solid var(--line);padding-left:10px}
 .sharelist button,.sharelist a{display:flex;align-items:center;justify-content:center;min-height:48px;border:1px solid var(--line);border-radius:var(--r);background:var(--bg);font-weight:600;text-decoration:none}
 .sharelist .wa{background:#1fa855;border-color:#1fa855;color:#fff}
 .code{display:block;width:100%;min-height:44px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--soft);color:var(--ink);font:12px ui-monospace,Menlo,monospace;overflow-wrap:anywhere}
@@ -210,6 +214,7 @@ dialog.dlg-fb[open]{display:block;position:fixed;z-index:20;left:12px;right:12px
   .manual{grid-template-columns:1fr 1fr 90px}.manual label:last-child{grid-column:auto}
   .badges{grid-template-columns:repeat(3,minmax(0,1fr))}
   .sharelist{grid-template-columns:1fr 1fr}
+  .sharebtn{width:auto;min-width:16em}
 }
 @media (min-width:768px){.hero{padding-top:56px}main{max-width:720px}}
 @media (min-width:1280px){main{max-width:760px}}
@@ -347,6 +352,8 @@ footer{border-top:2px dashed var(--ink)}
 
     <section class="card verdict unk" id="verdict"></section>
 
+    <div class="sharerow"><button type="button" id="share" class="go sharebtn"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg><span id="shareLab">Share this result</span></button></div>
+
     <div class="card">
       <div class="charthead"><h3>Price history</h3><span class="small num" id="cnt"></span></div>
       <div class="prog" id="prog"><i></i></div>
@@ -365,7 +372,6 @@ footer{border-top:2px dashed var(--ink)}
     </div>
 
     <div class="actions">
-      <button type="button" id="share">Share</button>
       <button type="button" id="save" aria-pressed="false">Save</button>
       <button type="button" id="alertBtn" class="hidden">Alert me</button>
       <button type="button" id="again">Check again</button>
@@ -398,7 +404,7 @@ footer{border-top:2px dashed var(--ink)}
     <h1 id="privTitle">Privacy</h1>
     <ul>
       <li>We save product links and prices to show price history.</li>
-      <li>We do not save who you are: no accounts, no names, no tracking cookies.</li>
+      <li>We do not save who you are: no accounts, no names, no tracking cookies. Cloudflare Web Analytics counts visits without cookies.</li>
       <li>We keep an email only if you type it into a form yourself.</li>
     </ul>
   </section>
@@ -449,8 +455,8 @@ footer{border-top:2px dashed var(--ink)}
 </dialog>
 <dialog id="shareDlg" aria-labelledby="shareTitle">
   <div class="dlg">
-    <div class="dlghead"><h2 id="shareTitle">Share</h2><button type="button" class="x" data-close aria-label="Close">×</button></div>
-    <p class="note" id="shareText" style="margin-top:0"></p>
+    <div class="dlghead"><h2 id="shareTitle">Share this result</h2><button type="button" class="x" data-close aria-label="Close">×</button></div>
+    <p class="note sharetext" id="shareText" style="margin-top:0"></p>
     <div class="sharelist">
       <a class="wa" id="shareWa" href="#" target="_blank" rel="noopener">Share to WhatsApp</a>
       <button type="button" id="shareCopy">Copy link</button>

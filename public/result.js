@@ -28,24 +28,49 @@ function parseNum(s) {
 
 $("retryArchBtn").addEventListener("click", () => state && loadSnaps(runId));
 $("again").addEventListener("click", () => state && run(state.url, true));
+// Share: the link opens the same check (/?u=). Links from our own hosts point to eish.veldwire.com.
+const SHARE_ORIGIN = /(^|\.)veldwire\.com$|\.workers\.dev$/.test(location.hostname) ? "https://eish.veldwire.com" : SITE;
+const clip = (s, n) => (s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s);
 function shareInfo() {
-  const link = SITE + "/?u=" + encodeURIComponent(state.url);
-  const v = state.v || {}, t = state.title || "this deal";
-  let text;
-  if (v.big === "Fake discount" && v.W) text = `Caught a fake discount! ${t}: the shop says it was ${money(v.W, v.C)}, but we did not see that price in the last 90 days.`;
-  else if (v.big === "Likely inflated was price" && v.W) text = `${t}: the shop says it was ${money(v.W, v.C)}, but it cost ${money(v.low, v.C)} on ${fmtDate(v.evT)}.`;
-  else if (v.big === "Real deal") text = `Real deal! ${t} is at the lowest price we found in 12 months: ${money(v.P, v.C)}.`;
-  else if (state.verdictText) text = `${state.verdictText}: ${t}`;
-  else text = `Is this deal real? ${t}`;
-  return { link, text };
+  const link = SHARE_ORIGIN + "/?u=" + encodeURIComponent(state.url);
+  const v = state.v || {}, p = curPrice(), cmp = state.cmp;
+  const lines = [clip(state.title || state.host || "A product", 110)];
+  if (p && p.price) lines.push(`${p.manual ? "Price I saw at" : "Price at"} ${state.host}: ${money(p.price, p.currency)}`);
+  if (cmp && cmp.best) lines.push(`Cheaper at ${cmp.best.name}: ${money(cmp.best.price, cmp.best.C)} (save ${money(cmp.best.save, cmp.best.C)}).`);
+  else {
+    if (v.big === "Fake discount" && v.W) lines.push(`Verdict: Fake discount. The shop says it was ${money(v.W, v.C)}, but we did not see that price in the last 90 days.`);
+    else if (v.big === "Likely inflated was price" && v.W) lines.push(`Verdict: The "was" price is likely too high. It cost ${money(v.low, v.C)} on ${fmtDate(v.evT)}.`);
+    else if (v.big === "Real deal") lines.push("Verdict: Real deal. This is the lowest price we found in 12 months.");
+    else if (state.verdictText) lines.push(`Verdict: ${state.verdictText}.`);
+    if (cmp && cmp.none) lines.push(`No cheaper exact match at ${cmp.none} other shop${cmp.none === 1 ? "" : "s"}.`);
+  }
+  const text = lines.join("\n");
+  return { link, text, full: text + "\nSee the price history: " + link };
 }
-$("share").addEventListener("click", () => {
+// The button says "deal" only when the result is good for the buyer.
+function renderShareLab() {
   if (!state) return;
-  const { link, text } = shareInfo();
-  $("shareText").textContent = text;
-  $("shareWa").href = "https://wa.me/?text=" + encodeURIComponent(text + " " + link);
+  const good = (state.cmp && state.cmp.best) || ["Real deal", "Decent deal"].includes(state.verdictText);
+  $("shareLab").textContent = good ? "Share this deal" : "Share this result";
+}
+function openShareDlg() {
+  const { text, full } = shareInfo();
+  $("shareTitle").textContent = $("shareLab").textContent;
+  $("shareText").textContent = full;
+  $("shareWa").href = "https://wa.me/?text=" + encodeURIComponent(full);
   $("shareMore").classList.toggle("hidden", !navigator.share);
   $("shareDlg").showModal();
+}
+// Phones: one tap opens the phone's share menu (WhatsApp and other apps). Computers: our menu with WhatsApp and Copy link.
+const isPhone = () => matchMedia("(pointer: coarse)").matches;
+$("share").addEventListener("click", async () => {
+  if (!state) return;
+  if (navigator.share && isPhone()) {
+    const { link, text } = shareInfo();
+    try { await navigator.share({ title: "Deal or Dud?", text: text + "\nSee the price history:", url: link }); return; }
+    catch (e) { if (e && e.name === "AbortError") return; }
+  }
+  openShareDlg();
 });
 $("shareCopy").addEventListener("click", async () => {
   const { link } = shareInfo();
@@ -53,7 +78,7 @@ $("shareCopy").addEventListener("click", async () => {
 });
 $("shareMore").addEventListener("click", async () => {
   const { link, text } = shareInfo();
-  try { await navigator.share({ title: "Deal or Dud?", text, url: link }); } catch {}
+  try { await navigator.share({ title: "Deal or Dud?", text: text + "\nSee the price history:", url: link }); } catch {}
 });
 $("mapply").addEventListener("click", () => {
   if (!state) return;
@@ -224,7 +249,7 @@ function points() {
   return { pts, other: all.length - same.length, ccy: pick };
 }
 
-function renderAll() { if (!curPrice()) renderPrices(); renderChart(); renderArchiveNote(); renderVerdict(); renderTable(); }
+function renderAll() { if (!curPrice()) renderPrices(); renderChart(); renderArchiveNote(); renderVerdict(); renderTable(); renderShareLab(); }
 
 function setVerdict(cls, big, html) {
   const el = $("verdict");
@@ -433,7 +458,7 @@ function cmpHeadline(plan, shops, results, herePrice, LEVEL) {
     const b = cheaper[0], save = Math.round((herePrice - b.match.price) * 100) / 100;
     const more = cheaper.length > 1 ? ` Also cheaper at ${andList(cheaper.slice(1).map((r) => r.name))}.` : "";
     const chk = b.match.level === "name" ? " Check the model and colour on the shop's page." : "";
-    return ["good", `Cheaper at ${b.name}: ${money(b.match.price, C)}`, `Save ${money(save, C)} (${pct(save / herePrice)}). ${LEVEL[b.match.level]} as this product.${chk}${more}${done < n ? ` Still checking ${n - done} more.` : " Delivery not included."}`];
+    return ["good", `Cheaper at ${b.name}: ${money(b.match.price, C)}`, `Save ${money(save, C)} (${pct(save / herePrice)}). ${LEVEL[b.match.level]} as this product.${chk}${more}${done < n ? ` Still checking ${n - done} more.` : " Delivery not included."}`, true, { best: { name: b.name, price: b.match.price, save, C } }];
   }
   if (done < n) return ["", `Checking ${n} shop${n === 1 ? "" : "s"}…`, `${done} of ${n} done. We look for the exact same product for less.`];
   const failed = shops.filter((s) => results[s.id] && !["match", "none", "skipped", "robots"].includes(results[s.id].status)).map((s) => s.name);
@@ -447,7 +472,7 @@ function cmpHeadline(plan, shops, results, herePrice, LEVEL) {
   else line = `We checked ${n} shop${n === 1 ? "" : "s"}. None has the exact same product in stock.`;
   if (failed.length) line += ` Couldn't check ${andList(failed)}.`;
   if (cant.length) line += ` We can't search ${andList(cant)}.`;
-  return ["", "No cheaper exact match found", line, true];
+  return ["", "No cheaper exact match found", line, true, { none: n }];
 }
 async function loadOthers(my) {
   if (!state.tracked || !state.current || state.current.status !== "ok") return;
@@ -510,8 +535,9 @@ async function loadOthers(my) {
     const nsTxt = [["robots", "ask tools not to use their search"], ["browser", "show search results only in a browser"], ["blocks", "block tools like ours"]].filter(([w]) => nsBy(w).length).map(([w, t]) => `${and(nsBy(w))} (${t})`);
     if (nsTxt.length && done === shops.length) parts.push(`We can't search ${nsTxt.join("; ")}.`);
     $("cmpSum").textContent = parts.join(" ");
-    const [hc, hb, hl, hj] = cmpHeadline(plan, shops, results, herePrice, LEVEL);
+    const [hc, hb, hl, hj, share] = cmpHeadline(plan, shops, results, herePrice, LEVEL);
     setCmpHead(hc, hb, hl, hj || hc === "good");
+    state.cmp = share || null; renderShareLab();
   };
   render();
   const queue = shops.filter((s) => !results[s.id]);
