@@ -158,6 +158,10 @@ describe("assistant: the filter and the picks", () => {
     assert.equal(W.asReasonOk("It has an RTX graphics card for Docker work.", f), false);
     assert.equal(W.asReasonOk("Buy it at www.example.com today for less.", f), false);
     assert.equal(W.asReasonOk("Good.", f), false);
+    assert.equal(W.asReasonOk("It has a 512GB SSD, which is a larger storage capacity.", f), false);
+    assert.equal(W.asReasonOk("It has 16GB RAM, which is more than the other two laptops.", f), false);
+    assert.equal(W.asReasonOk("It has 16GB RAM for smooth performance.", f), false);
+    assert.equal(W.asReasonOk("It has 16GB RAM and a 512GB SSD for programming.", f), true);
     assert.equal(W.asReasonOk("It is good. It is cheap. Buy it now please.", f), false);
   });
   test("every pick must be a real candidate (same link, name, price and shop)", () => {
@@ -225,7 +229,7 @@ describe("/api/assist", () => {
     quiet(t);
     const ai = fakeAI([
       JSON.stringify({ category: "laptop", maxBudget: 15000, currency: "ZAR", searchQueries: ["16GB laptop", "Ryzen laptop"], mustHave: ["16GB"], prefer: ["SSD"], avoid: ["bag"] }),
-      JSON.stringify({ 1: "It has 16GB RAM and a 512GB SSD for Docker, within your budget.", 2: "It has 64GB RAM and an RTX 4090.", 3: "It costs the least of these picks." }),
+      JSON.stringify({ 1: "It has 16GB RAM and a 512GB SSD for Docker, within your budget.", 2: "It has 64GB RAM and an RTX 4090.", 3: "It fits your budget for Docker work." }),
     ]);
     const { env } = setup(t, LAPTOPS, ai);
     const d = await (await get(env, LQ)).json();
