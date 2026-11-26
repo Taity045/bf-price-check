@@ -304,10 +304,11 @@ describe("/api/assist", () => {
     quiet(t);
     const ai = fakeAI(["{}", "{}"]);
     const { env, db } = setup(t, LAPTOPS, ai);
-    db.prepare("INSERT INTO cache (k, v, exp) VALUES (?, ?, ?)").run("cmpai-day:" + new Date().toISOString().slice(0, 10), String(W.CMP_AI_DAILY + 1), Date.now() + 864e5);
+    await W.cachePut(env, W.cmpAiDay(), { n: W.CMP_AI_DAILY + 1, stop: true }, 864e5);
     const d = await (await get(env, LQ)).json();
     assert.equal(ai.calls.length, 0); assert.equal(d.picks.length, 3);
-    assert.equal(db.prepare("SELECT v FROM cache WHERE k LIKE 'cmpai-day:%'").get().v, String(W.CMP_AI_DAILY + 1), "not changed");
+    assert.equal((await W.cacheGet(env, W.cmpAiDay())).n, W.CMP_AI_DAILY + 1, "not changed");
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM cache WHERE k LIKE 'cmpai-day:%'").get().n, 0, "no D1 row");
   });
   test("nothing in the budget: the closest real products, marked over budget, and a plain note", async (t) => {
     quiet(t);

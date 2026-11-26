@@ -265,11 +265,11 @@ describe("flyer: compare API", () => {
   function product(db, title = "Jungle Oats Original 1kg", price = 39.99) {
     db.prepare("INSERT INTO tracked (url, orig_url, title, added_at, last_viewed, last_checked, last_status, check_count) VALUES (?, ?, ?, ?, ?, ?, 'ok', 1)").run(CANON, CANON, title, Date.now(), Date.now(), Date.now());
     const cur = { status: "ok", checked_at: Date.now(), price, currency: "ZAR", title, source: "pnp", brand: "Jungle", category: "Food Cupboard" };
-    db.prepare("INSERT INTO cache (k, v, exp) VALUES (?, ?, ?)").run(W.LIVE_CACHE_PREFIX + CANON, JSON.stringify(cur), Date.now() + 3600e3);
+    return W.cachePut({ DB: null }, W.LIVE_CACHE_PREFIX + CANON, cur, 3600e3);
   }
   test("plan has Food Lover's Market; its answer is the flyer deal, not saved to history or cache", async (t) => {
     const { db, get, calls } = setup(t, DURING);
-    product(db);
+    await product(db);
     const plan = await (await get("/api/compare?url=" + encodeURIComponent(CANON))).json();
     assert.ok(plan.shops.some((s) => s.id === "flm"), JSON.stringify(plan.shops));
     const r = await get("/api/compare/shop?shop=flm&url=" + encodeURIComponent(CANON));
@@ -283,11 +283,12 @@ describe("flyer: compare API", () => {
     assert.equal(r.headers.get("cache-control"), "no-store");
     assert.equal(calls.length, 0, "no fetch");
     assert.equal(db.prepare("SELECT COUNT(*) AS n FROM cache WHERE k LIKE 'cmp-%:flm:%'").get().n, 0, "no cached answer");
+    assert.equal(await W.cacheGet({}, "cmp-" + W.CMP_VER + ":flm:" + CANON), null, "not in the Cloudflare cache or memory either");
     assert.equal(db.prepare("SELECT COUNT(*) AS n FROM tracked WHERE url LIKE '%foodloversmarket%'").get().n, 0, "no price history for the flyer");
   });
   test("multi-buy: the price for one item, and the rule in words", async (t) => {
     const { db, get } = setup(t, DURING);
-    product(db, "Rhodes Baked Beans in Tomato Sauce 400g", 18.99);
+    await product(db, "Rhodes Baked Beans in Tomato Sauce 400g", 18.99);
     const d = await (await get("/api/compare/shop?shop=flm&url=" + encodeURIComponent(CANON))).json();
     assert.equal(d.status, "match");
     assert.equal(d.match.price, 10);
@@ -296,7 +297,7 @@ describe("flyer: compare API", () => {
   });
   test("after the end: Food Lover's Market is not in the plan, and its answer is 'skipped'", async (t) => {
     const { db, get } = setup(t, AFTER);
-    product(db);
+    await product(db);
     const plan = await (await get("/api/compare?url=" + encodeURIComponent(CANON))).json();
     assert.ok(!plan.shops.some((s) => s.id === "flm"));
     const d = await (await get("/api/compare/shop?shop=flm&url=" + encodeURIComponent(CANON))).json();

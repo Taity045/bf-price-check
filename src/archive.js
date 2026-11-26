@@ -253,6 +253,7 @@ async function apiPriceFix(req, env) {
   }
   for (const u of urls) {
     del.verdicts += (await env.DB.prepare("DELETE FROM verdicts WHERE url = ?").bind(u).run()).meta.changes || 0;
+    await cachePurgeProduct(env, u);   // the Cloudflare cache and memory (the D1 rows below are from before AB-44)
     // check-*:<url>, cmpid-*:<url>, cmp-*:<shop>:<url>, og-*:<url>:<ts>
     del.cache += (await env.DB.prepare("DELETE FROM cache WHERE (k LIKE 'check-%' OR k LIKE 'cmpid-%' OR k LIKE 'cmp-%' OR k LIKE 'og-%') AND (substr(k, -length(?1)) = ?1 OR instr(k, ':' || ?1 || ':') > 0)").bind(u).run()).meta.changes || 0;
   }
@@ -278,6 +279,7 @@ async function priceFixMulti(env, list, apply) {
       if (apply && one.rows.length) {
         out.deleted.checks += (await env.DB.prepare("DELETE FROM checks WHERE url = ? AND source LIKE 'compare-%'").bind(u).run()).meta.changes || 0;
         out.deleted.verdicts += (await env.DB.prepare("DELETE FROM verdicts WHERE url = ?").bind(u).run()).meta.changes || 0;
+        await cachePurgeProduct(env, u);
         out.deleted.cache += (await env.DB.prepare("DELETE FROM cache WHERE (k LIKE 'check-%' OR k LIKE 'og-%') AND (substr(k, -length(?1)) = ?1 OR instr(k, ':' || ?1 || ':') > 0)").bind(u).run()).meta.changes || 0;
       }
     }
@@ -306,6 +308,7 @@ async function priceFixSnaps(env, list, apply) {
         if (one.excluded) {
           out.excluded++;
           out.deleted.verdicts += (await env.DB.prepare("DELETE FROM verdicts WHERE url = ?").bind(url).run()).meta.changes || 0;
+          await cachePurgeProduct(env, url);
           out.deleted.cache += (await env.DB.prepare("DELETE FROM cache WHERE (k LIKE 'check-%' OR k LIKE 'og-%') AND (substr(k, -length(?1)) = ?1 OR instr(k, ':' || ?1 || ':') > 0)").bind(url).run()).meta.changes || 0;
         }
       }

@@ -21,7 +21,7 @@ function setup(t, routes) {
   t.after(() => { globalThis.fetch = real; });
   db.prepare("INSERT INTO tracked (url, orig_url, title, added_at, last_viewed, last_checked, last_status, check_count) VALUES (?, ?, ?, ?, ?, ?, 'ok', 1)").run(CANON, CANON, "Apple AirPods 4", Date.now(), Date.now(), Date.now());
   const cur = { status: "ok", checked_at: Date.now(), price: 2298, was: 2918, currency: "ZAR", title: "Apple AirPods 4", source: "takealot-api", gtin: "195949688584", brand: "Apple" };
-  db.prepare("INSERT INTO cache (k, v, exp) VALUES (?, ?, ?)").run(W.LIVE_CACHE_PREFIX + CANON, JSON.stringify(cur), Date.now() + 3600e3);
+  W.cachePut(env, W.LIVE_CACHE_PREFIX + CANON, cur, 3600e3);   // memory (no caches.default in tests): set at once
   const ip = "203.0.113." + (++ipSeq);
   const waits = [];
   const get = async (path) => {
@@ -85,6 +85,8 @@ describe("compare API with mocked shops", () => {
     assert.equal(plan.results.computermania.match.price, 1999, "the plan returns cached answers");
     const old = await (await get("/api/others?url=" + encodeURIComponent(CANON))).json();
     assert.equal(old.matches[0].shop, "Computer Mania");
+    // AB-44: the answers, the identity and the shop search are cached in memory / the Cloudflare cache, not D1
+    assert.deepEqual(db.prepare("SELECT k FROM cache").all().map((r) => r.k).filter((k) => !k.startsWith("robots-cmp:")), [], "only robots.txt (D1 state) in the D1 cache table");
   });
   test("the ANC model and the case are not offered as the same product", async (t) => {
     const r = setup(t, [[/\/robots\.txt$/, () => new Response("", { status: 404 })], [/computermania\.co\.za\/search\/suggest\.json/, () => suggest(SHOPIFY_AIRPODS.slice(1))], [/\.js$/, () => json({ variants: [{ title: "Default Title", price: 389900, barcode: "195949688591", available: true }] })]]);

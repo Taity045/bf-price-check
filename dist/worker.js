@@ -874,15 +874,91 @@ async function fetchSnapshot(ts, orig, canon) {
   }
 }
 
-// ---------- D1 helpers ----------
+// ---------- caches: Cloudflare Cache API, no D1 writes ----------
+// Answers we can make again (live checks, compare answers, shop searches, robots.txt, AI verdicts,
+// archive lists, share images, small public summaries) are kept in the Cloudflare cache of the data
+// centre (caches.default, synthetic URLs on cache.eish.veldwire.com) and in this isolate's memory.
+// They write no rows to D1, so a busy day cannot use up the D1 free plan's 100,000 rows written per
+// day. The Cloudflare cache is per data centre and can drop an entry early: that only costs a new
+// read. Not on workers.dev and not in unit tests (no caches.default): memory only.
+// Each Cache API call counts as a subrequest (50 per request on the Free plan): memory first.
+const EDGE_CACHE_BASE = "https://cache.eish.veldwire.com/v1/";
+const MEM_CACHE_MAX = 400, MEM_CACHE_BIG = 64 * 1024;   // entries; values over 64 KB go to the Cloudflare cache only
+let memCache = new Map();   // k -> { v, exp }  (oldest first)
+function memCacheReset() { memCache = new Map(); }   // tests
+function memCacheGet(k) {
+  const e = memCache.get(k);
+  if (!e) return undefined;
+  if (e.exp <= now()) { memCache.delete(k); return undefined; }
+  return e.v;
+}
+function memCachePut(k, v, exp, size) {
+  memCache.delete(k);
+  if (size > MEM_CACHE_BIG) return;
+  memCache.set(k, { v, exp });
+  while (memCache.size > MEM_CACHE_MAX) memCache.delete(memCache.keys().next().value);
+}
+const edgeCache = () => { try { return typeof caches !== "undefined" && caches && caches.default ? caches.default : null; } catch { return null; } };
+const edgeCacheUrl = (k) => EDGE_CACHE_BASE + encodeURIComponent(k);
 async function cacheGet(env, k) {
+  const m = memCacheGet(k);
+  if (m !== undefined) return m;
+  const c = edgeCache();
+  if (!c) return null;
+  try {
+    const r = await c.match(edgeCacheUrl(k));
+    if (!r) return null;
+    const exp = Number(r.headers.get("x-exp")) || 0;
+    if (exp && exp <= now()) { await r.body?.cancel(); return null; }
+    const txt = await r.text();
+    const v = JSON.parse(txt);
+    memCachePut(k, v, exp || now() + 60e3, txt.length);
+    return v;
+  } catch { return null; }
+}
+// Several keys at once (memory first, then one Cache API call per key that is not in memory).
+// Returns values in the same order (null = not cached).
+async function cacheGetMany(env, keys) {
+  return Promise.all(keys.map((k) => cacheGet(env, k)));
+}
+// Never essential: on an error the value is simply not cached. ctx (optional): the Cloudflare cache
+// write runs after the answer is sent.
+async function cachePut(env, k, v, ttl, ctx) {
+  const exp = now() + ttl;
+  let txt;
+  try { txt = JSON.stringify(v); } catch { return; }
+  if (txt === undefined) return;
+  memCachePut(k, v, exp, txt.length);
+  const c = edgeCache();
+  if (!c) return;
+  const put = Promise.resolve().then(() => c.put(edgeCacheUrl(k), new Response(txt, { headers: { "content-type": "application/json", "cache-control": "public, max-age=" + Math.max(1, Math.ceil(ttl / 1000)), "x-exp": String(exp) } }))).catch(() => {});
+  if (ctx && typeof ctx.waitUntil === "function") { try { ctx.waitUntil(put); return; } catch {} }
+  await put;
+}
+// Removes a cached value from memory and from the Cloudflare cache of this data centre (other data
+// centres keep it until it runs out).
+async function cacheDel(env, k) {
+  memCache.delete(k);
+  const c = edgeCache();
+  if (c) { try { await c.delete(edgeCacheUrl(k)); } catch {} }
+}
+// Cached answers that show a product's price (live check, compare identity): after a price fix.
+async function cachePurgeProduct(env, canon) {
+  await Promise.all([cacheDel(env, LIVE_CACHE_PREFIX + canon), cacheDel(env, "cmpid-" + CMP_VER + ":" + canon)]);
+  for (const k of [...memCache.keys()]) if (k.endsWith(":" + canon) || k.includes(":" + canon + ":")) memCache.delete(k);
+}
+
+// ---------- D1 state that must stay (not caches) ----------
+// Scheduler state for the every-minute cron (seed list per department, robots.txt for the daily
+// check, one-time fix flags). The cron writes these a few times a day at most, never per visitor, and
+// they must be the same in every data centre. They use the old D1 `cache` table.
+async function keepGet(env, k) {
   const r = await env.DB.prepare("SELECT v, exp FROM cache WHERE k = ?").bind(k).first().catch(() => null);
   if (!r || r.exp < now()) return null;
   try { return JSON.parse(r.v); } catch { return null; }
 }
-// Cache writes are never essential: on a D1 error the value is simply not cached. The same value is
-// not written again while more than half its time to live is left (no rows written for it).
-async function cachePut(env, k, v, ttl) {
+// The same value is not written again while more than half its time to live is left.
+async function keepPut(env, k, v, ttl) {
   const exp = now() + ttl;
   await softWrite("cache", () => env.DB.prepare("INSERT INTO cache (k, v, exp) VALUES (?, ?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v, exp = excluded.exp WHERE cache.v IS NOT excluded.v OR cache.exp < ?")
     .bind(k, JSON.stringify(v), exp, exp - ttl / 2).run());
@@ -915,8 +991,16 @@ async function softWrite(what, fn, fallback = undefined) {
 }
 // via: null for a check a person asked for, "daily" for the scheduled check.
 const checkStmt = (env, canon, cur, via = null) => env.DB.prepare("INSERT INTO checks (url, ts, price, was, currency, source, title, via) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").bind(canon, cur.checked_at, cur.price, cur.was || null, cur.currency || null, cur.source || null, cur.title || null, via);
+// A person's check (or a compare match) saves a price row, but not when the same price (same was price
+// and currency) is already saved for this page on the same UTC day: one row a day says the same thing,
+// and a busy day must not spend D1 rows written on copies. A new price is always saved.
 async function recordCheck(env, canon, cur) {
-  if (cur.price) await checkStmt(env, canon, cur).run();
+  if (!cur.price) return false;
+  const day0 = Math.floor(cur.checked_at / 864e5) * 864e5;
+  const r = await env.DB.prepare(`INSERT INTO checks (url, ts, price, was, currency, source, title, via)
+    SELECT ?, ?, ?, ?, ?, ?, ?, NULL WHERE NOT EXISTS (SELECT 1 FROM checks WHERE url = ? AND ts >= ? AND ts < ? AND price = ? AND was IS ? AND currency IS ?)`)
+    .bind(canon, cur.checked_at, cur.price, cur.was || null, cur.currency || null, cur.source || null, cur.title || null, canon, day0, day0 + 864e5, cur.price, cur.was || null, cur.currency || null).run();
+  return !!(r && r.meta && r.meta.changes);
 }
 // A product someone checked: it joins the daily price saving (seed = 0, before the seed list).
 // Its next daily check is about a day after its last live check. A check by a person also
@@ -1052,9 +1136,10 @@ async function apiCheck(req, env, ctx) {
   let cached = !!current;
   if (!current) {
     current = await getCurrent(canonInfo, v.url.toString(), host);
-    // Saving is extra: if D1 refuses a write (for example the daily write limit), the person still
-    // gets today's price. softWrite logs the failure once per minute.
-    await softWrite("check-cache", () => cachePut(env, ckey, current, current.status === "ok" ? CHECK_TTL_MS : 10 * 60 * 1000));
+    // The answer is cached in the Cloudflare cache (no D1 write). Saving the price is extra: if D1 refuses
+    // a write (for example the daily write limit), the person still gets today's price. softWrite logs
+    // the failure once per minute.
+    await cachePut(env, ckey, current, current.status === "ok" ? CHECK_TTL_MS : 10 * 60 * 1000, ctx);
     await softWrite("check-save", () => recordCheck(env, canonInfo.canon, current));
   }
   const tracked = await softWrite("track", () => track(env, canonInfo.canon, v.url.toString(), current), false);
@@ -1124,10 +1209,10 @@ async function apiSnap(req, env) {
 const SNAP_DETECT_SINCE = Date.UTC(2026, 10, 25, 2, 45);
 const SNAP_RELABEL_KEY = "snap-relabel-v1";
 async function relabelOldSnaps(env) {
-  if (await cacheGet(env, SNAP_RELABEL_KEY)) return 0;
+  if (await keepGet(env, SNAP_RELABEL_KEY)) return 0;
   const r = await env.DB.prepare("UPDATE product_snaps SET status = 'retry', fetched_at = 0 WHERE status = 'noprice' AND COALESCE(fetched_at, 0) < ?").bind(SNAP_DETECT_SINCE).run();
   const n = (r && r.meta && r.meta.changes) || 0;
-  await cachePut(env, SNAP_RELABEL_KEY, { at: now(), n }, 400 * 864e5);
+  await keepPut(env, SNAP_RELABEL_KEY, { at: now(), n }, 400 * 864e5);
   return n;
 }
 
@@ -2084,6 +2169,7 @@ async function apiPriceFix(req, env) {
   }
   for (const u of urls) {
     del.verdicts += (await env.DB.prepare("DELETE FROM verdicts WHERE url = ?").bind(u).run()).meta.changes || 0;
+    await cachePurgeProduct(env, u);   // the Cloudflare cache and memory (the D1 rows below are from before AB-44)
     // check-*:<url>, cmpid-*:<url>, cmp-*:<shop>:<url>, og-*:<url>:<ts>
     del.cache += (await env.DB.prepare("DELETE FROM cache WHERE (k LIKE 'check-%' OR k LIKE 'cmpid-%' OR k LIKE 'cmp-%' OR k LIKE 'og-%') AND (substr(k, -length(?1)) = ?1 OR instr(k, ':' || ?1 || ':') > 0)").bind(u).run()).meta.changes || 0;
   }
@@ -2109,6 +2195,7 @@ async function priceFixMulti(env, list, apply) {
       if (apply && one.rows.length) {
         out.deleted.checks += (await env.DB.prepare("DELETE FROM checks WHERE url = ? AND source LIKE 'compare-%'").bind(u).run()).meta.changes || 0;
         out.deleted.verdicts += (await env.DB.prepare("DELETE FROM verdicts WHERE url = ?").bind(u).run()).meta.changes || 0;
+        await cachePurgeProduct(env, u);
         out.deleted.cache += (await env.DB.prepare("DELETE FROM cache WHERE (k LIKE 'check-%' OR k LIKE 'og-%') AND (substr(k, -length(?1)) = ?1 OR instr(k, ':' || ?1 || ':') > 0)").bind(u).run()).meta.changes || 0;
       }
     }
@@ -2137,6 +2224,7 @@ async function priceFixSnaps(env, list, apply) {
         if (one.excluded) {
           out.excluded++;
           out.deleted.verdicts += (await env.DB.prepare("DELETE FROM verdicts WHERE url = ?").bind(url).run()).meta.changes || 0;
+          await cachePurgeProduct(env, url);
           out.deleted.cache += (await env.DB.prepare("DELETE FROM cache WHERE (k LIKE 'check-%' OR k LIKE 'og-%') AND (substr(k, -length(?1)) = ?1 OR instr(k, ':' || ?1 || ':') > 0)").bind(url).run()).meta.changes || 0;
         }
       }
@@ -2316,8 +2404,9 @@ async function backfillLanes(env, limit = 200) {
 // The host was checked for a public address just before (verifiedHost); redirects are checked by fetchStore.
 async function robotsRules(env, origin, memo) {
   if (memo.has(origin)) return memo.get(origin);
+  // D1 (keepGet/keepPut), not the Cloudflare cache: written by the cron only, a few rows per site per day.
   const key = "robots:" + origin;
-  let v = await cacheGet(env, key);
+  let v = await keepGet(env, key);
   if (!v) {
     try {
       const r = await fetchStore(origin + "/robots.txt", { "user-agent": BOT_UA, accept: "text/plain" }, 6000, new URL(origin).hostname);
@@ -2326,7 +2415,7 @@ async function robotsRules(env, origin, memo) {
       else if (!r.ok) { await r.body?.cancel(); v = { rules: [] }; }
       else v = { rules: parseRobots(await readLimitedText(r, true)) };
     } catch { v = { retry: true }; }
-    await cachePut(env, key, v, v.retry ? HOUR_MS : ROBOTS_TTL_MS);
+    await keepPut(env, key, v, v.retry ? HOUR_MS : ROBOTS_TTL_MS);
   }
   memo.set(origin, v);
   return v;
@@ -2386,7 +2475,7 @@ async function runDaily(env, scheduledTime, opts = {}) {
   // 3) Seed list refresh (one department per seed slot, each about once a week).
   if (dept) await refreshSeeds(env, dept, sum).catch(async (e) => {
     sum.seed_error = String(e && e.message || e).slice(0, 120);
-    await cachePut(env, "seed-dept:" + dept, { error: sum.seed_error }, HOUR_MS).catch(() => {});  // try this department again in an hour
+    await keepPut(env, "seed-dept:" + dept, { error: sum.seed_error }, HOUR_MS).catch(() => {});  // try this department again in an hour
   });
   sum.ms = now() - t0;
   console.log(JSON.stringify({ daily: sum }));
@@ -2462,11 +2551,11 @@ async function refreshSeeds(env, dept, sum) {
   const target = new URL(url);
   const robots = await robotsRules(env, target.origin, new Map());
   if (robots.retry) return;
-  if (!robotsAllows(robots.rules, target.pathname + target.search)) { await cachePut(env, "seed-dept:" + dept, { robots: true }, SEED_REFRESH_MS); return; }
+  if (!robotsAllows(robots.rules, target.pathname + target.search)) { await keepPut(env, "seed-dept:" + dept, { robots: true }, SEED_REFRESH_MS); return; }
   const r = await fetchStore(url, { ...BOT_HEADERS, accept: "application/json" }, 12000);
-  if (!r.ok) { await r.body?.cancel(); await cachePut(env, "seed-dept:" + dept, { http: r.status }, 6 * HOUR_MS); return; }
+  if (!r.ok) { await r.body?.cancel(); await keepPut(env, "seed-dept:" + dept, { http: r.status }, 6 * HOUR_MS); return; }
   const res = takealotSeeds(JSON.parse(await readLimitedText(r)), dept);
-  if (res.error) { await cachePut(env, "seed-dept:" + dept, { error: res.error }, SEED_REFRESH_MS); sum.seed_error = res.error; return; }
+  if (res.error) { await keepPut(env, "seed-dept:" + dept, { error: res.error }, SEED_REFRESH_MS); sum.seed_error = res.error; return; }
   // New seed products only while there are fewer than MAX_SEEDS; products already tracked are
   // marked as still popular (last_viewed), so they keep their daily check.
   const stmts = res.seeds.map((s) => env.DB.prepare(`
@@ -2480,7 +2569,7 @@ async function refreshSeeds(env, dept, sum) {
   const out = await env.DB.batch([count(), ...stmts, count()]);
   sum.seeds_added = out[out.length - 1].results[0].n - out[0].results[0].n;
   sum.seeds_seen = res.seeds.length;
-  await cachePut(env, "seed-dept:" + dept, { n: res.seeds.length }, SEED_REFRESH_MS);
+  await keepPut(env, "seed-dept:" + dept, { n: res.seeds.length }, SEED_REFRESH_MS);
 }
 
 async function dailyHousekeeping(env) {
@@ -3283,8 +3372,10 @@ function cmpRobotsTargets(shop) {
   return out;
 }
 async function cmpRobotsRules(env, origin) {
+  // robots.txt stays in D1 (keepGet): at most a few rows per shop site per day, whatever the traffic, and a
+  // search or Ask AI that reads 10+ shops must not spend Cache API calls (subrequests) on it. Memory first.
   const key = "robots-cmp:" + origin;
-  let v = await cacheGet(env, key);
+  let v = await keepGet(env, key);
   if (!v) {
     try {
       const r = await fetch(origin + "/robots.txt", { headers: { "user-agent": CMP_UA, accept: "text/plain" }, redirect: "follow", signal: AbortSignal.timeout(6000) });
@@ -3292,7 +3383,7 @@ async function cmpRobotsRules(env, origin) {
       else if (!r.ok) { await r.body?.cancel(); v = { rules: [] }; }
       else v = { rules: parseRobots(await readLimitedText(r, true), CMP_ROBOTS_TOKEN) };
     } catch { v = { retry: true }; }
-    await cachePut(env, key, v, v.retry ? 3600e3 : 864e5);
+    await keepPut(env, key, v, v.retry ? 3600e3 : 864e5);
   }
   return v;
 }
@@ -3446,9 +3537,8 @@ async function apiCompare(req, env) {
   const plan = cmpPlan(id, host, id.currency);
   const results = {};
   if (plan.shops.length) {
-    const keys = plan.shops.map((s) => "cmp-" + CMP_VER + ":" + s.id + ":" + g.canon);
-    const rows = await env.DB.prepare(`SELECT k, v, exp FROM cache WHERE k IN (${keys.map(() => "?").join(",")})`).bind(...keys).all();
-    for (const r of rows.results || []) if (r.exp > now()) { try { const v = JSON.parse(r.v); results[v.shop] = v; } catch {} }
+    const keys = plan.shops.filter((s) => !(cmpShopById(s.id) || {}).flyer).map((s) => "cmp-" + CMP_VER + ":" + s.id + ":" + g.canon);
+    for (const v of await cacheGetMany(env, keys)) if (v && v.shop) results[v.shop] = v;
   }
   return json({ product: { title: id.title, brand: id.brand, gtin: id.gtin, codes: id.codes, currency: id.currency, category: plan.category }, noun: plan.noun, shopNoun: plan.shopNoun, specialists: plan.specialists, shops: plan.shops, skipped: plan.skipped, notSearched: plan.notSearched || [], results, reason: plan.ownBrand ? "own brand" : plan.shops.length ? null : "no shops" });
 }
@@ -3502,9 +3592,12 @@ async function cmpSaveHistory(env, m) {
 // Old pages (loaded before this version) still call /api/others: answer with the cached matches.
 async function apiOthersCompat(req, env) {
   const g = await cmpGuard(req, env); if (g.error) return g.error;
-  const rows = await env.DB.prepare("SELECT v, exp FROM cache WHERE k LIKE ? LIMIT 40").bind("cmp-" + CMP_VER + ":%:" + g.canon).all();
+  // the shops in the plan (cached answers are in the Cloudflare cache, which cannot list keys)
+  const id = await cmpIdentityFor(env, g.canon);
+  const plan = id ? cmpPlan(id, new URL(g.canon).hostname, id.currency) : { shops: [] };
+  const vals = await cacheGetMany(env, plan.shops.filter((s) => !(cmpShopById(s.id) || {}).flyer).slice(0, 40).map((s) => "cmp-" + CMP_VER + ":" + s.id + ":" + g.canon));
   const matches = [];
-  for (const r of rows.results || []) if (r.exp > now()) { try { const v = JSON.parse(r.v); if (v.match) matches.push({ shop: v.name, title: v.match.title, price: v.match.price, currency: v.match.currency, url: v.match.url, match: v.match.level === "barcode" ? "barcode" : v.match.level === "model" ? "model number" : v.match.level === "ai" ? "AI check" : "name and specs" }); } catch {} }
+  for (const v of vals) if (v) { try { if (v.match) matches.push({ shop: v.name, title: v.match.title, price: v.match.price, currency: v.match.currency, url: v.match.url, match: v.match.level === "barcode" ? "barcode" : v.match.level === "model" ? "model number" : v.match.level === "ai" ? "AI check" : "name and specs" }); } catch {} }
   return json({ matches, searched: [] });
 }
 
@@ -3625,16 +3718,30 @@ function cmpClefParse(res, n) {
   return out;
 }
 const cmpAiDay = () => "cmpai-day:" + new Date(now()).toISOString().slice(0, 10);
-// One count per AI call per UTC day (Workers AI's free Neurons also reset at 00:00 UTC). On a D1 error: no AI.
+// One count per AI call per UTC day (Workers AI's free Neurons also reset at 00:00 UTC), in memory and in the
+// Cloudflare cache (cacheGet/cachePut: no D1 writes). The count is per data centre and approximate; when
+// Workers AI says the free Neurons are used up, cmpAiStop stops all AI calls for the day.
+let cmpAiMem = { day: "", n: 0 };
+function cmpAiReset() { cmpAiMem = { day: "", n: 0 }; }   // tests
+async function cmpAiCount(env) {
+  const day = cmpAiDay();
+  if (cmpAiMem.day !== day) cmpAiMem = { day, n: 0 };
+  const c = await cacheGet(env, day);
+  return Math.max(cmpAiMem.n, Number(c && c.n) || 0);
+}
 async function cmpAiBudget(env) {
   try {
-    const r = await env.DB.prepare("INSERT INTO cache (k, v, exp) VALUES (?, '1', ?) ON CONFLICT(k) DO UPDATE SET v = CAST(cache.v AS INTEGER) + 1 RETURNING v").bind(cmpAiDay(), now() + 2 * 86400e3).first();
-    return !!r && Number(r.v) <= CMP_AI_DAILY;
+    const n = await cmpAiCount(env);
+    if (n >= CMP_AI_DAILY) return false;
+    cmpAiMem.n = n + 1;
+    await cachePut(env, cmpAiDay(), { n: cmpAiMem.n }, 2 * 86400e3);
+    return true;
   } catch { return false; }
 }
 // Workers AI says the free daily Neurons are used up: no more AI calls today.
 async function cmpAiStop(env) {
-  await softWrite("cache", () => env.DB.prepare("UPDATE cache SET v = ? WHERE k = ?").bind(String(CMP_AI_DAILY + 1), cmpAiDay()).run());
+  cmpAiMem = { day: cmpAiDay(), n: CMP_AI_DAILY + 1 };
+  await cachePut(env, cmpAiDay(), { n: CMP_AI_DAILY + 1, stop: true }, 2 * 86400e3);
 }
 // Asks the AI about the candidates (cached per pair of names). Returns { verdicts: [..] | null, why }.
 async function cmpAiJudge(env, src, cands, shop) {
@@ -3646,12 +3753,7 @@ async function cmpAiJudge(env, src, cands, shop) {
   const keys = await Promise.all(names.map(async (t) => CMP_AI_KEY + (await sha256(srcText.toLowerCase() + "\n" + t.toLowerCase())).slice(0, 32)));
   const verdicts = names.map(() => null);
   try {
-    const rows = await env.DB.prepare(`SELECT k, v, exp FROM cache WHERE k IN (${keys.map(() => "?").join(",")})`).bind(...keys).all();
-    for (const r of rows.results || []) {
-      if (r.exp < now()) continue;
-      let v = null; try { v = JSON.parse(r.v); } catch {}
-      if (v === "same" || v === "different") keys.forEach((k, i) => { if (k === r.k) verdicts[i] = v; });
-    }
+    (await cacheGetMany(env, keys)).forEach((v, i) => { if (v === "same" || v === "different") verdicts[i] = v; });
   } catch {}
   const todo = verdicts.map((v, i) => (v ? -1 : i)).filter((i) => i >= 0);
   const done = (why) => ({ verdicts: verdicts.some(Boolean) ? verdicts : null, why });
@@ -4627,10 +4729,7 @@ async function asAiBudget(env) {
   const cached = await srchCacheGet(asAiCacheKey(day));
   if (cached) { if (cached.stop) { asAiMem.stop = true; return false; } n = Math.max(n, Number(cached.n) || 0); }
   if (n >= AS_AI_DAILY) return false;
-  try {
-    const r = await env.DB.prepare("SELECT v FROM cache WHERE k = ?").bind(cmpAiDay()).first();
-    if (r && Number(r.v) > CMP_AI_DAILY) return false;
-  } catch {}
+  try { if ((await cmpAiCount(env)) > CMP_AI_DAILY) return false; } catch {}
   asAiMem.n = n + 1;
   await srchCachePut(asAiCacheKey(day), { n: asAiMem.n }, 2 * 86400);
   return true;
