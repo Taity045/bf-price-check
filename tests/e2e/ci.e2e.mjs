@@ -532,9 +532,9 @@ const AS_ANSWER = {
     asPick(2, "HP 15 Laptop - AMD Ryzen 5 7520U, 16GB LPDDR5, 512GB SSD, 15.6\" FHD, Windows 11 Home - a long name to test wrapping on a small phone", 12999, "Computer Mania", "https://computermania.co.za/products/hp-15", "The name shows 16GB, SSD, 512GB and Ryzen 5, and it costs R2,001 less than your budget."),
     asPick(3, "Lenovo Ideapad Slim 3 Ryzen 7 16GB 512GB Laptop", 15999, "Computer Mania", "https://computermania.co.za/products/ideapad-slim-3", "The name shows 16GB and Ryzen 7, but it costs R999 more than your budget.", true)],
   more: [{ title: "Packard Bell Senna R32 Ryzen 3 16GB RAM 512GB SSD Laptop", price: 8999, was: null, currency: "ZAR", shop: "Computer Mania", url: "https://computermania.co.za/products/senna", over_budget: false }],
-  total: 4, within_budget: 3, note: "Only 2 matches are in your budget. The other picks cost more.",
+  total: 31, shop_count: 3, within_budget: 3, note: "Only 2 matches are in your budget. The other picks cost more.",
   shops: { searched: ["Takealot", "Computer Mania"], failed: ["Loot"], robots: [], notSearched: [{ name: "Amazon South Africa", why: "blocks" }] },
-  ai: { intent: false, reasons: false }, checked_at: Date.now(),
+  ai: { intent: true, reasons: true }, checked_at: Date.now(),
 };
 for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`assist ${name}`, async () => {
   const p = await open(o);
@@ -547,6 +547,8 @@ for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`a
   ok(`assist ${name}: 3 example requests under the box`, (await p.$$eval("#asks .ask", (b) => b.length)) === 3 && await p.isVisible("#asks"));
   await p.fill("#u", AS_LQ);
   ok(`assist ${name}: a need with a budget turns the button into Find picks`, (await p.textContent("#go")).trim() === "Find picks");
+  await p.fill("#u", "laptop machine for a student studying law ?");
+  ok(`assist ${name}: a need with no budget ("laptop … for a student …?") is Find picks too`, (await p.textContent("#go")).trim() === "Find picks");
   await p.fill("#u", "PS5");
   ok(`assist ${name}: a plain product name keeps Search`, (await p.textContent("#go")).trim() === "Search");
   await p.press("#u", "Enter");
@@ -559,6 +561,7 @@ for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`a
   await p.waitForSelector("#asPicks li", { timeout: 10000 });
   ok(`assist ${name}: the request goes to /api/assist with the country`, assisted[0] === AS_LQ + "|ZA", assisted.join());
   ok(`assist ${name}: says what we understood in one line`, (await p.textContent("#asWhat")) === "Budget: up to R15,000 · Looking for: laptop (16GB, SSD)");
+  ok(`assist ${name}: counts every match and every shop with a match (not only the shown ones)`, /^We found 31 matching products at 3 shops\./.test(await p.textContent("#asStatus")), await p.textContent("#asStatus"));
   ok(`assist ${name}: Top 3 picks for your budget`, (await p.textContent("#asH")) === "Top 3 picks for your budget" && await p.isVisible("#asH"));
   const cards = await p.$$eval("#asPicks li", (ls) => ls.map((l) => ({ rk: l.querySelector(".rk").textContent, t: l.querySelector(".st").textContent, p: l.querySelector(".sp").textContent, shop: l.querySelector(".sm .small").textContent, why: l.querySelector(".why").textContent, btn: l.querySelector("button").textContent, a: l.querySelector("a").textContent, href: l.querySelector("a").href, tgt: l.querySelector("a").target, ob: !!l.querySelector(".obud"), w: l.getBoundingClientRect().right <= innerWidth + 1 })));
   ok(`assist ${name}: rank badges #1 Best match, #2, #3`, cards.map((c) => c.rk).join("|") === "#1 Best match|#2|#3", cards.map((c) => c.rk).join("|"));
@@ -576,6 +579,7 @@ for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`a
   ok(`assist ${name}: Share results copies the link`, new URL(copied).pathname === "/" && new URL(copied).searchParams.get("q") === AS_LQ && new URL(copied).searchParams.get("c") === "ZA", copied);
   ok(`assist ${name}: the popular picks and examples step aside`, !(await p.isVisible("#tries")) && !(await p.isVisible("#asks")));
   ok(`assist ${name}: no sideways page scroll`, await noSideScroll(p) && cards.every((c) => c.w));
+  ok(`assist ${name}: no AI disclaimer or meta note on the page`, !/AI read|AI wrote|disclaimer/i.test(await p.textContent("#assist")));
   ok(`assist ${name}: never shows a name or an email`, !/@|Tatenda/i.test(await p.textContent("#assist")));
   await p.screenshot({ path: `${SHOTS}/assist-${name}.png`, fullPage: !!o.isMobile });
   // Check price history: runs the full check on that exact product; Back shows the picks again

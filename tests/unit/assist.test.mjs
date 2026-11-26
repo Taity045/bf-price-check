@@ -10,9 +10,11 @@ const json = (o, status = 200) => new Response(JSON.stringify(o), { status, head
 const quiet = (t) => { const log = console.log; console.log = () => {}; t.after(() => { console.log = log; }); };
 
 const PLAIN = ["PS5", "PS5 controller", "PS5 Slim", "Jungle Oats", "Jungle Oats 1 kg", "Garmin Forerunner 265", "Samsung Galaxy S25 Ultra 256GB", "iPhone 16 Pro 256GB", "Dyson V15 Detect",
-  "Kettle 1.7L", "Nike Air Force 1 size 9.5", "LEGO 75192", "Sony A7R IV", "Ryzen R5 laptop", "Tastic Rice 2kg", "Clover Full Cream 2 L", "AirPods 4", "Buds3 Pro", "best PS5 deals", "Huawei Watch GT 5 46mm", "R2-D2 LEGO"];
+  "Kettle 1.7L", "Nike Air Force 1 size 9.5", "LEGO 75192", "Sony A7R IV", "Ryzen R5 laptop", "Tastic Rice 2kg", "Clover Full Cream 2 L", "AirPods 4", "Buds3 Pro", "best PS5 deals", "Huawei Watch GT 5 46mm", "R2-D2 LEGO", "PS5?", "Case for iPhone 16", "Charger for MacBook Air", "Cover for PS5"];
 const ASKS = ["I have R15,000. I need a laptop for programming and Docker", "Best running watch under R6000", "Need a 4K TV under £500 for PS5", "Good coffee machine under R3000",
-  "laptop under R15000", "air fryer budget R1500", "recommend a kettle", "best headphones for flights", "I need a phone for my mom", "TV R 8 000", "speaker 1500 rand", "earbuds up to 900", "fridge under R12k", "What is the best tablet for school"];
+  "laptop under R15000", "air fryer budget R1500", "recommend a kettle", "best headphones for flights", "I need a phone for my mom", "TV R 8 000", "speaker 1500 rand", "earbuds up to 900", "fridge under R12k", "What is the best tablet for school",
+  // a need without a budget: "<product> for <person / use>", or a question
+  "laptop machine for a student studying law ?", "phone for my mom", "laptop for university", "headphones for the gym", "tablet for my son", "which laptop is good for coding?"];
 
 describe("assistant: which requests use it", () => {
   test("plain product names stay on the normal search (no AI)", () => { for (const q of PLAIN) assert.equal(W.asIsAssist(q), false, q); });
@@ -57,6 +59,12 @@ describe("assistant: rules (no AI)", () => {
     assert.equal(tv.category, "tv"); assert.equal(tv.currency, "GBP"); assert.equal(tv.maxBudget, 500); assert.ok(tv.mustHave.includes("4k")); assert.ok(tv.prefer.includes("120hz"));
     const c = W.asRules("Good coffee machine under R3000", "ZA");
     assert.equal(c.category, "appliance"); assert.deepEqual(c.searchQueries, ["coffee machine"]);
+  });
+  test("a law student's laptop, with no budget", () => {
+    const r = W.asRules("laptop machine for a student studying law ?", "ZA");
+    assert.equal(r.category, "laptop"); assert.equal(r.maxBudget, null); assert.deepEqual(r.searchQueries, ["laptop"]); assert.ok(r.prefer.includes("ssd"));
+    assert.equal(W.asUnderstanding(r), "Budget: not given · Looking for: laptop (SSD, 8GB, 16GB)");
+    assert.equal(W.asRules("phone for my mom", "ZA").category, "phone");
   });
   test("asking for refurbished keeps refurbished", () => assert.ok(!W.asRules("refurbished laptop under R8000", "ZA").avoid.includes("refurbished")));
   test("the understanding line", () => {
@@ -127,6 +135,7 @@ describe("assistant: the filter and the picks", () => {
     assert.equal(r.top[1].title, "ASUS Vivobook 15 Ryzen 5 16GB RAM 512GB SSD Laptop Silver");
     assert.equal(r.top[1].price, 12299, "the cheaper listing of the same model");
     assert.equal(r.total, 4, "the two Vivobook listings are one model");
+    assert.equal(r.shops, 1, "shops with a match (the Computer Mania listing is the same model, dearer)");
     const over = r.top.concat(r.rest).find((x) => x.price === 15999);
     assert.equal(over.over, true);
     assert.ok(r.top.concat(r.rest).indexOf(over) > r.top.concat(r.rest).findIndex((x) => x.price === 6798), "over budget comes after every match in the budget");
@@ -197,6 +206,7 @@ describe("/api/assist", () => {
     assert.deepEqual(d.picks.map((p) => p.price), [12999, 13999, 8999]);
     assert.ok(d.picks.every((p) => p.shop === "Computer Mania" && p.url.startsWith("https://computermania.co.za/products/") && p.reason_by === "rules" && !p.over_budget));
     assert.equal(d.more.length, 1); assert.equal(d.more[0].price, 15999); assert.equal(d.more[0].over_budget, true);
+    assert.equal(d.total, 4); assert.equal(d.shop_count, 1);
     const all = JSON.stringify(d);
     assert.ok(!/Kingston|Sleeve|Out of stock/.test(all), "no memory, sleeve or out-of-stock product");
     assert.ok(d.shops.searched.includes("Computer Mania")); assert.ok(d.shops.failed.length > 0);

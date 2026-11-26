@@ -21,7 +21,7 @@
 // request and country. No D1 writes: the AI day count is in the Cloudflare cache and in memory, and it also
 // reads (never writes) the compare AI day count, so the assistant never goes past the shared daily cap.
 
-const AS_VER = "v1";
+const AS_VER = "v2";               // v2: shop_count (shops with a match, not only the shown ones)
 const AS_MAX = 200;                       // characters in a request
 const AS_TTL = 20 * 60;                   // seconds: one answer for one request and country
 const AS_AI_TIMEOUT = 2800;               // ms for one AI answer; a slow answer is dropped (rules decide)
@@ -35,7 +35,7 @@ const AS_CATEGORIES = ["laptop", "tv", "watch", "appliance", "phone", "audio", "
 
 // ---------- 1. Is this a shopping need (assistant) or a product name (normal search)? ----------
 // Keep the same rule in public/index.html (isAsk): a unit test checks that both agree.
-const AS_ASK_RE = /(?:^|[^\w£])(?:R ?\d{1,3}(?:[ ,]\d{3})+|R ?\d{3,}(?:\.\d+)?|R ?\d+(?:\.\d+)? ?k)\b|£ ?\d|\b\d[\d ,.]* ?(?:rand|zar|pounds?|gbp|quid)\b|\b(?:budget|under|below|less than|max(?:imum)?|up to|at most|no more than|cheaper than)\b[^\d]{0,3}\d{2,}|\bbudget\b|\b(?:i need|i want|i have|i'?m looking for|looking for|need an?|want an?|recommend|suggest|help me (?:find|choose|pick)|which [a-z ]{2,30} should i|what (?:is|are) (?:the|a) (?:best|good))\b|\b(?:best|good|decent|great|cheap|affordable)\b(?: [\w'-]+){1,5} (?:for|under|below)\b/i;
+const AS_ASK_RE = /(?:^|[^\w£])(?:R ?\d{1,3}(?:[ ,]\d{3})+|R ?\d{3,}(?:\.\d+)?|R ?\d+(?:\.\d+)? ?k)\b|£ ?\d|\b\d[\d ,.]* ?(?:rand|zar|pounds?|gbp|quid)\b|\b(?:budget|under|below|less than|max(?:imum)?|up to|at most|no more than|cheaper than)\b[^\d]{0,3}\d{2,}|\bbudget\b|\b(?:i need|i want|i have|i'?m looking for|looking for|need an?|want an?|recommend|suggest|help me (?:find|choose|pick)|which [a-z ]{2,30} should i|what (?:is|are) (?:the|a) (?:best|good))\b|\b(?:best|good|decent|great|cheap|affordable)\b(?: [\w'-]+){1,5} (?:for|under|below)\b|\bfor (?:the )?(?:a|an|my|our|his|her|their|someone|somebody|kids?|children|students?|school|university|varsity|college|uni|work|office|home|travel|gaming|programming|coding|studying|study|studies|running|gym|beginners?|seniors?|elderly|mom|mum|dad|wife|husband|girlfriend|boyfriend|son|daughter|teens?|teenagers?|business|photography|video editing|streaming)\b|(?:\S+\s+){2,}\S*\?\s*$/i;
 function asIsAssist(q) {
   const s = String(q || "").replace(/\s+/g, " ").trim();
   if (!s || srchIsLink(s)) return false;
@@ -142,6 +142,7 @@ function asRules(q, country) {
     if (dev && !specs.some((s) => /^\d+gb$/.test(s))) add(mustHave, "16gb");
     if (dev) add(prefer, "ssd", "512gb", "ryzen 7", "core i7", "ryzen 5", "core i5");
     if (gaming) add(prefer, "rtx");
+    if (/\b(students?|study|studying|studies|school|university|varsity|college|uni|law|essays?|assignments?)\b/.test(low)) add(prefer, "ssd", "8gb", "16gb");
     const ram = mustHave.find((s) => /^\d+gb$/.test(s));
     searchQueries = ram ? [ram.toUpperCase() + " laptop", gaming ? "gaming laptop" : "laptop " + (dev ? "Ryzen" : "SSD")] : [gaming ? "gaming laptop" : "laptop"];
   } else if (category === "tv") {
@@ -403,7 +404,7 @@ function asPick(intent, cands) {
   const over = scored.filter((x) => x.over).sort((a, b) => a.price - b.price || b.s - a.s);
   const ranked = within.concat(over);
   const clean = ({ key, tail, s, ...x }) => x;
-  return { top: ranked.slice(0, AS_TOP).map(clean), rest: ranked.slice(AS_TOP, AS_TOP + AS_MORE).map(clean), total: ranked.length, within: within.length };
+  return { top: ranked.slice(0, AS_TOP).map(clean), rest: ranked.slice(AS_TOP, AS_TOP + AS_MORE).map(clean), total: ranked.length, within: within.length, shops: new Set(ranked.map((x) => x.shop)).size };
 }
 
 // ---------- 5. Reasons: rules, or the AI from the real facts only ----------
@@ -510,7 +511,7 @@ async function apiAssist(req, env, ctx) {
   const out = {
     q: v.q, country, currency: intent.currency === (country === "GB" ? "GBP" : "ZAR") ? intent.currency : SRCH_CC[country],
     intent: { category: intent.category, maxBudget: intent.maxBudget, currency: intent.currency, searchQueries: intent.searchQueries, mustHave: intent.mustHave, prefer: intent.prefer, avoid: intent.avoid, by: intent.by },
-    understanding: asUnderstanding(intent), picks, more, total: ranked.total, within_budget: ranked.within, note,
+    understanding: asUnderstanding(intent), picks, more, total: ranked.total, shop_count: ranked.shops, within_budget: ranked.within, note,
     shops: { searched: st.searched || [], failed: st.failed || [], robots: st.robots || [], notSearched },
     ai: { intent: intent.by === "ai", reasons: by.includes("ai") }, checked_at: now(),
   };
