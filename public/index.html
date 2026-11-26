@@ -90,7 +90,7 @@ html.q main:has(#result.hidden):has(#search.hidden):has(#assist.hidden) footer{d
 .slist .sa button,.slist .sa a{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);font-size:14px;font-weight:600;text-decoration:none;color:var(--ink)}
 .slist .sa button{background:var(--ink);border-color:var(--ink);color:var(--bg)}
 .slist .sa button[aria-busy=true]{opacity:.7}
-.slist .ftag{display:inline-flex;align-items:center;min-height:40px;padding:0 10px;font-size:12px;font-family:var(--mono);text-transform:uppercase;border:1.5px dashed var(--ink);border-radius:2px}
+.slist .ftag{display:inline-flex;align-items:center;min-height:40px;padding:0 10px;font-size:12px;font-family:var(--mono);text-transform:uppercase;border:1.5px dashed var(--ink);border-radius:2px}.slist .ftag.card{border-style:solid;background:var(--acc);color:var(--acc-ink)}.slist .fp{opacity:.85}
 .slist .fn{margin-top:4px}
 .slist li.low{border-color:var(--good)}
 .sshops{margin:12px 0 0}
@@ -234,7 +234,7 @@ dialog.dlg-fb[open]{display:block;position:fixed;z-index:20;left:12px;right:12px
 .cmp .tag{display:inline-block;margin:4px 6px 0 0;padding:1px 6px;font-size:11px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.02em;border:1.5px solid var(--line);border-radius:2px;color:var(--mut);white-space:nowrap}
 .cmp .tag.sure{border-color:var(--good);color:var(--good)}
 .cmp .tag.cheap{background:var(--acc);color:var(--acc-ink);border-color:var(--ink)}
-.cmp .tag.oos{border-color:var(--bad);color:var(--bad)}
+.cmp .tag.oos{border-color:var(--bad);color:var(--bad)}.cmp .tag.card{border-color:var(--ink);color:var(--ink)}
 .cmp li.here{background:var(--soft);margin:0 -10px;padding:10px}
 .cmp li.wait .os b,.cmp li.wait .op{color:var(--mut)}
 .cmp li.oos .num{color:var(--mut)}
@@ -397,7 +397,7 @@ html.q .hero .steps,.hero:has(~#result:not(.hidden)) .steps{display:none}
       <button class="go" id="go" type="submit">Check price</button>
     </form>
     <div class="ccrow hidden" id="ccrow" role="group" aria-label="Search shops in"><span>Shops in</span><button type="button" class="ccb" data-c="ZA" aria-pressed="true">South Africa</button><button type="button" class="ccb" data-c="GB" aria-pressed="false">UK</button></div>
-    <p class="asks" id="asks"><span>Or ask:</span><button type="button" class="ask" data-q="I have R10,000. I need a laptop to study law">Laptop for law studies, R10,000</button><button type="button" class="ask" data-q="Best running watch under R6000">Running watch under R6,000</button><button type="button" class="ask" data-q="Good coffee machine under R3000">Coffee machine under R3,000</button></p>
+    <p class="asks" id="asks"><span>Or ask:</span><button type="button" class="ask" data-q="I have R10,000. I need a laptop for a law student">Laptop for a law student, R10,000</button><button type="button" class="ask" data-q="Best running watch under R6000">Running watch under R6,000</button><button type="button" class="ask" data-q="Good coffee machine under R3000">Coffee machine under R3,000</button></p>
     <section class="tries" id="tries" aria-labelledby="triesH">
       <h2 class="tryh" id="triesH">Try a popular product</h2>
       <!--PICKS-->
@@ -670,7 +670,7 @@ const isAsk = (v) => { const s = String(v || "").replace(/\s+/g, " ").trim(); re
 // Search country: South Africa (ZA) or the UK (GB). Kept on this device.
 let cc = store.get("cc", "ZA"); if (cc !== "ZA" && cc !== "GB") cc = "ZA";
 // The example requests under the box follow the country (rand or pounds).
-const ASKS = { ZA: [["I have R10,000. I need a laptop to study law", "Laptop for law studies, R10,000"], ["Best running watch under R6000", "Running watch under R6,000"], ["Good coffee machine under R3000", "Coffee machine under R3,000"]],
+const ASKS = { ZA: [["I have R10,000. I need a laptop for a law student", "Laptop for a law student, R10,000"], ["Best running watch under R6000", "Running watch under R6,000"], ["Good coffee machine under R3000", "Coffee machine under R3,000"]],
   GB: [["Need a 4K TV under £500 for PS5", "4K TV for PS5, £500"], ["Best running watch under £250", "Running watch under £250"], ["Good coffee machine under £200", "Coffee machine under £200"]] };
 function setCc(c) {
   cc = c === "GB" ? "GB" : "ZA"; document.querySelectorAll("#ccrow .ccb").forEach((b) => b.setAttribute("aria-pressed", b.dataset.c === cc ? "true" : "false"));

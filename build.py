@@ -16,14 +16,21 @@ def picks_html(groups):
 examples = json.loads((root / "examples.json").read_text()) if (root / "examples.json").exists() else {}
 html = html.replace("<!--PICKS-->", picks_html(examples.get("groups", [])))
 import base64, hashlib, re, subprocess
-FLYER_FILE = "data/flm-flyer-2026-11-23.json"
-FLYER_KEYS = ["id", "title", "brand", "price", "deal_text", "qty", "unit_price", "is_combo", "section"]
+# In-store flyer deals (src/flyer.js): one JSON file per printed flyer, built into the Worker as a constant.
+FLYER_FILES = {"FLM_FLYER": "data/flm-flyer-2026-11-23.json", "PNP_FLYER": "data/pnp-flyer-2026-11-26.json",
+               "SPAR_FLYER": "data/spar-flyer-2026-11-25.json", "SHOPRITE_FLYER": "data/shoprite-flyer-2026-11-26.json"}
+FLYER_KEYS = ["id", "title", "brand", "price", "deal_text", "qty", "unit_price", "is_combo", "section", "valid_from", "valid_to"]
+FLYER_OPT = ["regular_price", "smart_shopper", "rewards_card", "xtra_savings", "limit", "note", "price_basis"]
 def flyer_js():
-    """Food Lover's Market flyer deals (src/flyer.js): the typed flyer, only the fields the Worker uses."""
-    d = json.loads((root / FLYER_FILE).read_text())
-    keep = {"shop": d["shop"], "region": d["region"], "valid_from": d["valid_from"], "valid_to": d["valid_to"],
-            "deals": [{k: x[k] for k in FLYER_KEYS} for x in d["deals"]]}
-    return "const FLM_FLYER = " + json.dumps(keep, separators=(",", ":")) + ";\n"
+    """The typed flyers, only the fields the Worker uses. A deal with no printed price is never built in."""
+    out = ""
+    for name, f in FLYER_FILES.items():
+        d = json.loads((root / f).read_text())
+        deals = [x for x in d["deals"] if x.get("price") is not None and x.get("unit_price") is not None]
+        keep = {"shop": d["shop"], "region": d["region"], "fine_print": d.get("fine_print"), "valid_from": d["valid_from"], "valid_to": d["valid_to"],
+                "deals": [{**{k: x[k] for k in FLYER_KEYS}, **{k: x[k] for k in FLYER_OPT if x.get(k) is not None}} for x in deals]}
+        out += "const " + name + " = " + json.dumps(keep, separators=(",", ":")) + ";\n"
+    return out
 TARGETS = "--target=chrome70,safari12,firefox68,edge79"
 def esbuild(code, loader):
     """Minify and lower modern syntax for older browsers. Falls back to the source if esbuild is not available."""

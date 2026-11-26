@@ -52,10 +52,10 @@ const srchKey = (q) => srchWords(q).join(" ");
 // Which shops to search: same currency, not off (robots.txt or no search), shops that sell this kind of product.
 function srchPlan(q, country) {
   const cur = SRCH_CC[country];
-  // Food Lover's Market flyer deals (src/flyer.js): a searched shop only when a deal on the flyer has these words.
-  const flyer = cur === "ZAR" && flmSearch(q).length > 0;
+  // In-store flyer deals (src/flyer.js): a flyer is a searched shop only when one of its live deals has these words.
+  const flyers = cur === "ZAR" ? flyersFor(q) : [];
   // a flyer deal names a grocery ("chicken wings", "watermelons"): search the grocery shops too
-  const cat = cmpCatOf(q) || (flyer ? "groceries" : null);
+  const cat = cmpCatOf(q) || (flyers.length && flyersGrocery(q) ? "groceries" : null);
   const words = new Set(srchWords(q));
   const want = (s) => s.sells.includes("*") || (cat ? s.sells.includes(cat) : s.sells.some((x) => SRCH_BROAD.includes(x)));
   const shops = [], notSearched = [];
@@ -71,7 +71,7 @@ function srchPlan(q, country) {
   const slow = (id) => (cmpShopById(id) || {}).slow ? 1 : 0;
   shops.sort((a, b) => slow(a.id) - slow(b.id) || b.general - a.general);
   // the flyer answers from memory at once: first, so it is never cut off by SRCH_MAX_SHOPS
-  if (flyer) { const f = cmpShopById(FLM_ID); shops.unshift({ id: f.id, name: f.name, general: false, flyer: true }); }
+  shops.unshift(...flyers.map((x) => { const f = cmpShopById(x.id); return { id: f.id, name: f.name, general: false, flyer: true }; }));
   for (const x of CMP_NOT_SEARCHED[cur] || []) {
     const cats = x.cats || CMP_NOT_SEARCHED_CATS;
     if (cat ? cats.includes(cat) : cats.some((c) => SRCH_BROAD.includes(c))) notSearched.push({ name: x.name, why: x.why });
@@ -194,8 +194,8 @@ async function apiSearch(req, env) {
   const country = srchCountry(sp.get("c")); if (!country) return json({ error: "Choose South Africa or the UK." }, 400);
   if (!isE2E(req, env) && await rateLimit(env, srchIp(req), "search")) return json({ error: "Too many searches. Wait a minute and try again." }, 429);
   const plan = srchPlan(v.q, country);
-  // a plan with the flyer is never kept past the flyer's end
-  const age = plan.shops.some((s) => s.flyer) ? Math.min(300, flmSecondsLeft()) : 300;
+  // a plan with flyer deals is never kept past the end of any of their deals
+  const age = Math.min(300, ...plan.shops.filter((s) => s.flyer).map((s) => flyerSecondsLeft(flyerById(s.id))));
   return json({ q: v.q, country, ...plan }, 200, { "cache-control": "public, max-age=" + age });
 }
 
@@ -209,9 +209,10 @@ async function apiSearchShop(req, env, ctx) {
   // Flyer deals: from memory, no shop fetch, no cache (so nothing shows after the flyer ends).
   if (shop && shop.flyer) {
     if (country !== "ZA") return json({ error: "unknown shop" }, 400);
-    if (!flmActive()) return json({ shop: shop.id, name: shop.name, status: "ended", items: [], flyer: true }, 200, { "cache-control": "no-store" });
-    const items = flmSearch(v.q);
-    return json({ shop: shop.id, name: shop.name, status: items.length ? "ok" : "none", items, flyer: true, label: FLM_LABEL, checked_at: now() }, 200, { "cache-control": "public, max-age=" + Math.min(300, flmSecondsLeft()) });
+    const f = flyerById(shop.id);
+    if (!flyerActive(f)) return json({ shop: shop.id, name: shop.name, status: "ended", items: [], flyer: true }, 200, { "cache-control": "no-store" });
+    const items = flyerSearch(f, v.q);
+    return json({ shop: shop.id, name: shop.name, status: items.length ? "ok" : "none", items, flyer: true, label: f.label, fine: f.fine, checked_at: now() }, 200, { "cache-control": "public, max-age=" + Math.min(300, flyerSecondsLeft(f)) });
   }
   if (!shop || !srchPlan(v.q, country).shops.some((s) => s.id === shop.id)) return json({ error: "unknown shop" }, 400);
   const base = { shop: shop.id, name: shop.name };
