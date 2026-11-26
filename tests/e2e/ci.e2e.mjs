@@ -619,6 +619,57 @@ for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`a
   await p.context().close();
 });
 
+// 3f4. AB-40: natural-language phrases go to the assistant with no pill on; names stay on the normal search;
+// a "Find a product" pill forces the normal search; a 0-result search of 3+ words offers "Ask AI instead".
+const NL_Q = "iphone with a good camera";
+for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`nl routing ${name}`, async () => {
+  const p = await open(o);
+  const assisted = [], searched = [];
+  await p.route(/\/api\/assist\?/, (r) => { const u = new URL(r.request().url()); assisted.push(u.searchParams.get("q")); r.fulfill({ json: { ...AS_ANSWER, q: u.searchParams.get("q"), intent: { ...AS_ANSWER.intent, category: "phone", maxBudget: null }, understanding: "Looking for: phone (camera)" } }); });
+  await p.route(/\/api\/search(\/shop)?\?/, (r) => { const u = r.request().url(); if (!/\/shop\?/.test(u)) searched.push(new URL(u).searchParams.get("q")); r.fulfill({ json: /\/shop\?/.test(u) ? { shop: "takealot", status: "none", items: [] } : { q: new URL(u).searchParams.get("q"), country: "ZA", currency: "ZAR", category: null, shops: [{ id: "takealot", name: "Takealot" }], notSearched: [] } }); });
+  await p.goto(BASE + "/", { waitUntil: "networkidle" });
+  ok(`nl routing ${name}: no mode pill is on`, (await p.$$eval('#modes .mode[aria-pressed="true"]', (b) => b.length)) === 0);
+  for (const q of [NL_Q, "best air fryer", "laptop with long battery", "cheap running watch"]) {
+    await p.fill("#u", q);
+    ok(`nl routing ${name}: "${q}" turns the button into Find picks`, (await p.textContent("#go")).trim() === "Find picks", await p.textContent("#go"));
+  }
+  for (const q of ["iphone 16", "coca cola", "garmin forerunner 265", "gaming laptops"]) {
+    await p.fill("#u", q);
+    ok(`nl routing ${name}: "${q}" keeps Search`, (await p.textContent("#go")).trim() === "Search", await p.textContent("#go"));
+  }
+  await p.fill("#u", NL_Q); await p.press("#u", "Enter");
+  await p.waitForSelector("#asPicks li", { timeout: 10000 });
+  ok(`nl routing ${name}: "${NL_Q}" goes to the AI Shopping Assistant, not the normal search`, assisted[0] === NL_Q && searched.length === 0 && /^AI Shopping Assistant/.test(await p.textContent("#asLab")) && !(await p.isVisible("#search")), JSON.stringify({ assisted, searched }));
+  await p.goto(BASE + "/", { waitUntil: "networkidle" });
+  await p.fill("#u", "coca cola"); await p.press("#u", "Enter");
+  await p.waitForSelector("#search:not(.hidden)", { timeout: 10000 });
+  ok(`nl routing ${name}: "coca cola" uses the normal search`, searched.includes("coca cola") && assisted.length === 1, JSON.stringify({ assisted, searched }));
+  // a 0-result search of 2 words: no "Ask AI instead" button
+  await p.waitForSelector("#sEmpty:not(.hidden)", { timeout: 10000 });
+  ok(`nl routing ${name}: 2 words with no result show no Ask AI instead button`, !(await p.isVisible("#sAskAi")));
+  // the Find a product pill forces the normal search, even for a natural phrase; 0 results of 3+ words offer Ask AI instead
+  await p.goto(BASE + "/", { waitUntil: "networkidle" });
+  await p.click('#modes .mode[data-m="find"]');
+  await p.fill("#u", NL_Q);
+  ok(`nl routing ${name}: with Find a product on, "${NL_Q}" keeps Search`, (await p.textContent("#go")).trim() === "Search", await p.textContent("#go"));
+  await p.press("#u", "Enter");
+  await p.waitForSelector("#sAskAi:not(.hidden)", { timeout: 10000 });
+  ok(`nl routing ${name}: Find a product runs the normal search, and 0 results offer Ask AI instead`, searched.includes(NL_Q) && assisted.length === 1 && (await p.textContent("#sAskAi")).trim() === "Ask AI instead", JSON.stringify({ assisted, searched }));
+  ok(`nl routing ${name}: the Ask AI instead button fits the screen`, await inView(p, "#sAskAi") || (await p.evaluate(() => { const r = document.getElementById("sAskAi").getBoundingClientRect(); return r.width > 0 && r.left >= -1 && r.right <= innerWidth + 1; })));
+  await p.click("#sAskAi");
+  await p.waitForSelector("#asPicks li", { timeout: 10000 });
+  ok(`nl routing ${name}: Ask AI instead sends the same words to the assistant`, assisted.length === 2 && assisted[1] === NL_Q && !(await p.isVisible("#search")), JSON.stringify(assisted));
+  // the Ask AI pill forces the assistant, even for a plain name
+  await p.goto(BASE + "/", { waitUntil: "networkidle" });
+  await p.click('#modes .mode[data-m="ai"]');
+  await p.fill("#u", "iphone 16");
+  ok(`nl routing ${name}: with Ask AI on, "iphone 16" is Find picks`, (await p.textContent("#go")).trim() === "Find picks");
+  ok(`nl routing ${name}: no sideways page scroll`, await noSideScroll(p));
+  ok(`nl routing ${name}: no JS errors`, p._errs.length === 0, p._errs.join(" | "));
+  if (name === "phone") await p.screenshot({ path: `${SHOTS}/nl-routing-phone.png` });
+  await p.context().close();
+});
+
 // 3f1. AB-32 home polish: the 3 "How it works" steps are even cards in one row (phone and desktop), and the
 // first example request is a law student laptop.
 for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`home steps ${name}`, async () => {
