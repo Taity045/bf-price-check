@@ -3740,9 +3740,9 @@ const srchKey = (q) => srchWords(q).join(" ");
 function srchPlan(q, country) {
   const cur = SRCH_CC[country];
   // In-store flyer deals (src/flyer.js): a flyer is a searched shop only when one of its live deals has these words.
-  const flyers = cur === "ZAR" ? flyersFor(q) : [];
+  const hits = cur === "ZAR" ? flyerHits(q) : [], flyers = hits.map((h) => h.f);
   // a flyer deal names a grocery ("chicken wings", "watermelons"): search the grocery shops too
-  const cat = cmpCatOf(q) || (flyers.length && flyersGrocery(q) ? "groceries" : null);
+  const cat = cmpCatOf(q) || (flyersGrocery(hits) ? "groceries" : null);
   const words = new Set(srchWords(q));
   const want = (s) => s.sells.includes("*") || (cat ? s.sells.includes(cat) : s.sells.some((x) => SRCH_BROAD.includes(x)));
   const shops = [], notSearched = [];
@@ -3769,10 +3769,14 @@ function srchPlan(q, country) {
 
 // Does this product name have every search word? Short words must be whole words; a word with digits
 // can also be part of a joined word ("buds3"); a long word can be plural or singular ("kettle", "kettles").
-function srchHas(words, title) {
+// The words of a name, and the same words joined in twos and threes ("buds 3" = "buds3"; "ps5" does not match "ps500").
+function srchTokens(title) {
   const tw = cmpWords(title), set = new Set(tw);
-  // two or three words next to each other, joined ("buds 3" = "buds3"; "ps5" does not match "ps500")
   for (let i = 0; i < tw.length; i++) { set.add(tw[i] + (tw[i + 1] || "")); if (tw[i + 2]) set.add(tw[i] + tw[i + 1] + tw[i + 2]); }
+  return { tw, set };
+}
+const srchHas = (words, title) => srchHasTok(words, srchTokens(title));
+function srchHasTok(words, { tw, set }) {
   return words.every((w) => {
     if (set.has(w)) return true;
     if (/^\d+$/.test(w)) return tw.some((t) => t === w || new RegExp("^" + w + "(st|nd|rd|th)$").test(t));
@@ -4966,22 +4970,36 @@ const flmItem = (d) => flyItem(FLY_FLM, d);
 
 // Search: deals whose name (with the brand) has every search word; lowest price for one item first.
 // Expired deals and deals not started yet are never in the answer.
-function flyerSearch(f, q, t = now()) {
-  const words = srchWords(q);
-  if (!f || !words.length) return [];
-  const out = [];
-  for (const d of flyLive(f, t)) {
+// The search words of each deal (name with the brand), worked out once per Worker instance: a search reads
+// about 360 deals, and the Free plan gives 10 ms of CPU per request.
+const FLY_TOK = new Map();
+function flyTokens(d) {
+  let x = FLY_TOK.get(d.id);
+  if (!x) {
     const name = d.brand && !cmpNorm(d.title).includes(cmpNorm(d.brand)) ? d.brand + " " + d.title : d.title;
-    if (srchHas(words, name)) out.push(flyItem(f, d));
+    x = srchTokens(name); FLY_TOK.set(d.id, x);
   }
-  return out.sort((a, b) => a.price - b.price || a.title.localeCompare(b.title)).slice(0, SRCH_PER_SHOP);
+  return x;
+}
+// The live deals of one flyer with every search word.
+function flyerDeals(f, words, t = now()) {
+  if (!f || !words.length) return [];
+  return flyLive(f, t).filter((d) => srchHasTok(words, flyTokens(d)));
+}
+function flyerSearch(f, q, t = now()) {
+  return flyerDeals(f, srchWords(q), t).map((d) => flyItem(f, d))
+    .sort((a, b) => a.price - b.price || a.title.localeCompare(b.title)).slice(0, SRCH_PER_SHOP);
 }
 const flmSearch = (q, t = now()) => flyerSearch(FLY_FLM, q, t);
-// The flyers with a live deal for these words (South Africa only), in FLYERS order.
-const flyersFor = (q, t = now()) => FLYERS.filter((f) => flyerSearch(f, q, t).length > 0);
-// Do the matching deals name groceries (not only appliances or phones)?
+// The flyers with a live deal for these words (South Africa only), in FLYERS order, with those deals.
+function flyerHits(q, t = now()) {
+  const words = srchWords(q);
+  return FLYERS.map((f) => ({ f, deals: flyerDeals(f, words, t) })).filter((h) => h.deals.length);
+}
+const flyersFor = (q, t = now()) => flyerHits(q, t).map((h) => h.f);
+// Do the matching deals name groceries (not only appliances or phones)? Takes flyerHits(q) or the words.
 const FLY_NOT_GROCERY = /appliance|home &|moneymarket/i;
-const flyersGrocery = (q, t = now()) => FLYERS.some((f) => flyLive(f, t).some((d) => !FLY_NOT_GROCERY.test(d.section || "") && flyerSearch(f, q, t).some((x) => x.id === d.id)));
+const flyersGrocery = (hits, t = now()) => (typeof hits === "string" ? flyerHits(hits, t) : hits).some((h) => h.deals.some((d) => !FLY_NOT_GROCERY.test(d.section || "")));
 
 // ---------- compare: the same product on the flyer (strict) ----------
 // Only branded single items (no combos, no fresh or butchery items without a brand, not the shop's own brand).

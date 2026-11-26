@@ -53,9 +53,9 @@ const srchKey = (q) => srchWords(q).join(" ");
 function srchPlan(q, country) {
   const cur = SRCH_CC[country];
   // In-store flyer deals (src/flyer.js): a flyer is a searched shop only when one of its live deals has these words.
-  const flyers = cur === "ZAR" ? flyersFor(q) : [];
+  const hits = cur === "ZAR" ? flyerHits(q) : [], flyers = hits.map((h) => h.f);
   // a flyer deal names a grocery ("chicken wings", "watermelons"): search the grocery shops too
-  const cat = cmpCatOf(q) || (flyers.length && flyersGrocery(q) ? "groceries" : null);
+  const cat = cmpCatOf(q) || (flyersGrocery(hits) ? "groceries" : null);
   const words = new Set(srchWords(q));
   const want = (s) => s.sells.includes("*") || (cat ? s.sells.includes(cat) : s.sells.some((x) => SRCH_BROAD.includes(x)));
   const shops = [], notSearched = [];
@@ -82,10 +82,14 @@ function srchPlan(q, country) {
 
 // Does this product name have every search word? Short words must be whole words; a word with digits
 // can also be part of a joined word ("buds3"); a long word can be plural or singular ("kettle", "kettles").
-function srchHas(words, title) {
+// The words of a name, and the same words joined in twos and threes ("buds 3" = "buds3"; "ps5" does not match "ps500").
+function srchTokens(title) {
   const tw = cmpWords(title), set = new Set(tw);
-  // two or three words next to each other, joined ("buds 3" = "buds3"; "ps5" does not match "ps500")
   for (let i = 0; i < tw.length; i++) { set.add(tw[i] + (tw[i + 1] || "")); if (tw[i + 2]) set.add(tw[i] + tw[i + 1] + tw[i + 2]); }
+  return { tw, set };
+}
+const srchHas = (words, title) => srchHasTok(words, srchTokens(title));
+function srchHasTok(words, { tw, set }) {
   return words.every((w) => {
     if (set.has(w)) return true;
     if (/^\d+$/.test(w)) return tw.some((t) => t === w || new RegExp("^" + w + "(st|nd|rd|th)$").test(t));
