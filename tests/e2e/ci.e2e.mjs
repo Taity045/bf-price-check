@@ -6,7 +6,9 @@ import { chromium } from "playwright-core";
 
 const BASE = (process.argv[2] || process.env.BASE || "http://127.0.0.1:8787").replace(/\/$/, "");
 const SHOTS = process.env.SHOTS || "e2e-artifacts";
-const HOME_BUDGET = Number(process.env.HOME_BUDGET || 100 * 1024); // bytes for the first view (HTML, JS, CSS, fonts)
+// bytes for the first view (HTML, JS, CSS, fonts), not compressed. 120 KB since AB-37: the home page now carries up to
+// 12 real deal cards, quick searches and the AI block (the HTML is about 17 KB gzip on the wire).
+const HOME_BUDGET = Number(process.env.HOME_BUDGET || 120 * 1024);
 mkdirSync(SHOTS, { recursive: true });
 
 const results = [];
@@ -434,8 +436,8 @@ for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`s
   const asked = [];
   await p.route(/\/api\/search\/shop\?/, srchShop({ asked }));
   await p.goto(BASE + "/", { waitUntil: "networkidle" });
-  ok(`search ${name}: the box says link or product name`, (await p.getAttribute("#u", "placeholder")) === "Paste a link or type a product name" && (await p.getAttribute("#u", "type")) === "text");
-  ok(`search ${name}: no SA / UK switch on the clean home page`, !(await p.isVisible("#ccrow")));
+  ok(`search ${name}: the box says search, link or AI`, (await p.getAttribute("#u", "placeholder")) === "Search, paste a link or ask AI" && (await p.getAttribute("#u", "type")) === "text");
+  ok(`search ${name}: the SA / UK switch shows on the clean home page (the deals follow it)`, await p.isVisible("#ccrow"));
   await p.fill("#u", "PS5 Slim");
   ok(`search ${name}: a product name turns the button into Search and shows the switch`, (await p.textContent("#go")).trim() === "Search" && await p.isVisible("#ccrow") && (await p.getAttribute('#ccrow [data-c="ZA"]', "aria-pressed")) === "true");
   await p.fill("#u", "https://www.takealot.com/x/PLID1");
@@ -770,6 +772,145 @@ await step("flyer API (local worker)", async () => {
   const d = await (await fetch(BASE + "/api/search/shop?q=Jungle+Oats&c=ZA&shop=flm", { headers: H })).json();
   if (active) ok("flyer API: Jungle Oats 1 kg at R29.99 each, from the flyer", d.status === "ok" && d.items[0].title === "Jungle Oats 1 kg" && d.items[0].price === 29.99 && d.items[0].deal === "R29.99 each" && d.label === FLM_LABEL, JSON.stringify(d));
   else ok("flyer API: no deals after the flyer ended", d.status === "ended" && d.items.length === 0, JSON.stringify(d));
+});
+
+// 3i. AB-37 home page: mode pills, today's genuine deals (real /api/home from the local worker, then faked answers
+// for price drops, UK and an empty list), quick searches, the AI block, and the top / bottom bars (no Alerts).
+// Test cards in the same markup the Worker writes (src/home.js; its markup is checked by tests/unit/home-deals.test.mjs).
+const card = (cc, kind, title, href, price, meta) => `<li data-cc="${cc}" data-kind="${kind}"${cc !== "ZA" ? " hidden" : ""}><a class="dcard" href="${href}" data-kind="${kind}"><span class="dshop">Test shop</span><span class="dtag${kind === "flyer" ? " fly" : ""}">${kind === "flyer" ? "Flyer deal" : "Lowest price we found"}</span><b class="dtitle">${title}</b><span class="dprice num">${price}</span><span class="dmeta">${meta}</span></a></li>`;
+const HOME_CARDS = card("ZA", "drop", "CI Test Kettle 1.7L", "/?u=" + encodeURIComponent(PRODUCT), "R 999", "<b>R 300 under</b> the usual R 1 299 · from 4 older prices<br>Checked today")
+  + card("GB", "drop", "CI UK Test TV 43in", "/?u=" + encodeURIComponent("https://www.currys.co.uk/products/ci-test-10100000.html"), "£249", "<b>£50 under</b> the usual £299 · from 6 older prices<br>Checked 2 days ago")
+  + [1, 2, 3, 4].map((i) => card("ZA", "flyer", `CI Flyer Deal ${i}`, `/?q=CI+Flyer+Deal+${i}&c=ZA`, `R ${100 * i}`, `Normal price R ${150 * i} · <b>Save R ${50 * i}</b><br>valid 26–29 Nov · Gauteng`)).join("")
+  + '<li class="dempty" data-empty="ZA" hidden>No genuine deals to show right now.</li><li class="dempty" data-empty="GB" hidden>No checked UK price drops right now.</li>';
+async function withCards(p, cards) {
+  await p.route((u) => u.href === BASE + "/", async (r) => {
+    const res = await r.fetch(); const h = (await res.text()).replace(/<ul class="dgrid" id="dealList">[\s\S]*?<\/ul>/, `<ul class="dgrid" id="dealList">${cards}</ul>`);
+    r.fulfill({ response: res, body: h, headers: { ...res.headers(), "content-type": "text/html; charset=utf-8" } });
+  });
+}
+for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`home redesign ${name}`, async () => {
+  // 1. the real worker: flyer deals from src/flyer.js (or an honest empty note after the flyers end)
+  let p = await open(o);
+  const real = await (await fetch(BASE + "/api/home")).json();
+  await p.goto(BASE + "/", { waitUntil: "networkidle" });
+  const za = real.deals.filter((x) => x.cc === "ZA");
+  const cards = (await p.$$eval("#dealList .dcard", (as) => as.map((a) => ({ cc: a.parentElement.dataset.cc, t: a.querySelector(".dtitle").textContent, p: a.querySelector(".dprice").textContent, vis: a.offsetParent !== null, img: !!a.querySelector("img") })))).filter((c) => c.cc === "ZA");
+  ok(`home redesign ${name}: "Today's genuine deals" shows`, await p.isVisible("#deals") && (await p.textContent("#dealsH")) === "Today's genuine deals");
+  ok(`home redesign ${name}: every card is a real deal (same as /api/home)`, cards.length === za.length && za.every((x, i) => cards[i] && cards[i].t === x.title), JSON.stringify(cards.slice(0, 3)));
+  ok(`home redesign ${name}: the cards are in the page (no extra request)`, await p.evaluate(() => !performance.getEntriesByType("resource").some((e) => /\/api\/home/.test(e.name))));
+  ok(`home redesign ${name}: no score and no pictures we do not have`, cards.every((c) => !c.img) && !/\/100|deal score/i.test(await p.textContent("#deals")));
+  ok(`home redesign ${name}: at most 4 cards before View all`, cards.filter((c) => c.vis).length === Math.min(4, za.length));
+  if (!za.length) ok(`home redesign ${name}: an honest note when there is no deal`, await p.isVisible('#dealList [data-empty="ZA"]'));
+  if (za.some((x) => x.kind === "flyer")) ok(`home redesign ${name}: flyer cards say Flyer deal, the normal price and the dates`, /Flyer deal/.test(await p.textContent("#dealList")) && /Normal price/.test(await p.textContent("#dealList")) && /valid \d/.test(await p.textContent("#dealList")));
+  ok(`home redesign ${name}: no camera button in the box`, (await p.$$("#f input[type=file], #f [aria-label*=amera]")).length === 0);
+  ok(`home redesign ${name}: no sideways scroll`, await noSideScroll(p));
+  await p.screenshot({ path: `${SHOTS}/home-redesign-${name}.png`, fullPage: true });
+  await p.context().close();
+
+  // 2. faked answer: price drops, View all, UK, taps
+  p = await open(o);
+  const checked = [], searched = [], assisted = [];
+  await withCards(p, HOME_CARDS);
+  await p.route(/\/api\/check\?/, (r) => { checked.push(new URL(r.request().url()).searchParams.get("url")); r.fulfill({ json: checkAnswer() }); });
+  await p.route(/\/api\/compare\?/, (r) => r.fulfill({ json: { ...CMP_PLAN, shops: [], results: {}, specialists: 0, reason: "no shops" } }));
+  await p.route(/\/api\/search(\/shop)?\?/, (r) => { searched.push(decodeURIComponent(r.request().url())); r.fulfill({ json: /\/shop\?/.test(r.request().url()) ? { shop: "takealot", status: "none", items: [] } : { q: new URL(r.request().url()).searchParams.get("q"), country: "ZA", currency: "ZAR", category: null, shops: [], notSearched: [] } }); });
+  await p.route(/\/api\/assist\?/, (r) => { const u = new URL(r.request().url()); assisted.push(u.searchParams.get("q")); r.fulfill({ json: { ...AS_ANSWER, q: u.searchParams.get("q") } }); });
+  await p.goto(BASE + "/", { waitUntil: "networkidle" });
+  await p.waitForSelector("#dealList .dcard");
+  const first = await p.textContent("#dealList li:first-child .dcard");
+  ok(`home redesign ${name}: a price drop shows its label, price, saving and older prices`, /Lowest price we found/.test(first) && /CI Test Kettle/.test(first) && /R\s?999/.test(first.replace(/\u00a0/g, " ")) && /under the usual/.test(first) && /from 4 older prices/.test(first), first);
+  const shown = () => p.$eval("#dealList", (e) => e.innerText);
+  ok(`home redesign ${name}: only South African deals with South Africa on`, !/CI UK Test TV/.test(await shown()) && /CI Test Kettle/.test(await shown()));
+  ok(`home redesign ${name}: View all (5)`, (await p.textContent("#dealsAll")).trim() === "View all (5)" && (await p.$$eval("#dealList li", (l) => l.filter((x) => x.offsetParent !== null).length)) === 4);
+  await p.click("#dealsAll");
+  ok(`home redesign ${name}: View all opens every deal`, (await p.$$eval("#dealList li", (l) => l.filter((x) => x.offsetParent !== null).length)) === 5 && (await p.getAttribute("#dealsAll", "aria-expanded")) === "true");
+  await p.click('#ccrow [data-c="GB"]');
+  ok(`home redesign ${name}: UK on shows UK deals only`, /CI UK Test TV/.test(await shown()) && !/CI Flyer|CI Test Kettle/.test(await shown()) && /£249/.test(await shown()) && !(await p.isVisible("#dealsAll")));
+  await p.click('#ccrow [data-c="ZA"]');
+  await p.click("#dealList li:first-child .dcard");
+  await p.waitForSelector("#result:not(.hidden)", { timeout: 10000 });
+  ok(`home redesign ${name}: a price drop card opens its live check`, checked[0] === PRODUCT && !(await p.isVisible("#deals")), checked.join());
+  await p.goto(BASE + "/", { waitUntil: "networkidle" });
+  await p.waitForSelector("#dealList .dcard");
+  await p.click('#dealList .dcard[data-kind="flyer"]');
+  await p.waitForSelector("#search:not(.hidden)", { timeout: 10000 });
+  ok(`home redesign ${name}: a flyer card searches for that deal in South Africa`, searched.some((u) => /\/api\/search\?q=CI Flyer Deal 1&c=ZA/.test(u)), searched.join(" "));
+
+  // 3. mode pills
+  await p.goto(BASE + "/", { waitUntil: "networkidle" });
+  ok(`home redesign ${name}: 3 mode pills, none on`, (await p.locator("#modes .mode").allTextContents()).join("|") === "Find a product|Verify a deal|Ask AI" && (await p.$$('#modes [aria-pressed="true"]')).length === 0);
+  await p.click('#modes [data-m="ai"]');
+  ok(`home redesign ${name}: Ask AI pill: on, AI placeholder, box focused, button Find picks`, (await p.getAttribute('#modes [data-m="ai"]', "aria-pressed")) === "true" && /laptop for a law student/.test(await p.getAttribute("#u", "placeholder")) && await p.evaluate(() => document.activeElement.id === "u") && (await p.textContent("#go")).trim() === "Find picks");
+  assisted.length = 0; searched.length = 0;
+  await p.fill("#u", "iPhone 16"); await p.press("#u", "Enter");
+  await p.waitForSelector("#assist:not(.hidden)", { timeout: 10000 });
+  ok(`home redesign ${name}: with Ask AI on, a product name goes to the AI Shopping Assistant`, assisted[0] === "iPhone 16" && !searched.some((u) => /\/api\/search\?/.test(u)), assisted.join());
+  await p.waitForFunction(() => /m=ai/.test(location.search), null, { timeout: 8000 }).catch(() => {});
+  ok(`home redesign ${name}: the AI link keeps the AI mode (m=ai)`, new URL(p.url()).searchParams.get("m") === "ai", p.url());
+  await p.goto(BASE + "/", { waitUntil: "networkidle" });
+  await p.click('#modes [data-m="find"]');
+  await p.fill("#u", "laptop for a student under R8000");
+  ok(`home redesign ${name}: Find a product pill: a need with a budget is a normal search`, (await p.textContent("#go")).trim() === "Search");
+  assisted.length = 0;
+  await p.press("#u", "Enter");
+  await p.waitForSelector("#search:not(.hidden)", { timeout: 10000 });
+  ok(`home redesign ${name}: Find a product uses /api/search`, searched.some((u) => /\/api\/search\?q=laptop for a student under R8000/.test(u)) && assisted.length === 0);
+  await p.goto(BASE + "/", { waitUntil: "networkidle" });
+  await p.click('#modes [data-m="verify"]');
+  ok(`home redesign ${name}: Verify a deal pill asks for a shop link`, (await p.getAttribute("#u", "placeholder")) === "Paste a product link from a shop" && (await p.textContent("#go")).trim() === "Check price");
+  await p.click('#modes [data-m="verify"]');
+  ok(`home redesign ${name}: a second tap turns the pill off`, (await p.$$('#modes [aria-pressed="true"]')).length === 0 && (await p.getAttribute("#u", "placeholder")) === "Search, paste a link or ask AI");
+  await p.fill("#u", "I have R10,000. I need a laptop for a law student");
+  ok(`home redesign ${name}: with no pill on, the box still works it out`, (await p.textContent("#go")).trim() === "Find picks");
+  await p.fill("#u", "");
+
+  // 4. quick searches and the AI block
+  searched.length = 0;
+  await p.click('#trending .tp[data-q="air fryer"]');
+  await p.waitForSelector("#search:not(.hidden)", { timeout: 10000 });
+  ok(`home redesign ${name}: a quick search runs that search`, searched.some((u) => /\/api\/search\?q=air fryer&c=ZA/.test(u)), searched.join(" "));
+  await p.goto(BASE + "/", { waitUntil: "networkidle" });
+  ok(`home redesign ${name}: 5 quick searches`, (await p.locator("#trending .tp").allTextContents()).join("|") === "iPhone 16|Gaming laptops|Running watches|Air fryers|TVs");
+  ok(`home redesign ${name}: AI block with the law student example first`, await p.isVisible("#aiblk") && (await p.textContent("#asks .ask")).trim() === "Laptop for a law student, R10,000");
+  await p.click("#aiGo");
+  ok(`home redesign ${name}: the Ask AI button turns on AI mode and focuses the box`, (await p.getAttribute('#modes [data-m="ai"]', "aria-pressed")) === "true" && await p.evaluate(() => document.activeElement.id === "u"));
+
+  // 5. top bar and bottom bar
+  const bnavShown = await p.isVisible("#bnav");
+  if (o.isMobile) {
+    ok(`home redesign ${name}: bottom bar Home, Deals, AI, Saved (no Alerts)`, bnavShown && (await p.locator("#bnav a, #bnav button").allTextContents()).map((x) => x.trim()).join("|") === "Home|Deals|AI|Saved");
+    ok(`home redesign ${name}: the bottom bar is at the bottom of the screen`, await inView(p, "#bnav") && await p.evaluate(() => Math.abs(document.getElementById("bnav").getBoundingClientRect().bottom - innerHeight) < 2));
+    ok(`home redesign ${name}: Saved stays in the top bar too`, await p.isVisible("#savedBtn"));
+    await p.locator('#bnav [data-nav="deals"]').tap();
+    await p.waitForTimeout(800);
+    ok(`home redesign ${name}: Deals scrolls to today's deals`, await p.evaluate(() => { const r = document.getElementById("deals").getBoundingClientRect(); return r.top < innerHeight && r.bottom > 0; }));
+    await p.locator("#savedTab").tap();
+    await p.waitForSelector("#savedDlg[open]", { timeout: 8000 });
+    ok(`home redesign ${name}: Saved opens the saved list`, await p.isVisible("#savedDlg"));
+    await p.keyboard.press("Escape");
+  } else {
+    ok(`home redesign ${name}: no bottom bar on a computer`, !bnavShown);
+    ok(`home redesign ${name}: top bar Home, Deals, AI, Saved (no Alerts)`, (await p.locator(".topnav .tn:visible, .topnav #savedBtn").allTextContents()).map((x) => x.trim().replace(/\d+$/, "")).join("|") === "Home|Deals|AI|Saved");
+    await p.click('.topnav [data-nav="ai"]');
+    ok(`home redesign ${name}: AI in the top bar turns on AI mode`, (await p.getAttribute('#modes [data-m="ai"]', "aria-pressed")) === "true");
+    await p.click("#savedBtn");
+    await p.waitForSelector("#savedDlg[open]", { timeout: 8000 });
+    ok(`home redesign ${name}: Saved opens the saved list`, await p.isVisible("#savedDlg"));
+    await p.keyboard.press("Escape");
+  }
+  ok(`home redesign ${name}: no "Alerts" anywhere in the bars`, !/Alerts/.test(await p.textContent(".topnav") + await p.textContent("#bnav")));
+  ok(`home redesign ${name}: no sideways scroll`, await noSideScroll(p));
+  ok(`home redesign ${name}: no JS errors`, p._errs.length === 0, p._errs.join(" | "));
+  await p.context().close();
+
+  // 6. an empty answer: an honest note, no View all
+  p = await open(o);
+  await withCards(p, '<li class="dempty" data-empty="ZA">No genuine deals to show right now.</li><li class="dempty" data-empty="GB" hidden>No checked UK price drops right now.</li>');
+  await p.goto(BASE + "/", { waitUntil: "networkidle" });
+  ok(`home redesign ${name}: no deals: an honest note and no View all`, await p.isVisible('#dealList [data-empty="ZA"]') && !(await p.isVisible("#dealsAll")));
+  await p.click('#ccrow [data-c="GB"]');
+  ok(`home redesign ${name}: no UK deals: the UK note`, await p.isVisible('#dealList [data-empty="GB"]') && !(await p.isVisible('#dealList [data-empty="ZA"]')));
+  await p.context().close();
 });
 
 // 4. "Ask us to add a shop" form, sent to the real worker and local D1

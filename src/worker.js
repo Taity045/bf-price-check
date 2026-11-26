@@ -1141,8 +1141,10 @@ async function pageHtml(req, env, ctx) {
   const origin = new URL(req.url).origin;
   let html = HTML.split("__ORIGIN__").join(origin).replace("<!--CANONICAL-->", `<link rel="canonical" href="${origin}/">`);
   if (new URL(req.url).pathname === "/") { try { html = await homeWithMeta(req, env, html, ctx); } catch {} }
+  // Today's genuine deals on the plain home page (src/home.js): real data only, written into the page
+  if (new URL(req.url).pathname === "/") { try { html = await homeInPage(req, env, html); } catch {} }
   // A shared or bookmarked result link (?u= / ?url=): the page starts in its result layout, so nothing moves when the result appears.
-  { const q = new URL(req.url).searchParams; if (new URL(req.url).pathname === "/" && (q.get("u") || q.get("url") || q.get("q"))) html = html.replace('<html lang="en">', '<html lang="en" class="q">'); }
+  { const q = new URL(req.url).searchParams; if (new URL(req.url).pathname === "/" && (q.get("u") || q.get("url") || q.get("q"))) { html = html.replace('<html lang="en">', '<html lang="en" class="q">'); if (q.get("u") || q.get("url")) html = html.replace('<div class="ccrow" id="ccrow"', '<div class="ccrow hidden" id="ccrow"'); } }
   return html.replace("<!--NOSCRIPT-->", '<noscript><p class="note" style="text-align:center">Turn on JavaScript to see price history. You can still paste a link and press Check price.</p></noscript>');
 }
 
@@ -1167,6 +1169,7 @@ export default {
       if (url.pathname === "/api/assist") return req.method === "GET" || req.method === "POST" ? await apiAssist(req, env, ctx) : json({ error: "method not allowed" }, 405);
       if (req.method !== "GET" && req.method !== "HEAD") return json({ error: "method not allowed" }, 405);
       if (url.pathname === "/api/shops") return await apiShops(env, ctx);
+      if (url.pathname === "/api/home") return req.method === "GET" ? await apiHome(req, env, ctx) : json({ error: "method not allowed" }, 405);
       if (url.pathname === "/api/check") return statsTap(req, env, ctx, "check", await apiCheck(req, env, ctx));
       if (url.pathname === "/api/daily-status") return await apiDailyStatus(env);
       if (url.pathname === "/api/archive-stats") return await apiArchiveStats(env);

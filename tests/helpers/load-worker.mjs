@@ -29,6 +29,7 @@ export const NAMES = [
   "srchIsLink", "srchClean", "srchCountry", "srchWords", "srchKey", "srchPlan", "srchHas", "srchFilter", "srchCacheUrl", "apiSearch", "apiSearchShop", "SRCH_TTL", "SRCH_MIN", "SRCH_MAX", "srchDevice", "srchKind",
   "asIsAssist", "asClean", "asBudget", "asRules", "asMerge", "asAiJson", "asIntent", "asPairs", "asFits", "asCandidates", "asPick", "asScore", "asRuleReason", "asReasonOk", "asReasons", "asValidate", "asUnderstanding", "asModelKey", "asSameModel", "asTail", "asHasTerm", "apiAssist", "AS_REASON_SYSTEM", "asFeats", "asUse", "asBudgetLine", "asNoBudget", "AS_AI_DAILY", "AS_AI_TIMEOUT", "AS_TTL", "AS_ASK_RE", "asAiReset", "asOffTopic", "AS_OFF_RE", "AS_OFF_MSG", "AS_RL_MSG", "AS_RL_MIN", "AS_RL_HOUR", "asRateLimited", "asRlReset", "asOrCall", "asOrReset", "asAiCall", "AS_OR_MODELS", "AS_OR_URL", "AS_OR_TIMEOUT", "AS_OR_DEADLINE", "AS_OR_DAILY", "AS_INTENT_KEYS", "AS_REASON_KEYS", "AS_SHOP_SOFT", "AS_SHOP_TIMEOUT", "AS_ENOUGH", "AS_INTENT_MS", "AS_REASON_MS", "AS_REASON_SKIP", "asSearchAll",
   "dealScore", "dsRaw", "dsCompare", "publicDeal",
+  "apiHome", "homeDeals", "homeListHtml", "homeCard", "homeInPage", "homeMoney", "homeDrops", "homeFlyer", "homeDropItem", "homeMemReset", "HOME_TTL", "HOME_FRESH", "HOME_LABEL",
 ];
 
 const source = [
@@ -50,6 +51,7 @@ const source = [
   read("src/assist.js"),
   read("src/score.js"),
   read("src/flyer.js"),
+  read("src/home.js"),
   read("src/og.js"),
   read("src/stats.js"),
   read("src/og_font.js").replace("export const OG_FONT", "const OG_FONT"),
