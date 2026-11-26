@@ -45,8 +45,27 @@ function srchClean(raw) {
   return { q };
 }
 const srchCountry = (c) => { const k = String(c || "ZA").toUpperCase(); return SRCH_CC[k] ? (k === "UK" ? "GB" : k) : null; };
+// AB-41: everyday short names. A search and a product name are both read with the name the shops use, so
+// "coke" finds "Coca-Cola", "redbull" finds "Red Bull", "air pods" finds "AirPods" (and the other way).
+// ("PlayStation 5" = "ps5" is in cmpNorm.) Words only: "coke" in "Coca-Cola" itself is not changed.
+const SRCH_ALIAS = [
+  [/\bcoca[\s-]*cola\b|\bcokes?\b/g, "coca cola"],
+  [/\bred[\s-]*bulls?\b/g, "red bull"],
+  [/\bair[\s-]+pods\b/g, "airpods"],
+  [/(?<!\b(?:can|could|should|do|will|would|may|shall|did)\s)\bi[\s-]+phones?\b/g, "iphone"],
+  [/\bi[\s-]+pads?\b/g, "ipad"],
+  [/\bmac[\s-]+books?\b/g, "macbook"],
+  [/\bplay[\s-]*station[\s-]*5\b/g, "ps5"],
+];
+function srchAlias(s) {
+  let t = String(s == null ? "" : s).toLowerCase().replace(/[\u2010-\u2015]/g, "-");
+  for (const [re, to] of SRCH_ALIAS) t = t.replace(re, to);
+  return t;
+}
+// The search words to send to a shop: the shops' own name when the search uses a short name ("coke" -> "coca cola").
+const srchShopQ = (q) => { const a = srchAlias(q).replace(/\s+/g, " ").trim(); return a === String(q).toLowerCase().replace(/\s+/g, " ").trim() ? q : a; };
 // The words that must be in a product's name (normalised the same way as compare: "PlayStation 5" = "ps5").
-const srchWords = (q) => [...new Set(cmpWords(q).filter((w) => !SRCH_SKIP.has(w) && w !== "-" && w !== "+"))];
+const srchWords = (q) => [...new Set(cmpWords(srchAlias(q)).filter((w) => !SRCH_SKIP.has(w) && w !== "-" && w !== "+"))];
 const srchKey = (q) => srchWords(q).join(" ");
 
 // Which shops to search: same currency, not off (robots.txt or no search), shops that sell this kind of product.
@@ -84,7 +103,7 @@ function srchPlan(q, country) {
 // can also be part of a joined word ("buds3"); a long word can be plural or singular ("kettle", "kettles").
 // The words of a name, and the same words joined in twos and threes ("buds 3" = "buds3"; "ps5" does not match "ps500").
 function srchTokens(title) {
-  const tw = cmpWords(title), set = new Set(tw);
+  const tw = cmpWords(srchAlias(title)), set = new Set(tw);
   for (let i = 0; i < tw.length; i++) { set.add(tw[i] + (tw[i + 1] || "")); if (tw[i + 2]) set.add(tw[i] + tw[i + 1] + tw[i + 2]); }
   return { tw, set };
 }
@@ -230,7 +249,7 @@ async function apiSearchShop(req, env, ctx) {
   if (await cmpShopBusy(env, shop)) return json({ ...base, status: "busy", items: [] });
   let list, status = "ok";
   try {
-    list = await Promise.race([CMP_SEARCH[shop.kind](shop, v.q), new Promise((_, no) => setTimeout(() => no(new CmpError("timeout", "error")), SRCH_TIMEOUT))]);
+    list = await Promise.race([CMP_SEARCH[shop.kind](shop, srchShopQ(v.q)), new Promise((_, no) => setTimeout(() => no(new CmpError("timeout", "error")), SRCH_TIMEOUT))]);
   } catch (e) { status = e instanceof CmpError && e.kind === "blocked" ? "blocked" : "error"; }
   if (status !== "ok") return json({ ...base, status, items: [] });
   const info = {};
