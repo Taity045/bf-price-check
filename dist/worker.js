@@ -3964,7 +3964,7 @@ async function apiSearchShop(req, env, ctx) {
 // request and country. No D1 writes: the AI day count is in the Cloudflare cache and in memory, and it also
 // reads (never writes) the compare AI day count, so the assistant never goes past the shared daily cap.
 
-const AS_VER = "v5";               // v2: shop_count (shops with a match, not only the shown ones); v5: ai.models
+const AS_VER = "v6";               // v2: shop_count (shops with a match, not only the shown ones); v5: ai.models; v6: named brand/model, accessories (AB-39)
 const AS_MAX = 200;                       // characters in a request
 const AS_TTL = 20 * 60;                   // seconds: one answer for one request and country
 const AS_AI_TIMEOUT = 2800;               // ms for one AI answer; a slow answer is dropped (rules decide)
@@ -4122,6 +4122,103 @@ const AS_FILL = new Set("i me my we our you a an the some any need want have got
 // The request without its money words ("under 8k", "R15,000", "£500", "1500 rand"), so a budget is never read
 // as a spec ("8k" is a budget here, not an 8K screen).
 const asNoBudget = (low) => String(low || "").replace(/(?:^|[^\w£])r ?(?:\d{1,3}(?:[ ,]\d{3})+|\d{3,}(?:\.\d+)?|\d+(?:\.\d+)? ?k)\b|£ ?\d[\d,.]*(?: ?k)?\b|\b\d[\d ,.]* ?k? ?(?:rand|zar|pounds?|gbp|quid)\b|\b(?:budget(?: of| is)?|under|below|less than|max(?:imum)?|up to|at most|no more than|cheaper than|around|about)\b\D{0,3}\d[\d ,.]*(?: ?k)?\b/gi, " ");
+// ---------- 2c. Named brands and models, accessories, "best" (AB-39) ----------
+// A request that names a brand, a product line or a model ("iphone 18 pro", "samsung s25 ultra", "ps5 slim",
+// "garmin forerunner 265", "lg c4 oled tv", "ninja air fryer") keeps those words: the shop search uses them,
+// and every product name must have them (not only after "for …", as in "VR glasses for Android & iPhone").
+// This works for all kinds of products. A list of makers (a maker is required only when no line is named) and
+// lines (the product family). Each entry: words, kind, the category it names (or "").
+const AS_BRANDS = [
+  // phones, tablets, computers
+  ["apple", "m", ""], ["iphone", "l", "phone"], ["ipad", "l", "tablet"], ["macbook", "l", "laptop"], ["imac", "l", "other"], ["airpods", "l", "audio"], ["apple watch", "l", "watch"],
+  ["samsung", "m", ""], ["galaxy tab", "l", "tablet"], ["galaxy watch", "l", "watch"], ["galaxy buds", "l", "audio"], ["galaxy book", "l", "laptop"], ["galaxy", "l", "phone"],
+  ["google", "m", ""], ["pixel", "l", "phone"], ["pixel watch", "l", "watch"], ["pixel buds", "l", "audio"],
+  ["huawei", "m", ""], ["xiaomi", "m", ""], ["redmi", "l", "phone"], ["poco", "l", "phone"], ["oppo", "m", ""], ["vivo", "m", ""], ["honor", "m", ""], ["nokia", "m", ""],
+  ["motorola", "m", ""], ["moto", "l", "phone"], ["oneplus", "m", ""], ["nothing phone", "l", "phone"], ["mobicel", "m", ""], ["hmd", "m", ""], ["tecno", "m", ""], ["infinix", "m", ""],
+  ["lenovo", "m", ""], ["thinkpad", "l", "laptop"], ["ideapad", "l", "laptop"], ["hp", "m", ""], ["dell", "m", ""], ["asus", "m", ""], ["acer", "m", ""], ["msi", "m", ""], ["razer", "m", ""],
+  ["surface laptop", "l", "laptop"], ["surface pro", "l", "tablet"], ["chromebook", "l", "laptop"], ["kindle", "l", "tablet"],
+  // gaming
+  ["sony", "m", ""], ["ps5", "l", "gaming"], ["ps4", "l", "gaming"], ["xbox", "l", "gaming"], ["nintendo", "m", ""], ["nintendo switch", "l", "gaming"], ["steam deck", "l", "gaming"],
+  // watches
+  ["garmin", "m", ""], ["forerunner", "l", "watch"], ["fenix", "l", "watch"], ["venu", "l", "watch"], ["vivoactive", "l", "watch"], ["instinct", "l", "watch"], ["epix", "l", "watch"],
+  ["coros", "m", ""], ["suunto", "m", ""], ["fitbit", "m", ""], ["amazfit", "m", ""], ["whoop", "m", ""],
+  // TVs, audio, cameras
+  ["lg", "m", ""], ["hisense", "m", ""], ["tcl", "m", ""], ["philips", "m", ""], ["panasonic", "m", ""], ["skyworth", "m", ""], ["sinotec", "m", ""],
+  ["jbl", "m", ""], ["bose", "m", ""], ["sennheiser", "m", ""], ["beats", "m", ""], ["marshall", "m", ""], ["jabra", "m", ""], ["soundcore", "m", ""], ["anker", "m", ""], ["skullcandy", "m", ""], ["sonos", "m", ""],
+  ["canon", "m", ""], ["nikon", "m", ""], ["fujifilm", "m", ""], ["gopro", "m", ""], ["dji", "m", ""], ["insta360", "m", ""],
+  // appliances
+  ["dyson", "m", ""], ["ninja", "m", ""], ["russell hobbs", "m", ""], ["kenwood", "m", ""], ["smeg", "m", ""], ["delonghi", "m", ""], ["de longhi", "m", ""], ["breville", "m", ""], ["nespresso", "m", ""],
+  ["defy", "m", ""], ["bosch", "m", ""], ["whirlpool", "m", ""], ["tefal", "m", ""], ["kitchenaid", "m", ""], ["sage", "m", ""], ["morphy richards", "m", ""], ["roomba", "l", "appliance"], ["shark", "m", ""], ["salton", "m", ""],
+  // bikes
+  ["trek", "m", ""], ["cannondale", "m", ""], ["merida", "m", ""], ["shimano", "m", ""],
+].map(([w, k, cat]) => ({ w: w.split(" "), k, cat })).sort((a, b) => b.w.length - a.w.length);
+// Model words after a brand or line: words with a number ("18", "s25", "265", "c4", "wh-1000xm5"), and version
+// words. Sizes and units ("16gb", "65in", "4k") are specs, not models.
+const AS_MODEL_WORDS = new Set("pro max plus ultra mini lite slim fe se e s x digital disc oled air neo classic solar sapphire fold flip edge note".split(" "));
+const AS_UNIT_TOKEN = /^\d+(?:\.\d+)?(?:gb|tb|mb|in|hz|k|mm|cm|l|lt|ml|w|kg|g|mah|mp|p|bar)$/;
+// Words that make another version of a model when they come after the model in a product name ("iPhone 16" is
+// not "iPhone 16 Pro" or "iPhone 16 Plus").
+const AS_VARIANT_AFTER = new Set("pro max plus ultra mini lite slim fe se e".split(" "));
+function asNamed(q) {
+  // only the product itself: not what it is for or works with ("a 4K TV for my PS5" names a TV, not a PS5)
+  const all = cmpWords(asNoBudget(String(q || "").toLowerCase()));
+  const cut = all.findIndex((w) => /^(for|with|to|like|compatible|fits|than|vs|versus|or)$/.test(w));
+  const t = cut >= 0 ? all.slice(0, cut) : all;
+  for (let i = 0; i < t.length; i++) {
+    const at = (b, j) => b.w.every((w, k) => t[j + k] === w);
+    let b = AS_BRANDS.find((x) => at(x, i));
+    if (!b) continue;
+    const makers = [], lines = [], model = [];
+    let j = i, cat = "";
+    // the maker and line words together ("samsung galaxy", "apple iphone", "garmin forerunner")
+    while (b) { (b.k === "l" ? lines : makers).push(...b.w); if (b.cat && !cat) cat = b.cat; j += b.w.length; b = AS_BRANDS.find((x) => at(x, j)); }
+    for (; j < t.length && model.length < 4; j++) {
+      const w = t[j];
+      if (AS_UNIT_TOKEN.test(w) || /^(19|20)\d\d$/.test(w)) break;
+      // "ninja air fryer": "air" names the kind of appliance here, not a model ("macbook air")
+      if (!/\d/.test(w) && t[j + 1] && AS_CAT.appliance.re.test(w + " " + t[j + 1])) break;
+      if (/\d/.test(w) && /^[a-z0-9.+-]{1,14}$/.test(w)) model.push(w);
+      else if (AS_MODEL_WORDS.has(w)) model.push(w);
+      else break;
+    }
+    // a number word followed by a unit word ("65 inch") was a size, not a model
+    while (model.length && /^\d+$/.test(model[model.length - 1]) && /^(inch|inches|in|gb|tb|l|litres?|kg)$/.test(t[j] || "")) model.pop();
+    const need = (lines.length ? lines : makers).concat(model);
+    return { words: need, model, makers, lines, cat, phrase: makers.concat(lines, model).join(" ") };
+  }
+  return null;
+}
+// The product name before "for …", "fits …", "compatible with …" (what the product is, not what it fits).
+const asBeforeFor = (title) => String(title).split(/\b(?:for|fits|fit for|compatible with|suitable for|works with|designed for|to fit)\b/i)[0];
+// Does a product name have the named brand and model (and no other version of the model)?
+function asNamedFits(named, title) {
+  if (!named || !named.words.length) return true;
+  const head = asBeforeFor(title);
+  if (!srchHas(named.words, head)) return false;
+  if (named.model.length) {
+    const tw = cmpWords(head), last = named.model[named.model.length - 1];
+    const k = tw.findIndex((w) => w === last || w.startsWith(last) && /\d/.test(last) && !/\d/.test(w.slice(last.length, last.length + 1)) && w.length - last.length <= 3);
+    if (k >= 0) for (const w of tw.slice(k + 1, k + 3)) if (AS_VARIANT_AFTER.has(w) && !named.model.includes(w)) return false;
+    // "16e", "265s": a joined version letter that the request does not have
+    const joined = tw.find((w) => w !== last && w.startsWith(last) && /\d$/.test(last) && /^[a-z]{1,2}$/.test(w.slice(last.length)));
+    if (joined && !named.model.includes(joined)) return false;
+  }
+  return true;
+}
+// Accessories for any kind of product. A request that names one ("phone bag", "laptop sleeve", "iPhone 16
+// case") looks for it; any other request never shows one.
+const AS_ACC_ANY = /\b(bags?|pouch(?:es)?|cases?|covers?|sleeves?|straps?|bands? for|replacement bands?|watch bands?|chargers?|charging (?:cable|dock|stand|pad|clip)|cables?|adapters?|adaptors?|screen protectors?|protectors?|tempered glass|tempered|stands?|mounts?|brackets?|holders?|holsters?|wallets?|skins?|decals?|stickers?|stylus(?:es)?|styli|docks?|docking|replacements?|spare parts?|spares?|lens(?:es)? for|tripods?|selfie sticks?|gimbals?|ring lights?|power ?banks?|grips?|pop ?sockets?|lanyards?|keyboard covers?|remotes?|controllers?|accessor(?:y|ies)|vr (?:headsets?|glasses|goggles|box)|virtual reality)\b/;
+const AS_ACC_ASK = /\b(bags?|pouch(?:es)?|cases?|covers?|sleeves?|straps?|bands?|chargers?|charging|cables?|adapters?|adaptors?|screen protectors?|protectors?|tempered glass|stands?|mounts?|brackets?|holders?|holsters?|wallets?|skins?|decals?|stickers?|stylus(?:es)?|docks?|replacements?|spare parts?|tripods?|selfie sticks?|gimbals?|ring lights?|power ?banks?|grips?|lanyards?|remotes?|controllers?|filters?|liners?|accessor(?:y|ies)|vr (?:headsets?|glasses|goggles))\b/;
+// "for <brand or device>" / "compatible with": made to fit another product.
+const AS_FOR_DEVICE = /\b(?:for|fits|compatible with|suitable for|works with|designed for)\s+(?:the\s+|your\s+|all\s+)?(?:apple|samsung|iphones?|ipads?|android|galaxy|pixel|huawei|xiaomi|oppo|macbooks?|laptops?|phones?|smartphones?|tablets?|ps5|ps4|xbox|nintendo|switch|garmin|fitbit|airpods|kindle|tvs?|gopro|dji|dyson|nespresso)\b/;
+// Headphones and VR sets are other products when the request is not for audio.
+const AS_AUDIO_WORDS = /\b(headphones?|earbuds?|earphones?|headsets?|integrated headphones)\b/;
+const asAccessoryAsk = (q) => AS_ACC_ASK.test(asNoBudget(String(q || "").toLowerCase()));
+// "best", "top", "flagship", "latest": the request wants quality, not the lowest price.
+const AS_QUALITY = /\b(best|top|flagship|high[- ]end|premium|latest|newest|most powerful|top of the range|top-end)\b/;
+// Version words that mark the higher model of a range (used only to rank "best" requests with no budget).
+const asTier = (title) => { const w = new Set(cmpWords(title)); return (w.has("ultra") ? 3 : 0) + (w.has("max") ? 2 : 0) + (w.has("pro") ? 2 : 0) + (w.has("plus") ? 1 : 0) - (w.has("lite") || w.has("mini") || w.has("fe") || w.has("se") ? 1 : 0); };
+
 function asRules(q, country) {
   const low = String(q || "").toLowerCase();
   const b = asBudget(q);
@@ -4174,7 +4271,26 @@ function asRules(q, country) {
     if (core.length) searchQueries = [core.join(" ")];
   }
   if (!/\b(refurb(?:ished)?|renewed|used|pre-?owned|second ?hand)\b/.test(low)) avoid.push("refurbished");
-  return { category, maxBudget: b ? b.amount : null, currency, searchQueries: searchQueries.slice(0, 2), mustHave, prefer, avoid, by: "rules", use: asUse(low, category) };
+  // AB-39: an accessory request ("phone bag", "laptop sleeve", "iPhone 16 case") searches for its own words
+  // and every product name must have them; a named brand or model is kept in the search and is required.
+  const accessory = asAccessoryAsk(low);
+  const named = asNamed(low);
+  if (accessory) {
+    category = "other";
+    const words = asNoBudget(low).split(/[^\p{L}\p{N}'-]+/u).filter((w) => w && !AS_FILL.has(w));
+    const forAt = words.indexOf("for");
+    const core = words.slice(0, 5);
+    searchQueries = core.length ? [core.join(" ")] : searchQueries;
+    if (forAt > 0) searchQueries = [words.slice(0, Math.min(forAt, 5)).join(" ") + " " + words.slice(forAt + 1, forAt + 4).join(" ")].map((x) => x.trim());
+    avoid.splice(0, 4);
+  } else if (named) {
+    if (category === "other" && named.cat && named.cat !== "other") category = named.cat;
+    const catQ = searchQueries[0] || "";
+    // a model or a product line: search for it as written; a maker only: the maker and the kind of product
+    searchQueries = named.model.length || named.lines.length || !catQ ? [named.phrase] : [(named.makers.join(" ") + " " + catQ.replace(/^(?:garmin|samsung) /i, "")).trim()];
+  }
+  return { category, maxBudget: b ? b.amount : null, currency, searchQueries: searchQueries.slice(0, 2), mustHave, prefer, avoid, by: "rules", use: asUse(low, category),
+    named: accessory ? null : named, accessory, quality: AS_QUALITY.test(low) };
 }
 
 // ---------- 2b. Workers AI: the same fields as strict JSON ----------
@@ -4218,7 +4334,7 @@ function asMerge(ai, rules, q) {
   if (!ai) return rules;
   const out = { ...rules, by: "ai" };
   const cat = String(ai.category || "").toLowerCase().trim();
-  if (AS_CATEGORIES.includes(cat)) out.category = rules.category !== "other" ? rules.category : cat;
+  if (AS_CATEGORIES.includes(cat) && !rules.accessory) out.category = rules.category !== "other" ? rules.category : cat;
   if (rules.maxBudget == null && Number.isFinite(Number(ai.maxBudget)) && Number(ai.maxBudget) > 0) {
     // only a number that is in the request
     const n = Math.round(Number(ai.maxBudget)), digits = String(q).replace(/[ ,]/g, "");
@@ -4226,7 +4342,8 @@ function asMerge(ai, rules, q) {
   }
   const sq = asWordList(ai.searchQueries, 2, 40).filter((s) => s.split(" ").length <= 5 && /\p{L}/u.test(s));
   // the rules' searches are known to work at the shops; the AI's searches are used for "other" requests
-  if (rules.category === "other" && sq.length) out.searchQueries = sq;
+  if (rules.accessory || rules.named) out.searchQueries = rules.searchQueries;   // AB-39: the user's own words
+  else if (rules.category === "other" && sq.length) out.searchQueries = sq;
   else if (sq.length && rules.searchQueries.length < 2 && !rules.searchQueries.some((x) => x.toLowerCase() === sq[0].toLowerCase())) out.searchQueries = [...rules.searchQueries, sq[0]].slice(0, 2);
   const lowQ = asNoBudget(String(q).toLowerCase());
   // a must-have is a spec word (16GB, SSD, 4K…) that is in the request (no new specs, no use words such as "law")
@@ -4444,8 +4561,17 @@ function asFits(intent, title, q) {
   let t = asNormTitle(title);
   if (cat && cat.strip) t = t.replace(cat.strip, " ");
   const head = t.split(/\s\+\s|\s&\s|\b(?:with|incl(?:udes?|uding)?|plus|and free)\b/)[0] || t;
-  if (CMP_ACCESSORY.test(t)) return false;
   if (intent.avoid.includes("refurbished") && CMP_CONDITION.test(t)) return false;
+  // AB-39: an accessory request: every word of its search (a "phone bag" is a bag for a phone)
+  if (intent.accessory) return intent.searchQueries.some((sq) => { const w = srchWords(sq); return w.length > 0 && srchHas(w, title); });
+  if (CMP_ACCESSORY.test(t)) return false;
+  // AB-39, all kinds of products: no accessories, nothing made "for" another device, no headphones or VR sets
+  // for a request that is not for audio, and the named brand and model (not only after "for …")
+  if (AS_ACC_ANY.test(head)) return false;
+  // "… for iPhone": fine when the part before "for" is itself the kind of product asked for ("Smartwatch for Android")
+  if (AS_FOR_DEVICE.test(t) && !(cat && cat.main && cat.main.test(asBeforeFor(t)))) return false;
+  if (intent.category !== "audio" && AS_AUDIO_WORDS.test(head)) return false;
+  if (intent.named && !asNamedFits(intent.named, title)) return false;
   for (const w of intent.avoid) if (!/^(accessories|cables|cases|bags|refurbished)$/.test(w) && w.length > 2 && new RegExp("\\b" + w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b", "i").test(head)) return false;
   if (intent.category === "appliance") {
     const a = AS_APPL.find(([, sq]) => intent.searchQueries.some((x) => x.toLowerCase() === sq)) || AS_APPL.find(([re]) => re.test(q.toLowerCase()));
@@ -4502,7 +4628,10 @@ function asPick(intent, cands) {
     models.push({ ...c, key: k, tail, others: 0 });
   }
   const scored = models.map((m) => ({ ...m, ...asScore(intent, m) }));
-  const within = scored.filter((x) => !x.over).sort((a, b) => b.s - a.s || a.price - b.price);
+  // AB-39: "best …" with no budget: the higher models of a range first (Ultra, Pro Max, Pro), then the
+  // higher price, not the cheapest product
+  const best = !!intent.quality && intent.maxBudget == null;
+  const within = scored.filter((x) => !x.over).sort(best ? (a, b) => b.s - a.s || asTier(b.title) - asTier(a.title) || b.price - a.price : (a, b) => b.s - a.s || a.price - b.price);
   const over = scored.filter((x) => x.over).sort((a, b) => a.price - b.price || b.s - a.s);
   const ranked = within.concat(over);
   const clean = ({ key, tail, s, ...x }) => x;
@@ -4535,7 +4664,8 @@ function asFeats(title, category) {
   const scr = t.match(/\b(\d{2}(?:\.\d)?) inch\b/), fhd = /\b(fhd|full hd|1080p)\b/.test(t);
   const cpu = t.match(/\b(ryzen [3579]|core ultra [579]|core i[3579]|i[3579]-\d{4,5}\w*|celeron|pentium|athlon|intel n\d{3,4}|apple m[1-5]|m[1-5] (?:pro|max|chip))\b/);
   if (category === "laptop" || category === "tablet") {
-    if (ram) out.push(ram.n >= 16 ? `${ram.n}GB memory runs many apps at once` : ram.n >= 8 ? `${ram.n}GB memory runs several apps and browser tabs at once` : `${ram.n}GB memory is enough for documents and the web`);
+    // AB-39: only true claims for small memory (no claim under 4GB)
+    if (ram && ram.n >= 4) out.push(ram.n >= 16 ? `${ram.n}GB memory runs many apps at once` : ram.n >= 8 ? `${ram.n}GB memory runs several apps and browser tabs at once` : `${ram.n}GB memory is enough for documents and the web`);
     const size = tb ? tb[1] + "TB" : sto ? sto.n + "GB" : "";
     if (ssd) out.push(size ? `the ${size} SSD starts up fast` : "the SSD starts up and opens files fast");
     else if (size) out.push(`${size} storage holds your documents`);
@@ -4556,8 +4686,10 @@ function asFeats(title, category) {
     if (/\b(anc|noise cancell?ing)\b/.test(t)) out.push("noise cancelling blocks background noise");
     if (/\b(wireless|bluetooth)\b/.test(t)) out.push("it connects with no cable");
   } else if (category === "phone") {
-    if (ram) out.push(`${ram.n}GB memory runs many apps`);
-    if (sto) out.push(`${sto.n}GB storage holds many photos and apps`);
+    // AB-39: "many apps" only from 8GB, "several apps" from 6GB; less memory: no claim
+    if (ram && ram.n >= 6) out.push(ram.n >= 8 ? `${ram.n}GB memory runs many apps at once` : `${ram.n}GB memory runs several apps at once`);
+    if (tb) out.push(`${tb[1]}TB storage holds many photos and apps`);
+    else if (sto) out.push(sto.n >= 128 ? `${sto.n}GB storage holds many photos and apps` : `${sto.n}GB storage holds photos and apps`);
     if (/\b5g\b/.test(t)) out.push("5G gives fast mobile data");
   }
   return out.slice(0, 3);
@@ -4600,6 +4732,9 @@ function asReasonOk(reason, facts) {
   // No comparisons between picks or quality claims: the AI cannot check them (e.g. "256GB SSD, which is larger").
   // Only the computed budget gap ("R4,501 less than your budget") may compare.
   if (/\b(more|less|larger|bigger|smaller|better|best|faster|slower|higher|lower|than|powerful|smooth|superior|cheapest|cheaper|most|least|other|others|fastest|great|excellent|ideal)\b/i.test(r.replace(/\b(?:less than|more than|under|below|over|above) (?:your|the) budget\b/gi, ""))) return false;
+  // AB-39: no "runs many apps" or "multitasking" claim for small memory (phones under 6GB, others under 8GB)
+  const mem = r.toLowerCase().match(/\b(\d{1,2}) ?gb (?:of )?(?:ram|memory)\b[^.]*\b(apps?|multitask\w*|tabs?|smooth\w*|fast)\b/);
+  if (mem && Number(mem[1]) < (/\bphone|smartphone|iphone\b/.test(f0) ? 6 : 8)) return false;
   const f = facts.toLowerCase().replace(/[ ,](?=\d{3}\b)/g, "");
   const nums = r.replace(/[ ,](?=\d{3}\b)/g, "").match(/\d+(?:\.\d+)?/g) || [];
   if (nums.some((n) => !f.includes(n))) return false;
@@ -4629,7 +4764,7 @@ function asValidate(picks, cands) {
 
 // The one line that says what we understood: "Budget: up to R15 000 · Looking for: laptop (16GB, SSD)".
 function asUnderstanding(intent) {
-  const what = intent.category === "other" ? (intent.searchQueries[0] || "product") : intent.category === "appliance" ? (intent.searchQueries[0] || "appliance") : intent.category === "watch" && /running/i.test(intent.searchQueries[0] || "") ? "running watch" : { tv: "TV", audio: (intent.searchQueries[0] || "headphones").replace(/^noise cancelling /, ""), gaming: "games console" }[intent.category] || intent.category;
+  const what = intent.named && intent.named.phrase && !intent.accessory ? intent.named.phrase : intent.category === "other" ? (intent.searchQueries[0] || "product") : intent.category === "appliance" ? (intent.searchQueries[0] || "appliance") : intent.category === "watch" && /running/i.test(intent.searchQueries[0] || "") ? "running watch" : { tv: "TV", audio: (intent.searchQueries[0] || "headphones").replace(/^noise cancelling /, ""), gaming: "games console" }[intent.category] || intent.category;
   const specs = intent.mustHave.concat(intent.prefer.filter((p) => !/^(ryzen [57]|core i[57]|512gb)$/.test(p))).slice(0, 4).map(asSpecLabel);
   const parts = [];
   if (intent.maxBudget != null) parts.push(`Budget: up to ${asMoney(intent.maxBudget, intent.currency)}`);
@@ -4684,7 +4819,7 @@ async function apiAssist(req, env, ctx) {
   if (hit) return json({ ...hit, cached: true });
   const t0 = now();
   // a known kind of product: search the shops now with the rules' searches, while the AI reads the request
-  const rules = asRules(v.q, country), early = rules.category !== "other";
+  const rules = asRules(v.q, country), early = rules.category !== "other" || !!rules.named || rules.accessory;
   const intentP = asIntent(env, v.q, country, AS_INTENT_MS);
   let ir = early ? null : await intentP;
   const { pairs, notSearched } = asPairs(early ? rules : ir.intent, country);
@@ -4706,12 +4841,13 @@ async function apiAssist(req, env, ctx) {
   for (const k of Object.keys(st)) st[k] = [...st[k]];
   if (st.failed && st.searched) st.failed = st.failed.filter((n) => !st.searched.includes(n));
   let note = "";
-  if (!picks.length) note = pairs.length ? "We found no products in stock that match. Use other words, or a higher budget." : `We have no shops in ${country === "GB" ? "the UK" : "South Africa"} that we can search for this.`;
+  if (!picks.length && intent.named && intent.named.words.length && pairs.length) note = `No matching products found for "${intent.named.phrase}" at the shops we searched.`;
+  else if (!picks.length) note = pairs.length ? "We found no products in stock that match. Use other words, or a higher budget." : `We have no shops in ${country === "GB" ? "the UK" : "South Africa"} that we can search for this.`;
   else if (intent.maxBudget != null && ranked.within === 0) note = "We found no match in your budget. These are the closest matches. They cost more than your budget.";
   else if (intent.maxBudget != null && ranked.within < picks.length) note = `Only ${ranked.within} match${ranked.within === 1 ? " is" : "es are"} in your budget. The other picks cost more.`;
   const out = {
     q: v.q, country, currency: intent.currency === (country === "GB" ? "GBP" : "ZAR") ? intent.currency : SRCH_CC[country],
-    intent: { category: intent.category, maxBudget: intent.maxBudget, currency: intent.currency, searchQueries: intent.searchQueries, mustHave: intent.mustHave, prefer: intent.prefer, avoid: intent.avoid, by: intent.by },
+    intent: { category: intent.category, maxBudget: intent.maxBudget, currency: intent.currency, searchQueries: intent.searchQueries, mustHave: intent.mustHave, prefer: intent.prefer, avoid: intent.avoid, by: intent.by, named: intent.named ? intent.named.phrase : null, accessory: !!intent.accessory },
     understanding: asUnderstanding(intent), picks, more, total: ranked.total, shop_count: ranked.shops, within_budget: ranked.within, note,
     shops: { searched: st.searched || [], failed: st.failed || [], robots: st.robots || [], notSearched },
     ai: { intent: intent.by === "ai", reasons: by.includes("ai"), models: { intent: intentModel || "rules", reasons: reasonModel || "rules" } }, checked_at: now(),
