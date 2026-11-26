@@ -832,7 +832,7 @@ async function assist(q, c) {
   $("asWhat").textContent = "";
   $("asStatus").innerHTML = '<span class="spin"></span>We read your request and search the shops now. This can take up to 15 seconds.';
   ["asH", "asNoteTop", "asEmpty", "asMore", "asAct"].forEach((id) => $(id).classList.add("hidden"));
-  $("asPicks").innerHTML = ""; $("asList").innerHTML = ""; $("asShops").textContent = ""; $("asNote").textContent = "";
+  $("asPicks").innerHTML = ""; $("asList").innerHTML = ""; $("asShops").textContent = "";
   $("asMore").open = false;
   document.title = q + " · Picks · Deal or Dud?";
   boxMode();
@@ -850,7 +850,8 @@ async function assist(q, c) {
   $("asLab").textContent = "AI Shopping Assistant · shops in " + where(d.country);
   $("asWhat").textContent = d.understanding || "";
   const picks = d.picks || [], more = d.more || [];
-  const shopsN = new Set(picks.concat(more).map((x) => x.shop)).size;
+  // shops with a match among all matches (not only the products on the page)
+  const shopsN = d.shop_count != null ? d.shop_count : new Set(picks.concat(more).map((x) => x.shop)).size;
   $("asStatus").textContent = picks.length ? `We found ${d.total} matching product${d.total === 1 ? "" : "s"} at ${shopsN} shop${shopsN === 1 ? "" : "s"}. The prices come from each shop now.` : "";
   $("asH").classList.toggle("hidden", !picks.length);
   $("asH").textContent = picks.length === 1 ? "Top pick" + (d.intent && d.intent.maxBudget != null ? " for your budget" : "") : `Top ${picks.length} picks` + (d.intent && d.intent.maxBudget != null ? " for your budget" : "");
@@ -878,9 +879,6 @@ async function assist(q, c) {
   const nsTxt = NS_WHY.map(([w, t]) => [ns.filter((x) => x.why === w).map((x) => x.name), t]).filter(([n]) => n.length).map(([n, t]) => `${srchAnd(n)} (${t})`);
   if (nsTxt.length) parts.push(`We can't search ${nsTxt.join("; ")}.`);
   $("asShops").textContent = parts.join(" ");
-  const ai = d.ai || {};
-  $("asNote").textContent = (ai.intent ? "AI read your request. " : "") + (ai.reasons ? "AI wrote the short reasons from the product names and prices only. " : "")
-    + "We pick only real products that are in stock at each shop's own website. Check the details at the shop before you buy. Delivery is not included.";
   finish();
 }
 $("asShare").addEventListener("click", async () => {

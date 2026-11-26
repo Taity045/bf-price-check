@@ -432,7 +432,6 @@ footer{border-top:2px dashed var(--ink)}
       <details id="asMore" class="hidden"><summary id="asMoreSum">All matching results</summary><ol class="slist" id="asList"></ol></details>
       <div class="asact hidden" id="asAct"><button type="button" id="asShare">Share results</button></div>
       <p class="small sshops" id="asShops"></p>
-      <p class="note" id="asNote"></p>
     </div>
   </section>
 
@@ -661,7 +660,7 @@ document.querySelectorAll("#chips a").forEach((a) => a.addEventListener("click",
 const isLink = (v) => /https?:\/\/\S+/i.test(v) || /^(www\.)?[\w-]+(\.[\w-]+)+\/\S*/i.test(v) || (!/\s/.test(v) && /^(www\.)?[a-z0-9-]+(\.[a-z0-9-]+)*\.(com|co\.za|za|co\.uk|uk|net|org|eu|de|fr|nl|ie|io|shop|store|to|co)$/i.test(v));
 // A shopping need with a budget ("laptop for programming under R15000") goes to the AI Shopping Assistant;
 // a product name ("PS5") stays on the normal search. Same rule as AS_ASK_RE in src/assist.js.
-const ASK_RE = /(?:^|[^\w£])(?:R ?\d{1,3}(?:[ ,]\d{3})+|R ?\d{3,}(?:\.\d+)?|R ?\d+(?:\.\d+)? ?k)\b|£ ?\d|\b\d[\d ,.]* ?(?:rand|zar|pounds?|gbp|quid)\b|\b(?:budget|under|below|less than|max(?:imum)?|up to|at most|no more than|cheaper than)\b[^\d]{0,3}\d{2,}|\bbudget\b|\b(?:i need|i want|i have|i'?m looking for|looking for|need an?|want an?|recommend|suggest|help me (?:find|choose|pick)|which [a-z ]{2,30} should i|what (?:is|are) (?:the|a) (?:best|good))\b|\b(?:best|good|decent|great|cheap|affordable)\b(?: [\w'-]+){1,5} (?:for|under|below)\b/i;
+const ASK_RE = /(?:^|[^\w£])(?:R ?\d{1,3}(?:[ ,]\d{3})+|R ?\d{3,}(?:\.\d+)?|R ?\d+(?:\.\d+)? ?k)\b|£ ?\d|\b\d[\d ,.]* ?(?:rand|zar|pounds?|gbp|quid)\b|\b(?:budget|under|below|less than|max(?:imum)?|up to|at most|no more than|cheaper than)\b[^\d]{0,3}\d{2,}|\bbudget\b|\b(?:i need|i want|i have|i'?m looking for|looking for|need an?|want an?|recommend|suggest|help me (?:find|choose|pick)|which [a-z ]{2,30} should i|what (?:is|are) (?:the|a) (?:best|good))\b|\b(?:best|good|decent|great|cheap|affordable)\b(?: [\w'-]+){1,5} (?:for|under|below)\b|\bfor (?:the )?(?:a|an|my|our|his|her|their|someone|somebody|kids?|children|students?|school|university|varsity|college|uni|work|office|home|travel|gaming|programming|coding|studying|study|studies|running|gym|beginners?|seniors?|elderly|mom|mum|dad|wife|husband|girlfriend|boyfriend|son|daughter|teens?|teenagers?|business|photography|video editing|streaming)\b|(?:\S+\s+){2,}\S*\?\s*$/i;
 const isAsk = (v) => { const s = String(v || "").replace(/\s+/g, " ").trim(); return !!s && !isLink(s) && ASK_RE.test(s); };
 // Search country: South Africa (ZA) or the UK (GB). Kept on this device.
 let cc = store.get("cc", "ZA"); if (cc !== "ZA" && cc !== "GB") cc = "ZA";
