@@ -124,6 +124,13 @@ async function refreshVerdict(env, canon) {
   await saveVerdict(env, canon, (cur && cur.title) || (t && t.title), j);
   return j;
 }
+// Deal Score from history only (src/score.js). The page adds the other shops when compare is done.
+// No live price (only an archived one): no score.
+const publicDeal = (j) => {
+  if (!j || !j.price || !j.currency || j.archived) return null;
+  const d = dealScore({ P: j.price, W: j.was, C: j.currency, pts: j.pts, now: now() });
+  return { score: d.score, action: d.action, reasons: d.reasons };
+};
 const publicVerdict = (j) => j && j.verdict ? { verdict: j.verdict, price: j.price, was: j.was, currency: j.currency, n: j.n, low: j.low ?? null, low_t: j.low_t ?? null, med: j.med ?? null } : null;
 
 async function apiVerdict(req, env) {
