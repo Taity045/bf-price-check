@@ -259,6 +259,16 @@ Each row shows the shop, price (and "was" price), the difference against this pa
 
 **Live test** (`node scripts/compare_live.mjs <urls>` or `LIST=file OUT=results.json`): runs the real search and matching for each planned shop and prints every match with its level. Results from the last run are in the PR that added this feature.
 
+## Food Lover's Market flyer deals
+
+Food Lover's Market has no site search we can use. We typed its printed Black Friday flyer (8 pages, Western Cape stores, valid 23 to 29 November 2026) into `data/flm-flyer-2026-11-23.json`: 141 deals, each with the flyer's own price and deal words. `build.py` builds the list into the Worker (`FLM_FLYER`), and `src/flyer.js` reads it in memory. There are no shop fetches and no D1 rows.
+
+- **Dates.** The deals show from 00:00 on 23 Nov to 23:59:59 on 29 Nov, South Africa time (`2026-11-29T21:59:59.999Z`). Before or after that, search and compare do not show them, and Food Lover's Market is not a searched shop. No answer with flyer deals is cached past the end (`flmSecondsLeft`).
+- **Search.** For a South Africa search, Food Lover's Market is the first searched shop when a flyer deal has every search word (`flmSearch`, same word rules as `srchHas`, brand included: "Jungle Oats", "Tastic rice", "Nescafe Gold", "eggs", "Weet-Bix"). A flyer deal also makes the search a grocery search, so Pick n Pay and Clicks are searched too. `/api/search/shop?shop=flm` answers from memory with status `ok`, `none` or `ended`.
+- **Each flyer row.** The flyer's name and deal words ("10 for R100 (R10.00 each)", "R29.99 each", "R59.00 per kg", "R99.00 for the combo"), the label "Food Lover's Market (Western Cape flyer, valid 23–29 Nov)", the multi-buy rule ("R10.00 each when you buy 10 (R100 total)"), any limit ("2 deals per customer"), and the tag "In-store flyer deal". There is no **Check price history** button (it is not a product page). The link goes to `https://foodloversmarket.co.za/`. Rows sort by the price for one item.
+- **Compare.** For groceries and toiletries in South Africa, Food Lover's Market is one of the compare shops while the flyer is valid. The match is strict (`flmMatchWhy`): same brand, one pack size that is on the flyer line, the same number in a pack, and every naming word of the checked product is on the flyer line ("Chopped or Peeled" covers both; "Washing Powder 2 kg or Auto Liquid 1.5 L" is two products, each with its own size). Combos, fresh and butchery items without a brand, and Food Lover's own brand are never compared. A flyer price under 30 % or over 3 times the checked price is not used. The compared price is the price for one item. A multi-buy headline says the rule: "Cheaper at Food Lover's Market: R10 each when you buy 10", then "R10.00 each when you buy 10 (R100 total). In-store flyer deal: Western Cape flyer, valid 23–29 Nov." The answer is not cached and not saved to any price history.
+- **A new flyer.** Add a new JSON file with the same fields, point `FLYER_FILE` in `build.py` and the test loader at it, and update the tests.
+
 ## Code layout
 
 | Part | What it does |
@@ -267,6 +277,7 @@ Each row shows the shop, price (and "was" price), the difference against this pa
 | `src/features.js` | Verdicts, wall, email, alerts, Turnstile, API bot checks |
 | `src/archive.js` | Common Crawl archive prices: product keys, D1 reads, points with source links, the admin load endpoint, `/api/archive-stats` |
 | `scripts/cc/` | Common Crawl backfill: `archive.mjs` (collect, recheck, reduce, upload), `read.mjs` (sanity filter), `shops.mjs` (shops and product link patterns) |
+| `src/flyer.js`, `data/flm-flyer-2026-11-23.json` | Food Lover's Market flyer deals (Western Cape, 23–29 Nov 2026): deal words, search, strict compare matching, end date |
 | `src/search.js` | Product search by name: link or name, the words, the shops to search, the filter, `/api/search` and `/api/search/shop`, 20-minute Cloudflare cache |
 | `src/compare.js` | Other shops price compare: shop adapters, product identity, strict matching, AI check for borderline names (Workers AI), caching, history |
 | `src/daily.js` | Daily price saving: cron batches, back-off, robots.txt, Takealot seed list, `/api/daily-status` |
@@ -293,7 +304,7 @@ Each row shows the shop, price (and "was" price), the difference against this pa
 - `GET /api/compare?url=<product url>` → which shops will be searched for this product, plus any cached answers. Only for products someone checked first.
 - `GET /api/compare/shop?url=<product url>&shop=<id>` → one shop's answer: `match` (with title, price, was, link, in stock, match level, time checked), `none`, `blocked`, `error`, `busy` or `skipped`. Cached 12 h (20 min after an error).
 - `GET /api/search?q=<words>&c=ZA|GB` → the shops we will search for these words (`shops`), and the shops we can't search (`notSearched`, with `why`: `robots`, `blocks`, `browser`). 400 with a plain-words `error` for a bad search or country; 429 after 30 searches a minute.
-- `GET /api/search/shop?q=<words>&c=ZA|GB&shop=<id>` → one shop's products: `status` `ok` (with `items`: title, price, was, from, currency, url), `none`, `robots`, `blocked`, `busy` or `error`. Only shops from the plan for these words. Kept 20 minutes in the Cloudflare cache.
+- `GET /api/search/shop?q=<words>&c=ZA|GB&shop=<id>` → one shop's products: `status` `ok` (with `items`: title, price, was, from, currency, url), `none`, `robots`, `blocked`, `busy` or `error`. Only shops from the plan for these words. Kept 20 minutes in the Cloudflare cache. For `shop=flm` (flyer deals): `items` have `flyer: true`, `deal`, `need`, `limit`, `qty`, `total` and `label`; `status` is `ended` after the flyer ends; never kept past the end.
 - `GET /api/shops`, `/api/config`, `/api/others` (old pages; answers from the compare cache), `POST /api/verdict`, `POST /api/request`, `POST /api/alert`.
 - `GET /og-home.jpg`, `/og-square.jpg`, `/og-home.png`, `/og.png?u=…`, `/favicon.ico`, `/apple-touch-icon.png` (also `-precomposed` and sized names such as `-120x120`, same icon), `/robots.txt` (names the sitemap), `/sitemap.xml` (home and privacy). An old hashed font name (`/fonts/display.<old hash>.woff2`, from a page loaded before a deploy) gets today's font, not a 404, like the old script names.
 - `POST /api/m` (body: a button name such as `share`) → counts one click. Always 204. Only known names from the same site are counted.

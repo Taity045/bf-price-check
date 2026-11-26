@@ -25,10 +25,12 @@ export const NAMES = [
   "archiveKey", "apiPriceFix", "PRICE_FIX_BEFORE", "archiveLookupKeys", "archiveBatchStmt", "archiveRowsFor", "archiveProbe", "archiveRows", "archivePoints", "ccIndexLink", "cleanArchiveRow", "apiArchiveLoad", "apiArchiveStats", "ensureArchiveTables", "ARCHIVE_DAILY_CAP", "storedHistory", "apiCheck", "archivedCopyBlocked", "visibleTextLength", "pickSnaps", "fetchSnapshot", "getSnapshots", "historyLevel", "historyProductKey", "computeShopHistory", "shopHistory", "apiShops", "historyNote", "relabelOldSnaps", "SNAP_DETECT_SINCE",
   "CMP_SHOPS", "CMP_SEARCH", "CMP_DETAIL", "cmpNorm", "cmpWords", "cmpCodes", "cmpCodesMatch", "cmpGtin", "cmpAttrs", "cmpIdentity", "cmpIdentityFromCurrent", "cmpApplyDetail", "cmpCodesConflict", "cmpCategory", "cmpCatOf", "cmpWooItem", "cmpPlan", "cmpQuery", "cmpCoreQuery", "cmpMatch", "cmpSearchShop", "cmpShopForHost", "takealotAttr", "cmpShortQuery", "cmpOwnBrand", "cmpGroceryCheck", "cmpGroceryClose", "cmpGtinCheck", "cmpPnpItem", "cmpPnpMember", "cmpMorrisonsItem", "CMP_NOT_SEARCHED", "pnpFacts",
   "cmpAiKind", "cmpAiPick", "cmpAiParse", "cmpAiJudge", "cmpAiText", "CMP_AI_MODEL", "CMP_AI_DAILY", "CMP_AI_TIMEOUT", "CMP_AI_SYSTEM", "CMP_VER", "cmpShopById",
+  "FLM_FLYER", "FLM_FROM", "FLM_UNTIL", "FLM_LABEL", "FLM_HOME", "flmActive", "flmSecondsLeft", "flmDealText", "flmItem", "flmSearch", "flmMatchWhy", "flmCompare", "flmCompareAnswer", "flmVariants", "flmValidText",
   "srchIsLink", "srchClean", "srchCountry", "srchWords", "srchKey", "srchPlan", "srchHas", "srchFilter", "srchCacheUrl", "apiSearch", "apiSearchShop", "SRCH_TTL", "SRCH_MIN", "SRCH_MAX",
 ];
 
 const source = [
+  "const FLM_FLYER = " + read("data/flm-flyer-2026-11-23.json") + ";",
   "const FONTS = {};",
   "const STATIC_IMG = " + JSON.stringify(Object.fromEntries(["og-home.png", "og-home.jpg", "og-square.jpg", "favicon.ico", "apple-touch-icon.png"].map((n) => [n, readFileSync(new URL("public/" + n, root)).toString("base64")]))) + ";",
   'const APP = { name: "app.0123456789.js", js: "", lazy_name: "result.0123456789.js", lazy: "" };',
@@ -40,6 +42,7 @@ const source = [
   read("src/daily.js"),
   read("src/compare.js"),
   read("src/search.js"),
+  read("src/flyer.js"),
   read("src/og.js"),
   read("src/stats.js"),
   read("src/og_font.js").replace("export const OG_FONT", "const OG_FONT"),

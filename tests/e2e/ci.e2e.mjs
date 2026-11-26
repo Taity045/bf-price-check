@@ -492,6 +492,72 @@ for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`s
   await p.context().close();
 });
 
+// 3g. Food Lover's Market flyer deals (src/flyer.js): flyer rows next to shop rows, honest label, multi-buy rule
+const FLM_LABEL = "Food Lover's Market (Western Cape flyer, valid 23\u201329 Nov)";
+const FLM_ITEM = (o) => ({ currency: "ZAR", url: "https://foodloversmarket.co.za/", flyer: true, label: FLM_LABEL, region: "Western Cape", valid_from: "2026-11-23", valid_to: "2026-11-29", need: null, limit: null, multi: false, qty: 1, unit: "each", ...o });
+const FLM_SEARCH = {
+  flm: [FLM_ITEM({ id: "flm-1-rhodes-baked-beans-in-tomato-sauce-400-g", title: "Rhodes Baked Beans in Tomato Sauce 400 g", price: 10, total: 100, qty: 10, multi: true, deal: "10 for R100 (R10.00 each)", need: "R10.00 each when you buy 10 (R100 total)" }),
+    FLM_ITEM({ id: "flm-7-campagna-baked-beans-in-tomato-sauce-400-g", title: "Campagna Baked Beans in Tomato Sauce 400 g", price: 12.5, total: 50, qty: 4, multi: true, deal: "4 for R50 (R12.50 each)", need: "R12.50 each when you buy 4 (R50 total)" })],
+  takealot: [{ title: "Rhodes Baked Beans in Tomato Sauce 410g", price: 21.99, was: null, from: false, currency: "ZAR", url: "https://www.takealot.com/rhodes-baked-beans/PLID1" }],
+};
+const FLM_PLAN = { q: "baked beans", country: "ZA", currency: "ZAR", category: "groceries", noun: "groceries and toiletries", shops: [{ id: "flm", name: "Food Lover's Market", flyer: true }, { id: "takealot", name: "Takealot" }, { id: "pnp", name: "Pick n Pay" }], notSearched: [{ name: "Checkers", why: "browser" }] };
+for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`search flyer ${name}`, async () => {
+  const p = await open(o);
+  await p.route(/\/api\/search\?/, (r) => r.fulfill({ json: FLM_PLAN }));
+  await p.route(/\/api\/search\/shop\?/, (r) => { const id = new URL(r.request().url()).searchParams.get("shop"); const items = FLM_SEARCH[id] || []; r.fulfill({ json: { shop: id, status: items.length ? "ok" : "none", items, ...(id === "flm" ? { flyer: true, label: FLM_LABEL } : {}) } }); });
+  await p.goto(BASE + "/?q=baked+beans&c=ZA", { waitUntil: "networkidle" });
+  await p.waitForFunction(() => !/Searching/.test(document.getElementById("sStatus").textContent) && document.querySelectorAll("#sList li").length === 3, null, { timeout: 15000 });
+  const rows = await p.$$eval("#sList li", (ls) => ls.map((l) => ({ fl: l.classList.contains("fl"), t: l.textContent.replace(/\s+/g, " ").replace(/\u00a0/g, " ").trim(), btn: !!l.querySelector("button"), href: (l.querySelector("a") || {}).href || "", w: l.getBoundingClientRect().right <= innerWidth })));
+  ok(`search flyer ${name}: both flyer deals and the shop row show, lowest price for one item first`, rows.length === 3 && rows[0].fl && rows[1].fl && !rows[2].fl && /Rhodes/.test(rows[0].t) && /Takealot/.test(rows[2].t), JSON.stringify(rows.map((r) => r.t)));
+  ok(`search flyer ${name}: the flyer's own deal words`, /10 for R100 \(R10\.00 each\)/.test(rows[0].t) && /R10\.00 each when you buy 10 \(R100 total\)\./.test(rows[0].t), rows[0].t);
+  ok(`search flyer ${name}: honest label and "In-store flyer deal"`, rows[0].t.includes(FLM_LABEL) && /In-store flyer deal/.test(rows[0].t), rows[0].t);
+  ok(`search flyer ${name}: the lowest row says it needs the multi-buy`, /lowest price for one, when you buy 10/.test(rows[0].t), rows[0].t);
+  ok(`search flyer ${name}: no price history button and no fake product link on flyer rows`, !rows[0].btn && !rows[1].btn && rows[0].href === "https://foodloversmarket.co.za/" && rows[2].btn, JSON.stringify(rows.map((r) => [r.btn, r.href])));
+  ok(`search flyer ${name}: the summary says the flyer prices are for one item`, /Food Lover's Market prices come from its printed flyer, for one item\./.test(await p.textContent("#sStatus")), await p.textContent("#sStatus"));
+  ok(`search flyer ${name}: Food Lover's Market is named as searched`, /Searched: Food Lover's Market, Takealot/.test(await p.textContent("#sShops")), await p.textContent("#sShops"));
+  ok(`search flyer ${name}: no sideways page scroll`, await noSideScroll(p) && rows.every((r) => r.w));
+  ok(`search flyer ${name}: no JS errors`, p._errs.length === 0, p._errs.join(" | "));
+  await p.screenshot({ path: `${SHOTS}/search-flyer-${name}.png`, fullPage: !!o.isMobile });
+  await p.context().close();
+});
+// compare: a flyer match never reads as "1 for R10"
+const FLM_CMP_PLAN = { ...GROC_PLAN, shops: [{ id: "pnp", name: "Pick n Pay" }, { id: "flm", name: "Food Lover's Market" }, { id: "takealot", name: "Takealot", general: true }], specialists: 2 };
+const FLM_CMP_SHOP = { takealot: GROC_SHOP.takealot,
+  pnp: { shop: "pnp", name: "Pick n Pay", status: "match", checked_at: Date.now(), match: { title: "Rhodes Baked Beans In Tomato Sauce 400g", price: 17.99, currency: "ZAR", url: "https://shop.example.co.za/pnp-beans", in_stock: true, level: "barcode" } },
+  flm: { shop: "flm", name: "Food Lover's Market", status: "match", checked_at: Date.now(), flyer: true, match: { title: "Rhodes Baked Beans in Tomato Sauce 400 g", price: 10, was: null, currency: "ZAR", url: "https://foodloversmarket.co.za/", in_stock: true, level: "flyer", flyer: { deal: "10 for R100 (R10.00 each)", need: "R10.00 each when you buy 10 (R100 total)", limit: null, qty: 10, total: 100, label: FLM_LABEL, region: "Western Cape", valid_to: "2026-11-29" } } } };
+for (const [name, o] of [["1440", { viewport: { width: 1440, height: 900 } }], ["390", { ...mobile, viewport: { width: 390, height: 844 } }]]) await step(`compare flyer ${name}`, async () => {
+  const p = await open(o);
+  // a can of beans at R18.99 on the page checked (the flyer's R10 each needs 10 cans)
+  const beans = () => { const c = checkAnswer(); return { ...c, current: { ...c.current, price: 18.99, was: null, title: "Rhodes Baked Beans in Tomato Sauce 400g" }, history: { ...c.history, checks: [60, 40, 20, 10].map((d) => ({ t: Date.now() - d * DAY, price: 18.99, was: null, currency: "ZAR" })) } }; };
+  await p.route(/\/api\/check\?/, (r) => r.fulfill({ json: beans() }));
+  await p.route(/\/api\/compare\?/, (r) => r.fulfill({ json: FLM_CMP_PLAN }));
+  await p.route(/\/api\/compare\/shop\?/, (r) => r.fulfill({ json: FLM_CMP_SHOP[new URL(r.request().url()).searchParams.get("shop")] }));
+  await p.goto(BASE + "/");
+  await p.fill("#u", PRODUCT); await p.click("#go");
+  await p.waitForFunction(() => /3 shops checked/.test(document.querySelector("#cmpStatus").textContent) && !/ of /.test(document.querySelector("#cmpStatus").textContent), null, { timeout: 10000 });
+  const head = (await p.textContent("#cmpHead")).replace(/\u00a0/g, " ").replace(/\s+/g, " ");
+  ok(`compare flyer ${name}: headline says the multi-buy rule`, /Cheaper at Food Lover's Market: R ?10(?:[.,]00)? each when you buy 10/.test(head) && /Save R ?8[.,]99 on each item/.test(head) && /R10\.00 each when you buy 10 \(R100 total\)\./.test(head) && /In-store flyer deal: Western Cape flyer, valid 23\u201329 Nov\./.test(head) && !/undefined/.test(head), head);
+  const rows = await p.$$eval("#otherList li", (ls) => ls.map((l) => l.textContent.replace(/\s+/g, " ").replace(/\u00a0/g, " ").trim()));
+  const flm = rows.find((r) => /Food Lover's Market/.test(r)) || "";
+  ok(`compare flyer ${name}: row has the label, the tag and the rule`, flm.includes(FLM_LABEL) && /In-store flyer deal/.test(flm) && /R ?10(?:[.,]00)? each/.test(flm) && /when you buy 10 \(R100 total\)/.test(flm), flm);
+  ok(`compare flyer ${name}: row links to the shop's own site only`, (await p.$$eval("#otherList a[href*='foodloversmarket']", (a) => a.map((x) => x.href))).every((h) => h === "https://foodloversmarket.co.za/"));
+  ok(`compare flyer ${name}: no sideways scroll`, await noSideScroll(p));
+  ok(`compare flyer ${name}: no JS errors`, p._errs.length === 0, p._errs.join(" | "));
+  await p.locator("#others").screenshot({ path: `${SHOTS}/compare-flyer-${name}.png` });
+  await p.context().close();
+});
+// the real local worker: flyer deals only while the flyer is valid (23–29 Nov 2026, SAST)
+await step("flyer API (local worker)", async () => {
+  const H = KEY ? { "x-e2e-key": KEY } : {};
+  const active = Date.now() >= Date.parse("2026-11-22T22:00:00Z") && Date.now() <= Date.parse("2026-11-29T21:59:59.999Z");
+  const plan = await (await fetch(BASE + "/api/search?q=Jungle+Oats&c=ZA", { headers: H })).json();
+  const has = (plan.shops || []).some((s) => s.id === "flm");
+  ok(`flyer API: Food Lover's Market ${active ? "is" : "is not"} in the plan (flyer ${active ? "valid" : "ended"})`, has === active, JSON.stringify(plan.shops));
+  const d = await (await fetch(BASE + "/api/search/shop?q=Jungle+Oats&c=ZA&shop=flm", { headers: H })).json();
+  if (active) ok("flyer API: Jungle Oats 1 kg at R29.99 each, from the flyer", d.status === "ok" && d.items[0].title === "Jungle Oats 1 kg" && d.items[0].price === 29.99 && d.items[0].deal === "R29.99 each" && d.label === FLM_LABEL, JSON.stringify(d));
+  else ok("flyer API: no deals after the flyer ended", d.status === "ended" && d.items.length === 0, JSON.stringify(d));
+});
+
 // 4. "Ask us to add a shop" form, sent to the real worker and local D1
 for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`shop request ${name}`, async () => {
   const p = await open(o);

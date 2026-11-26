@@ -16,6 +16,14 @@ def picks_html(groups):
 examples = json.loads((root / "examples.json").read_text()) if (root / "examples.json").exists() else {}
 html = html.replace("<!--PICKS-->", picks_html(examples.get("groups", [])))
 import base64, hashlib, re, subprocess
+FLYER_FILE = "data/flm-flyer-2026-11-23.json"
+FLYER_KEYS = ["id", "title", "brand", "price", "deal_text", "qty", "unit_price", "is_combo", "section"]
+def flyer_js():
+    """Food Lover's Market flyer deals (src/flyer.js): the typed flyer, only the fields the Worker uses."""
+    d = json.loads((root / FLYER_FILE).read_text())
+    keep = {"shop": d["shop"], "region": d["region"], "valid_from": d["valid_from"], "valid_to": d["valid_to"],
+            "deals": [{k: x[k] for k in FLYER_KEYS} for x in d["deals"]]}
+    return "const FLM_FLYER = " + json.dumps(keep, separators=(",", ":")) + ";\n"
 TARGETS = "--target=chrome70,safari12,firefox68,edge79"
 def esbuild(code, loader):
     """Minify and lower modern syntax for older browsers. Falls back to the source if esbuild is not available."""
@@ -47,7 +55,7 @@ for f in sorted((root / "public/fonts").glob("*.woff2")):
     html = html.replace(f"/fonts/{f.name}", f"/fonts/{hashed}")
 font = (root / "src/og_font.js").read_text().replace("export const OG_FONT", "const OG_FONT")
 static = {n: base64.b64encode((root / "public" / n).read_bytes()).decode() for n in ["og-home.png", "og-home.jpg", "og-square.jpg", "favicon.ico", "apple-touch-icon.png"]}
-worker = "const STATIC_IMG = " + json.dumps(static) + ";\nconst FONTS = " + json.dumps(fonts) + ";\nconst APP = " + json.dumps({"name": app_name, "js": APP_JS, "lazy_name": lazy_name, "lazy": LAZY_JS}) + ";\n" + (root / "src/shops.js").read_text() + "\n" + (root / "src/worker.js").read_text() + "\n" + (root / "src/readers.js").read_text() + "\n" + (root / "src/features.js").read_text() + "\n" + (root / "src/archive.js").read_text() + "\n" + (root / "src/daily.js").read_text() + "\n" + (root / "src/compare.js").read_text() + "\n" + (root / "src/search.js").read_text() + "\n" + (root / "src/og.js").read_text() + "\n" + (root / "src/stats.js").read_text() + "\n" + font + "\nconst HTML = " + json.dumps(html) + ";\n"
+worker = flyer_js() + "const STATIC_IMG = " + json.dumps(static) + ";\nconst FONTS = " + json.dumps(fonts) + ";\nconst APP = " + json.dumps({"name": app_name, "js": APP_JS, "lazy_name": lazy_name, "lazy": LAZY_JS}) + ";\n" + (root / "src/shops.js").read_text() + "\n" + (root / "src/worker.js").read_text() + "\n" + (root / "src/readers.js").read_text() + "\n" + (root / "src/features.js").read_text() + "\n" + (root / "src/archive.js").read_text() + "\n" + (root / "src/daily.js").read_text() + "\n" + (root / "src/compare.js").read_text() + "\n" + (root / "src/search.js").read_text() + "\n" + (root / "src/flyer.js").read_text() + "\n" + (root / "src/og.js").read_text() + "\n" + (root / "src/stats.js").read_text() + "\n" + font + "\nconst HTML = " + json.dumps(html) + ";\n"
 (root / "dist").mkdir(exist_ok=True)
 (root / "dist/worker.js").write_text(worker)
 schema = (root / "schema.sql").read_text()

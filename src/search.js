@@ -52,12 +52,15 @@ const srchKey = (q) => srchWords(q).join(" ");
 // Which shops to search: same currency, not off (robots.txt or no search), shops that sell this kind of product.
 function srchPlan(q, country) {
   const cur = SRCH_CC[country];
-  const cat = cmpCatOf(q);
+  // Food Lover's Market flyer deals (src/flyer.js): a searched shop only when a deal on the flyer has these words.
+  const flyer = cur === "ZAR" && flmSearch(q).length > 0;
+  // a flyer deal names a grocery ("chicken wings", "watermelons"): search the grocery shops too
+  const cat = cmpCatOf(q) || (flyer ? "groceries" : null);
   const words = new Set(srchWords(q));
   const want = (s) => s.sells.includes("*") || (cat ? s.sells.includes(cat) : s.sells.some((x) => SRCH_BROAD.includes(x)));
   const shops = [], notSearched = [];
   for (const s of CMP_SHOPS) {
-    if (s.cur !== cur) continue;
+    if (s.cur !== cur || s.flyer) continue;
     if (s.brands && !s.brands.some((b) => words.has(b))) continue;
     if (!want(s) && !s.brands) continue;
     if (s.off === "robots") { notSearched.push({ name: s.name, why: "robots" }); continue; }
@@ -67,11 +70,13 @@ function srchPlan(q, country) {
   // general shops first (they answer for most searches), then specialists; slow shops last
   const slow = (id) => (cmpShopById(id) || {}).slow ? 1 : 0;
   shops.sort((a, b) => slow(a.id) - slow(b.id) || b.general - a.general);
+  // the flyer answers from memory at once: first, so it is never cut off by SRCH_MAX_SHOPS
+  if (flyer) { const f = cmpShopById(FLM_ID); shops.unshift({ id: f.id, name: f.name, general: false, flyer: true }); }
   for (const x of CMP_NOT_SEARCHED[cur] || []) {
     const cats = x.cats || CMP_NOT_SEARCHED_CATS;
     if (cat ? cats.includes(cat) : cats.some((c) => SRCH_BROAD.includes(c))) notSearched.push({ name: x.name, why: x.why });
   }
-  return { category: cat, noun: cat ? CMP_CAT_NOUN[cat] || null : null, currency: cur, shops: shops.slice(0, SRCH_MAX_SHOPS).map(({ id, name }) => ({ id, name })), notSearched };
+  return { category: cat, noun: cat ? CMP_CAT_NOUN[cat] || null : null, currency: cur, shops: shops.slice(0, SRCH_MAX_SHOPS).map(({ id, name, flyer }) => (flyer ? { id, name, flyer: true } : { id, name })), notSearched };
 }
 
 // Does this product name have every search word? Short words must be whole words; a word with digits
@@ -135,7 +140,9 @@ async function apiSearch(req, env) {
   const country = srchCountry(sp.get("c")); if (!country) return json({ error: "Choose South Africa or the UK." }, 400);
   if (!isE2E(req, env) && await rateLimit(env, srchIp(req), "search")) return json({ error: "Too many searches. Wait a minute and try again." }, 429);
   const plan = srchPlan(v.q, country);
-  return json({ q: v.q, country, ...plan }, 200, { "cache-control": "public, max-age=300" });
+  // a plan with the flyer is never kept past the flyer's end
+  const age = plan.shops.some((s) => s.flyer) ? Math.min(300, flmSecondsLeft()) : 300;
+  return json({ q: v.q, country, ...plan }, 200, { "cache-control": "public, max-age=" + age });
 }
 
 // GET /api/search/shop?q=&c=&shop=  -> { shop, name, status, items }
@@ -145,6 +152,13 @@ async function apiSearchShop(req, env, ctx) {
   const v = srchClean(sp.get("q")); if (v.error) return json({ error: v.error }, 400);
   const country = srchCountry(sp.get("c")); if (!country) return json({ error: "Choose South Africa or the UK." }, 400);
   const shop = cmpShopById(sp.get("shop") || "");
+  // Flyer deals: from memory, no shop fetch, no cache (so nothing shows after the flyer ends).
+  if (shop && shop.flyer) {
+    if (country !== "ZA") return json({ error: "unknown shop" }, 400);
+    if (!flmActive()) return json({ shop: shop.id, name: shop.name, status: "ended", items: [], flyer: true }, 200, { "cache-control": "no-store" });
+    const items = flmSearch(v.q);
+    return json({ shop: shop.id, name: shop.name, status: items.length ? "ok" : "none", items, flyer: true, label: FLM_LABEL, checked_at: now() }, 200, { "cache-control": "public, max-age=" + Math.min(300, flmSecondsLeft()) });
+  }
   if (!shop || !srchPlan(v.q, country).shops.some((s) => s.id === shop.id)) return json({ error: "unknown shop" }, 400);
   const base = { shop: shop.id, name: shop.name };
   const key = srchCacheUrl(shop.id, country, v.q);

@@ -57,6 +57,9 @@ const CMP_SHOPS = [
   // Groceries, household and toiletries (South Africa). Both ask for 10 s between requests (Crawl-delay).
   { id: "pnp", name: "Pick n Pay", cur: "ZAR", hosts: ["pnp.co.za"], kind: "pnp", base: "https://www.pnp.co.za", slow: true, grocer: true, sells: ["groceries", "beauty", "baby", "liquor"] },
   { id: "clicks", name: "Clicks", cur: "ZAR", hosts: ["clicks.co.za"], kind: "clicks", base: "https://clicks.co.za", slow: true, grocer: true, sells: ["groceries", "beauty", "baby"] },
+  // Food Lover's Market: not a site search. Its printed Black Friday flyer (Western Cape) is built into the Worker
+  // (src/flyer.js, FLM_FLYER), and it shows only while the flyer is valid. In-store deals: no product pages.
+  { id: "flm", name: "Food Lover's Market", cur: "ZAR", hosts: ["foodloversmarket.co.za"], kind: "flyer", base: "https://foodloversmarket.co.za", flyer: true, grocer: true, noFragrance: true, sells: ["groceries", "beauty"] },
   { id: "lakeland", name: "Lakeland", cur: "GBP", hosts: ["lakeland.co.uk"], kind: "shopify", base: "https://www.lakeland.co.uk", off: "robots", sells: ["appliances", "home"] },
   // UK
   { id: "allbeauty", name: "allbeauty", cur: "GBP", hosts: ["allbeauty.com"], kind: "shopify", base: "https://allbeauty.com", sells: ["beauty"] },
@@ -333,6 +336,7 @@ function cmpPlan(id, sourceHost, currency) {
   for (const s of CMP_SHOPS) {
     if (from && s.id === from.id) continue;
     if (s.off) continue;
+    if (s.flyer && !flmActive()) continue;   // flyer deals only while the flyer is valid
     if (s.cur !== currency) continue;
     if (s.brands && !(id.brand && s.brands.includes(id.brand))) { skipped.push({ id: s.id, name: s.name, why: "brand" }); continue; }
     const general = s.sells.includes("*");
@@ -937,6 +941,14 @@ async function apiCompareShop(req, env, ctx) {
   const g = await cmpGuard(req, env); if (g.error) return g.error;
   const shop = cmpShopById(new URL(req.url).searchParams.get("shop") || "");
   if (!shop) return json({ error: "unknown shop" }, 400);
+  // Flyer deals (src/flyer.js): read from memory, never cached or saved (they end with the flyer).
+  if (shop.flyer) {
+    const id = await cmpIdentityFor(env, g.canon);
+    if (!id) return json({ shop: shop.id, name: shop.name, status: "none" });
+    const plan = cmpPlan(id, new URL(g.canon).hostname, id.currency);
+    if (!plan.shops.some((s) => s.id === shop.id)) return json({ shop: shop.id, name: shop.name, status: "skipped" });
+    return json(flmCompareAnswer(id), 200, { "cache-control": "no-store" });
+  }
   const key = "cmp-" + CMP_VER + ":" + shop.id + ":" + g.canon;
   const cached = await cacheGet(env, key);
   if (cached) return json({ ...cached, cached: true });
