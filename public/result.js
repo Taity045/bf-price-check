@@ -830,7 +830,7 @@ async function assist(q, c) {
   $("asLab").textContent = "AI Shopping Assistant · shops in " + where(c);
   $("asTitle").textContent = "\u201c" + q + "\u201d";
   $("asWhat").textContent = "";
-  $("asStatus").innerHTML = '<span class="spin"></span>We read your request and search the shops now. This can take up to 15 seconds.';
+  $("asStatus").innerHTML = '<span class="spin"></span>Checking shops now…';
   ["asH", "asNoteTop", "asEmpty", "asMore", "asAct"].forEach((id) => $(id).classList.add("hidden"));
   $("asPicks").innerHTML = ""; $("asList").innerHTML = ""; $("asShops").textContent = "";
   $("asMore").open = false;

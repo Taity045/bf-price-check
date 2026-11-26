@@ -25,6 +25,7 @@ if (js) { const r = await get(js[0]); check("app script loads", r.ok && /javascr
 
 // 1b. AI Shopping Assistant endpoint is there (an empty request: a plain 400, no shop search, no AI call)
 try { const r = await get("/api/assist?q=&c=ZA"); const d = await r.json().catch(() => ({})); check("assistant endpoint answers", r.status === 400 && /what you need/.test(d.error || ""), `HTTP ${r.status}`); } catch (e) { check("assistant endpoint answers", false, String(e)); }
+try { const r = await get("/api/assist?q=" + encodeURIComponent("write a python script to sort a list") + "&c=ZA"); const d = await r.json().catch(() => ({})); check("assistant blocks off-topic requests before any AI call", r.status === 400 && d.blocked === "off-topic" && d.error === "Ask about a product to buy, like a laptop, phone, or running watch.", `HTTP ${r.status} ${JSON.stringify(d).slice(0, 120)}`); } catch (e) { check("assistant blocks off-topic requests before any AI call", false, String(e)); }
 
 // 2. a live price check
 let checked = null;

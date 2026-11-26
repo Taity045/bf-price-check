@@ -148,8 +148,34 @@ describe("assistant: the filter and the picks", () => {
   });
   test("rule reasons say only true facts", () => {
     const r = W.asPick(intent, [cand("HP 15 Ryzen 5 16GB 512GB SSD Laptop", 10499), cand("Lenovo IdeaPad Ryzen 7 16GB Laptop", 15999)]);
-    assert.equal(W.asRuleReason(intent, r.top[0], 0, r.top), "The name shows 16GB, SSD, 512GB and Ryzen 5, and it costs R4,501 less than your budget.");
-    assert.equal(W.asRuleReason(intent, r.top[1], 1, r.top), "The name shows 16GB and Ryzen 7, but it costs R999 more than your budget.");
+    // AB-32: 2 plain sentences: what it is good for and what its real specs do, then the price line
+    assert.equal(W.asRuleReason(intent, r.top[0], 0, r.top), "Good for programming: 16GB memory runs many apps at once, the 512GB SSD starts up fast, and the Ryzen 5 processor handles study, work and video calls. It costs R4,501 less than your budget.");
+    assert.equal(W.asRuleReason(intent, r.top[1], 1, r.top), "Good for programming: the Ryzen 7 processor handles study, work and video calls. It costs R999 more than your budget.");
+  });
+  test("law student laptop under 8k: plain-English reasons from the real name only; 8k is a budget, not an 8K screen", () => {
+    const q = "laptop for a 1st year law student under 8k";
+    const it = W.asRules(q, "ZA");
+    assert.equal(it.maxBudget, 8000); assert.equal(it.currency, "ZAR");
+    assert.ok(!it.mustHave.includes("8k") && !it.prefer.includes("8k"));
+    assert.equal(W.asUnderstanding(it), "Budget: up to R8,000 · Looking for: laptop (SSD, 8GB, 16GB)");
+    assert.ok(W.asIsAssist("laptop under 8k") && W.asIsAssist("phone under 5k"));
+    assert.ok(W.asRules("8K TV under 20k", "ZA").mustHave.includes("8k"), "an 8K TV is still an 8K TV");
+    assert.ok(!W.asRules("4K TV under R8k", "ZA").mustHave.includes("8k"));
+    const p = { title: 'Lenovo IdeaPad 1 15.6" FHD IPS Intel Celeron N4500 8GB RAM 256GB SSD Laptop', price: 6199, currency: "ZAR", shop: "Takealot", must: [], pref: [] };
+    const reason = W.asRuleReason(it, p, 0, [p]);
+    assert.equal(reason, "Good for study, such as reading, essays and video lectures: 8GB memory runs several apps and browser tabs at once, the 256GB SSD starts up fast, and the 15.6-inch full HD screen keeps text sharp. It costs R1,801 less than your budget.");
+    assert.ok(!/battery|weight|hours|kg/i.test(reason));
+    const bare = { title: "Acer Laptop Black", price: 7999, currency: "ZAR", shop: "Takealot", must: [], pref: [] };
+    assert.equal(W.asRuleReason(it, bare, 0, [bare]), "It matches your request, but the name does not list the main specs. It costs R1 less than your budget.");
+  });
+  test("AI reasons: 2 plain sentences are fine; invented battery or weight claims and comparisons are refused", () => {
+    const f = 'name: Lenovo IdeaPad 1 15.6" FHD IPS Intel Celeron N4500 8GB RAM 256GB SSD Laptop; price: R6,199; budget line: It costs R1,801 less than your budget. laptop for a 1st year law student under 8k R8,000 R1,801';
+    assert.equal(W.asReasonOk("Good for reading case files and video lectures: the 15.6-inch full HD screen keeps text sharp, and 8GB memory runs several tabs at once. It costs R1,801 less than your budget.", f), true);
+    assert.equal(W.asReasonOk("Good for study: the long battery life lasts all day. It costs R1,801 less than your budget.", f), false);
+    assert.equal(W.asReasonOk("It is lightweight and easy to carry to class. It costs R1,801 less than your budget.", f), false);
+    assert.equal(W.asReasonOk("It has a 256GB SSD, which is faster than pick 2. It costs R1,801 less than your budget.", f), false);
+    assert.equal(W.asReasonOk("One. Two sentences. Three sentences here.", f), false);
+    assert.match(W.AS_REASON_SYSTEM, /everyday words/); assert.match(W.AS_REASON_SYSTEM, /Do not add battery life, weight/);
   });
   test("an AI reason with a new number, a link or an acronym that is not in the facts is refused", () => {
     const f = "name: HP 15 Ryzen 5 16GB 512GB SSD Laptop; price: R10,499; shop: Takealot; within the budget R15,000 R4,501";
@@ -193,7 +219,7 @@ function setup(t, products = LAPTOPS, ai) {
     return new Response("not mocked", { status: 599 });
   };
   t.after(() => { globalThis.fetch = real; });
-  W.asAiReset();
+  W.asAiReset(); W.asOrReset(); W.asRlReset();
   return { db, env, fetched };
 }
 function fakeAI(replies) {
@@ -211,7 +237,7 @@ describe("/api/assist", () => {
     assert.equal(r.status, 200);
     const d = await r.json();
     assert.equal(d.understanding, "Budget: up to R15,000 · Looking for: laptop (16GB, SSD)");
-    assert.equal(d.intent.by, "rules"); assert.deepEqual(d.ai, { intent: false, reasons: false });
+    assert.equal(d.intent.by, "rules"); assert.deepEqual(d.ai, { intent: false, reasons: false, models: { intent: "rules", reasons: "rules" } });
     assert.equal(d.picks.length, 3);
     assert.deepEqual(d.picks.map((p) => p.price), [12999, 13999, 8999]);
     assert.ok(d.picks.every((p) => p.shop === "Computer Mania" && p.url.startsWith("https://computermania.co.za/products/") && p.reason_by === "rules" && !p.over_budget));
@@ -239,7 +265,7 @@ describe("/api/assist", () => {
     assert.equal(d.picks[0].reason, "It has 16GB RAM and a 512GB SSD for Docker, within your budget."); assert.equal(d.picks[0].reason_by, "ai");
     assert.equal(d.picks[1].reason_by, "rules", "64GB / RTX 4090 are not in the facts"); assert.ok(!/RTX|64GB/.test(JSON.stringify(d)));
     assert.equal(d.picks[2].reason_by, "ai");
-    assert.deepEqual(d.ai, { intent: true, reasons: true });
+    assert.deepEqual(d.ai, { intent: true, reasons: true, models: { intent: "workers-ai:@cf/meta/llama-3.1-8b-instruct-fp8-fast", reasons: "workers-ai:@cf/meta/llama-3.1-8b-instruct-fp8-fast" } });
   });
   test("the AI can't add a product, a price or a link", async (t) => {
     quiet(t);

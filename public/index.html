@@ -358,7 +358,11 @@ footer{border-top:2px dashed var(--ink)}
 :focus-visible{outline:3px solid var(--acc);outline-offset:2px}
 .stats .lab,#tip{font-family:var(--sans)}
 #tip b{font-family:var(--mono)}
-.steps{display:none}
+/* How it works: 3 numbered steps under a thin line, as even cards (3 across on phone and desktop) */
+.steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;list-style:none;margin:28px 0 4px;padding:20px 0 0;border-top:1px solid var(--line);counter-reset:s;font-size:13px;line-height:1.35;color:var(--mut)}
+.steps li{counter-increment:s;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:8px;min-width:0;padding:12px 8px;border:1px solid var(--line);border-radius:var(--r);background:var(--soft);text-align:center;overflow-wrap:anywhere}
+.steps li::before{content:counter(s);flex:none;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:99px;background:var(--ink);color:var(--bg);font:600 12px/1 var(--mono)}
+html.q .hero .steps,.hero:has(~#result:not(.hidden)) .steps{display:none}
 @media (min-width:900px){
   main{max-width:900px;display:flex;flex-direction:column;min-height:100vh;padding-bottom:0}
   .hero{padding:24px 0}
@@ -373,10 +377,8 @@ footer{border-top:2px dashed var(--ink)}
   .picks{grid-template-columns:repeat(3,minmax(0,1fr))}
   #u{height:62px;font-size:18px;padding:0 18px}
   #f .go{height:62px;padding:0 32px;font-size:18px}
-  .steps{display:flex;justify-content:center;gap:28px;list-style:none;margin:20px 0 0;padding:0;font-size:14px;color:var(--mut);counter-reset:s}
-  .hero:has(~#result:not(.hidden)) .steps{display:none}
-  .steps li{counter-increment:s}
-  .steps li::before{content:counter(s) ". ";font-family:var(--mono);color:var(--ink)}
+  .steps{gap:16px;margin:36px 0 8px;padding-top:28px;font-size:14px}
+  .steps li{flex-direction:row;justify-content:center;gap:10px;padding:14px 16px;text-align:left}
   footer{margin-top:auto;padding:16px 0 20px}
   #result,.page{margin-bottom:40px}
 }
@@ -395,7 +397,7 @@ footer{border-top:2px dashed var(--ink)}
       <button class="go" id="go" type="submit">Check price</button>
     </form>
     <div class="ccrow hidden" id="ccrow" role="group" aria-label="Search shops in"><span>Shops in</span><button type="button" class="ccb" data-c="ZA" aria-pressed="true">South Africa</button><button type="button" class="ccb" data-c="GB" aria-pressed="false">UK</button></div>
-    <p class="asks" id="asks"><span>Or ask:</span><button type="button" class="ask" data-q="I have R15,000. I need a laptop for programming and Docker">Laptop for coding, R15,000</button><button type="button" class="ask" data-q="Best running watch under R6000">Running watch under R6,000</button><button type="button" class="ask" data-q="Good coffee machine under R3000">Coffee machine under R3,000</button></p>
+    <p class="asks" id="asks"><span>Or ask:</span><button type="button" class="ask" data-q="I have R10,000. I need a laptop to study law">Laptop for law studies, R10,000</button><button type="button" class="ask" data-q="Best running watch under R6000">Running watch under R6,000</button><button type="button" class="ask" data-q="Good coffee machine under R3000">Coffee machine under R3,000</button></p>
     <section class="tries" id="tries" aria-labelledby="triesH">
       <h2 class="tryh" id="triesH">Try a popular product</h2>
       <!--PICKS-->
@@ -660,12 +662,15 @@ document.querySelectorAll("#chips a").forEach((a) => a.addEventListener("click",
 const isLink = (v) => /https?:\/\/\S+/i.test(v) || /^(www\.)?[\w-]+(\.[\w-]+)+\/\S*/i.test(v) || (!/\s/.test(v) && /^(www\.)?[a-z0-9-]+(\.[a-z0-9-]+)*\.(com|co\.za|za|co\.uk|uk|net|org|eu|de|fr|nl|ie|io|shop|store|to|co)$/i.test(v));
 // A shopping need with a budget ("laptop for programming under R15000") goes to the AI Shopping Assistant;
 // a product name ("PS5") stays on the normal search. Same rule as AS_ASK_RE in src/assist.js.
-const ASK_RE = /(?:^|[^\w£])(?:R ?\d{1,3}(?:[ ,]\d{3})+|R ?\d{3,}(?:\.\d+)?|R ?\d+(?:\.\d+)? ?k)\b|£ ?\d|\b\d[\d ,.]* ?(?:rand|zar|pounds?|gbp|quid)\b|\b(?:budget|under|below|less than|max(?:imum)?|up to|at most|no more than|cheaper than)\b[^\d]{0,3}\d{2,}|\bbudget\b|\b(?:i need|i want|i have|i'?m looking for|looking for|need an?|want an?|recommend|suggest|help me (?:find|choose|pick)|which [a-z ]{2,30} should i|what (?:is|are) (?:the|a) (?:best|good))\b|\b(?:best|good|decent|great|cheap|affordable)\b(?: [\w'-]+){1,5} (?:for|under|below)\b|\bfor (?:the )?(?:a|an|my|our|his|her|their|someone|somebody|kids?|children|students?|school|university|varsity|college|uni|work|office|home|travel|gaming|programming|coding|studying|study|studies|running|gym|beginners?|seniors?|elderly|mom|mum|dad|wife|husband|girlfriend|boyfriend|son|daughter|teens?|teenagers?|business|photography|video editing|streaming)\b|(?:\S+\s+){2,}\S*\?\s*$/i;
-const isAsk = (v) => { const s = String(v || "").replace(/\s+/g, " ").trim(); return !!s && !isLink(s) && ASK_RE.test(s); };
+const ASK_RE = /(?:^|[^\w£])(?:R ?\d{1,3}(?:[ ,]\d{3})+|R ?\d{3,}(?:\.\d+)?|R ?\d+(?:\.\d+)? ?k)\b|£ ?\d|\b\d[\d ,.]* ?(?:rand|zar|pounds?|gbp|quid)\b|\b(?:budget|under|below|less than|max(?:imum)?|up to|at most|no more than|cheaper than)\b[^\d]{0,3}(?:\d{2,}|\d(?:\.\d+)? ?k\b)|\bbudget\b|\b(?:i need|i want|i have|i'?m looking for|looking for|need an?|want an?|recommend|suggest|help me (?:find|choose|pick)|which [a-z ]{2,30} should i|what (?:is|are) (?:the|a) (?:best|good))\b|\b(?:best|good|decent|great|cheap|affordable)\b(?: [\w'-]+){1,5} (?:for|under|below)\b|\bfor (?:the )?(?:a|an|my|our|his|her|their|someone|somebody|kids?|children|students?|school|university|varsity|college|uni|work|office|home|travel|gaming|programming|coding|studying|study|studies|running|gym|beginners?|seniors?|elderly|mom|mum|dad|wife|husband|girlfriend|boyfriend|son|daughter|teens?|teenagers?|business|photography|video editing|streaming)\b|(?:\S+\s+){2,}\S*\?\s*$/i;
+// Off-topic requests and prompt injection ("write a python script", "ignore previous instructions") also go to the
+// assistant, which answers with a short shopping-only message and calls no AI. Same rule as AS_OFF_RE in src/assist.js.
+const OFF_RE = /\b(?:ignore|disregard|forget|override|bypass)\b.{0,40}\b(?:instructions?|rules?|prompts?|guidelines?|messages?|context)\b|\b(?:system|developer|hidden|initial) (?:prompt|message|instructions?)\b|\b(?:act|behave|respond|talk) (?:as|like)\b|\bpretend (?:to be|you)\b|\byou are now\b|\b(?:jailbreak|developer mode|roleplay|role-play|dan mode)\b|\bdo anything now\b|\b(?:write|create|make|build|generate|debug|fix|code|explain)\b.{0,30}\b(?:code|script|program|function|class|regex|sql query|algorithm|api|website|web app)\b|\b(?:python|javascript|typescript|java|c\+\+|c#|golang|rust|php|html|css|sql|bash|regex|react)\b.{0,20}\b(?:script|code|program|function|tutorial|loop|syntax|error|exception|snippet)\b|\bhow (?:do i|to|can i) (?:code|program|sort|reverse|install python|use git)\b|\b(?:write|compose|draft|generate|create)\b(?: me)?(?: an?| the| my)? (?:short |long )?(?:essays?|poems?|stor(?:y|ies)|songs?|lyrics|letters?|emails?|cover letters?|cv|resume|speech|articles?|blog posts?|tweets?|captions?|haikus?|limericks?|summary|reports?)\b|\bessays?\b|\b(?:do|solve|answer|help (?:me )?with) (?:my |this |the )?(?:homework|assignment|exam|test questions?|maths?|math problem)\b|\b(?:summari[sz]e|paraphrase|translate|proofread)\b|\bwhat is \d+(?:\.\d+)? ?[-+*/x×÷^] ?\d|\b(?:solve|equation|integral|derivative|algebra|calculus)\b|^\s*\d+(?:\.\d+)? ?[-+*/×÷^] ?\d+(?:\.\d+)? ?=?\s*\??\s*$|\b(?:capital of|who (?:is|was) the (?:president|king|queen|prime minister)|who (?:won|invented|discovered|wrote)|when (?:did|was) .{2,40} (?:born|die|start|end|invented)|meaning of life|weather (?:in|today|tomorrow))\b|\b(?:tell|give) me (?:a |an |some )?(?:jokes?|story|stories|riddles?|fun facts?|poems?)\b|\bjokes?\b|\b(?:poems?|haikus?|limericks?)\b|\brecipes?\b(?! books?)|\bhow (?:do i|to|can i) (?:cook|bake|boil|fry|roast|grill)\b|^\s*(?:hi|hello|hey|yo|howzit|good (?:morning|afternoon|evening))\b[\s!.,]*(?:how are you|there|bot|$)|\bhow are you\b|\b(?:who|what) are you\b|\bwhat is your name\b|\bwhat can you do\b|\bare you (?:an? )?(?:ai|bot|robot|human|chatgpt|gpt)\b|\btell me about yourself\b/i;
+const isAsk = (v) => { const s = String(v || "").replace(/\s+/g, " ").trim(); return !!s && !isLink(s) && (ASK_RE.test(s) || OFF_RE.test(s)); };
 // Search country: South Africa (ZA) or the UK (GB). Kept on this device.
 let cc = store.get("cc", "ZA"); if (cc !== "ZA" && cc !== "GB") cc = "ZA";
 // The example requests under the box follow the country (rand or pounds).
-const ASKS = { ZA: [["I have R15,000. I need a laptop for programming and Docker", "Laptop for coding, R15,000"], ["Best running watch under R6000", "Running watch under R6,000"], ["Good coffee machine under R3000", "Coffee machine under R3,000"]],
+const ASKS = { ZA: [["I have R10,000. I need a laptop to study law", "Laptop for law studies, R10,000"], ["Best running watch under R6000", "Running watch under R6,000"], ["Good coffee machine under R3000", "Coffee machine under R3,000"]],
   GB: [["Need a 4K TV under £500 for PS5", "4K TV for PS5, £500"], ["Best running watch under £250", "Running watch under £250"], ["Good coffee machine under £200", "Coffee machine under £200"]] };
 function setCc(c) {
   cc = c === "GB" ? "GB" : "ZA"; document.querySelectorAll("#ccrow .ccb").forEach((b) => b.setAttribute("aria-pressed", b.dataset.c === cc ? "true" : "false"));
