@@ -341,6 +341,45 @@ for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`s
   await p.context().close();
 });
 
+// 4b. "Share this deal": the share text has the title, the price and the cheaper match; computer = our menu, phone = the phone's share menu
+const cmpPlan = () => ({ product: { currency: "ZAR", category: "appliances" }, noun: "kettles", shops: [{ id: "makro", name: "Makro" }, { id: "game", name: "Game" }],
+  results: { makro: { shop: "makro", name: "Makro", status: "match", checked_at: Date.now(), match: { title: "CI Test Kettle 1.7L", price: 899, currency: "ZAR", in_stock: true, level: "barcode", url: "https://shop.example.co.za/k" } },
+    game: { shop: "game", name: "Game", status: "none", checked_at: Date.now() } } });
+for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`share ${name}`, async () => {
+  const p = await open(o);
+  await p.route(/\/api\/compare\?/, (r) => r.fulfill({ json: cmpPlan() }));
+  if (name === "phone") await p.addInitScript(() => { navigator.share = async (d) => { window.__shared = d; }; });
+  await p.goto(BASE + "/?u=" + encodeURIComponent(PRODUCT));
+  await p.waitForFunction(() => /Cheaper at Makro/.test(document.querySelector("#cmpBig")?.textContent || ""), null, { timeout: 15000 });
+  ok(`share ${name}: one share button, near the verdict`, (await p.locator("#share").count()) === 1 && (await p.locator(".actions #share").count()) === 0);
+  ok(`share ${name}: button says "Share this deal" when a shop is cheaper`, (await p.textContent("#shareLab")).trim() === "Share this deal", await p.textContent("#shareLab"));
+  const box = await p.locator("#share").boundingBox(), icon = await p.locator("#share svg").boundingBox();
+  ok(`share ${name}: button is a big tap target, not too tall`, box && box.height >= 44 && box.height <= 64 && icon && icon.width <= 24 && icon.height <= 24, JSON.stringify({ box, icon }));
+  await p.click("#share");
+  const link = BASE + "/?u=" + encodeURIComponent(PRODUCT);
+  if (name === "phone") {
+    await p.waitForFunction(() => window.__shared, null, { timeout: 3000 }).catch(() => {});
+    const d = await p.evaluate(() => window.__shared);
+    ok("share phone: one tap opens the phone's share menu (no extra menu)", d && !(await p.isVisible("#shareDlg")), JSON.stringify(d));
+    ok("share phone: share text has title, price and cheaper shop", d && /CI Test Kettle 1\.7L/.test(d.text) && /Price at takealot\.com: R\s?999/.test(d.text) && /Cheaper at Makro: R\s?899 \(save R\s?100\)/.test(d.text), d && d.text);
+    ok("share phone: link opens the same check", d && d.url === link, d && d.url);
+  } else {
+    await p.waitForSelector("#shareDlg[open]", { timeout: 3000 });
+    const txt = await p.textContent("#shareText"), wa = await p.getAttribute("#shareWa", "href");
+    ok("share desktop: menu shows the share text", /CI Test Kettle 1\.7L/.test(txt) && /Cheaper at Makro/.test(txt) && txt.includes(link), txt);
+    ok("share desktop: WhatsApp link has the text and the link", wa.startsWith("https://wa.me/?text=") && decodeURIComponent(wa.slice(20)).includes(link), wa);
+    ok("share desktop: no fluff words", !/!|amazing|best deal|guaranteed/i.test(txt), txt);
+    await p.context().grantPermissions(["clipboard-read", "clipboard-write"]).catch(() => {});
+    await p.click("#shareCopy"); await p.waitForTimeout(300);
+    ok("share desktop: Copy link says it copied", /copied/i.test(await p.textContent("#toast")), await p.textContent("#toast"));
+    await p.screenshot({ path: `${SHOTS}/share-desktop.png` });
+    await p.click("#shareDlg .x");
+  }
+  ok(`share ${name}: no sideways scroll`, await noSideScroll(p));
+  ok(`share ${name}: no JS errors`, p._errs.length === 0, p._errs.join(" | "));
+  await p.context().close();
+});
+
 // 5. no bookmark feature; a ?url= link (used by shares) starts a check
 await step("?url= link", async () => {
   const p = await open(desktop);
