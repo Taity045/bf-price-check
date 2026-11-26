@@ -823,7 +823,8 @@ async function search(q, c) {
 }
 // ---------- AI Shopping Assistant: /api/assist (src/assist.js) ----------
 // The server reads the request (Workers AI or rules), searches the shops, and sends the top 3 real products.
-// Every product, price, shop and link here comes from a shop's own site. The AI only writes the short reasons.
+// Every product, price, shop and link here comes from a shop's own site. The AI picks from that real list (by its
+// numbers only) and writes the short reasons; it never adds a product, a price or a link (AB-42).
 const shareUrl = (q, c) => SITE + "/?q=" + encodeURIComponent(q).replace(/%20/g, "+") + "&c=" + c;
 let assistShare = "";
 async function assist(q, c) {
