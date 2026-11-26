@@ -287,6 +287,19 @@ dialog{background:var(--card,var(--bg))}
 @media (prefers-reduced-motion:reduce){.reveal .big{animation:none}}
 .flag{background:none;border-left:4px solid var(--bad);border-radius:0;padding:6px 0 6px 12px;color:var(--ink);font-weight:600}
 .flag.ok{border-color:var(--good);color:var(--ink)}
+/* Deal Score + action (src/score.js), inside the verdict card */
+.deal{margin:12px 0 6px;padding:10px 12px;border:1.5px solid var(--line);border-radius:var(--r);background:var(--soft);box-sizing:border-box}
+.deal.hidden{display:none}
+.dtop{display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-height:40px}
+.dscore{display:inline-flex;align-items:baseline;gap:2px;min-width:62px;font-family:var(--mono,inherit)}
+.dscore b{font-size:30px;line-height:1;font-weight:700;letter-spacing:-.02em;color:var(--ink)}
+.dscore small{font-size:13px;color:var(--mut)}
+.deal.good .dscore b{color:var(--good)}.deal.bad .dscore b{color:var(--bad)}.deal.meh .dscore b{color:var(--meh)}
+.dpill{display:inline-block;padding:5px 11px 4px;border-radius:99px;font-weight:700;font-size:14px;line-height:1.1;color:var(--bg);background:var(--mut);white-space:nowrap}
+.deal.good .dpill{background:var(--good)}.deal.bad .dpill{background:var(--bad)}.deal.meh .dpill{background:var(--meh)}.deal.unk .dpill{background:var(--ink)}
+.dlab{margin-left:auto;font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.05em;font-family:var(--mono,inherit)}
+.dwhy{margin:6px 0 0;font-size:14px;line-height:1.4;color:var(--ink)}
+@media(max-width:520px){.dlab{margin-left:0;flex-basis:100%;order:-1}}
 .stat{background:none;border:1.5px dashed var(--line);border-radius:2px}
 .best{background:none;border-top:2px dashed var(--line);border-radius:0;padding:12px 0 0}
 .best b{font-family:var(--mono);background:var(--acc);color:var(--acc-ink);padding:0 4px}

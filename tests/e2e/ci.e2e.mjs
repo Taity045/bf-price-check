@@ -113,6 +113,10 @@ for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`r
   ok(`result ${name}: product title shown`, (await p.textContent("#ptitle")).includes("CI Test Kettle"), await p.textContent("#ptitle"));
   ok(`result ${name}: price shown`, /999/.test((await p.textContent("#prices")).replace(/[\s\u00a0,]/g, "")), await p.textContent("#prices"));
   ok(`result ${name}: verdict shown`, (await p.textContent("#verdict")).trim().length > 0, await p.textContent("#verdict"));
+  // Deal Score (src/score.js): 4 older prices R1,199-R1,299, today R999 -> lowest we found, far under the usual price
+  const deal = await p.evaluate(() => { const d = document.querySelector("#verdict #deal"); return d && { cls: d.className, score: d.querySelector(".dscore b").textContent, pill: d.querySelector(".dpill").textContent, why: d.querySelector(".dwhys").textContent, w: d.getBoundingClientRect().width }; });
+  ok(`result ${name}: Deal Score and 'Buy now' inside the verdict card`, deal && /^\d+$/.test(deal.score) && +deal.score >= 70 && deal.pill === "Buy now" && /\bgood\b/.test(deal.cls), JSON.stringify(deal));
+  ok(`result ${name}: the reason uses the real prices`, deal && /lowest price we found in 4 older prices/.test(deal.why) && /R\s?1\s?274/.test(deal.why.replace(/[\u00a0,]/g, " ")), deal && deal.why);
   ok(`result ${name}: address bar has ?u=`, new URL(p.url()).searchParams.get("u") === PRODUCT, p.url());
   ok(`result ${name}: no sideways scroll`, await noSideScroll(p));
   ok(`result ${name}: no JS errors`, p._errs.length === 0, p._errs.join(" | "));
@@ -191,6 +195,8 @@ for (const [name, o] of [["desktop", desktop], ["phone", mobile], ["1440", { vie
   ok(`compare ${name}: headline names the cheaper shop and the saving`, /Cheaper at Hirsch's: R ?899/.test(head) && /Save R ?100 \(10%\)/.test(head) && /Same model number as this product/.test(head), head);
   ok(`compare ${name}: headline is above the verdict`, await p.evaluate(() => document.querySelector("#cmpHead").getBoundingClientRect().bottom <= document.querySelector("#verdict").getBoundingClientRect().top));
   ok(`compare ${name}: out-of-stock cheaper shop is not the headline`, !/Computer Mania/.test(head), head);
+  const deal = await p.evaluate(() => { const d = document.querySelector("#deal"); return { pill: d.querySelector(".dpill").textContent, score: +d.querySelector(".dscore b").textContent, why: d.querySelector(".dwhys").textContent.replace(/\u00a0/g, " ") }; });
+  ok(`compare ${name}: Deal Score turns to 'Buy elsewhere' with the shop and the saving`, deal.pill === "Buy elsewhere" && /^Hirsch's sells the same product for R ?899\. You save R ?100 \(10%\)\./.test(deal.why) && deal.score < 70, JSON.stringify(deal));
   ok(`compare ${name}: other shops is below the chart`, (await p.evaluate(() => document.querySelector("#others").getBoundingClientRect().top > document.querySelector("#chart").getBoundingClientRect().bottom)));
   const rows = await p.$$eval("#otherList li", (ls) => ls.map((l) => l.textContent.replace(/\s+/g, " ").trim()));
   ok(`compare ${name}: this page plus 3 matches`, rows.length === 4, rows.join(" | "));
@@ -450,7 +456,7 @@ for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`s
   ok(`search ${name}: prices are the shops' prices in rand`, rows.every((r) => /^R\s?\d/.test(r.p.replace(/\u00a0/g, " "))), rows.map((r) => r.p).join(" | "));
   const shopsTxt = await p.textContent("#sShops");
   ok(`search ${name}: says which shops were searched and which were not`, /^Searched: Takealot/.test(shopsTxt) && /Couldn't search now: Matrix Warehouse/.test(shopsTxt) && /Not searched: Hirsch's/.test(shopsTxt) && /We can't search .*Amazon South Africa \(block tools like ours\)/.test(shopsTxt), shopsTxt);
-  ok(`search ${name}: sums up honestly`, /^4 products at 3 shops, lowest price first\. The prices come from each shop now\.$/.test(await p.textContent("#sStatus")), await p.textContent("#sStatus"));
+  ok(`search ${name}: sums up honestly`, /^4 products at 3 shops, consoles first, then lowest price\. The prices come from each shop now\.$/.test(await p.textContent("#sStatus")), await p.textContent("#sStatus"));
   ok(`search ${name}: a shareable link (/?q=…&c=ZA)`, new URL(p.url()).search === "?q=PS5+Slim&c=ZA", p.url());
   ok(`search ${name}: no sideways page scroll`, await noSideScroll(p) && rows.every((r) => r.w));
   ok(`search ${name}: the popular picks step aside`, !(await p.isVisible("#tries")));
@@ -477,6 +483,29 @@ for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`s
   await p.waitForFunction(() => document.querySelectorAll("#sList li").length === 4, null, { timeout: 15000 });
   ok(`search ${name}: Back shows the search again`, new URL(p.url()).searchParams.get("q") === "PS5 Slim" && (await p.inputValue("#u")) === "PS5 Slim");
   ok(`search ${name}: no JS errors`, p._errs.length === 0, p._errs.join(" | "));
+  await p.context().close();
+});
+// 3f2. bare "PS5": consoles first (rank 0 from /api/search/shop), accessories left out and counted
+const PS5_ITEMS = {
+  takealot: { items: [{ title: "PlayStation 5 Slim Console with disc drive (PS5 Slim)", price: 15999, rank: 0 }, { title: "EA Sports FC 27 Ultimate Bundle PS5", price: 1228, rank: 1 }], hidden: 3 },
+  bash: { items: [{ title: "Playstation 5 Slim Digital Edition - PS5", price: 14499, rank: 0 }], hidden: 6 },
+};
+for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`search PS5 ${name}`, async () => {
+  const p = await open(o);
+  await p.route(/\/api\/search\/shop\?/, (r) => {
+    const id = new URL(r.request().url()).searchParams.get("shop"), x = PS5_ITEMS[id];
+    if (!x) return r.fulfill({ json: { shop: id, status: "none", items: [] } });
+    r.fulfill({ json: { shop: id, status: "ok", hidden: x.hidden, items: x.items.map((it, i) => ({ ...it, was: null, from: false, currency: "ZAR", url: `https://www.${id === "bash" ? "bash.com" : "takealot.com"}/p/${i}` })) } });
+  });
+  await p.goto(BASE + "/?q=PS5&c=ZA", { waitUntil: "networkidle" });
+  await p.waitForFunction(() => !/Searching/.test(document.getElementById("sStatus").textContent) && document.querySelectorAll("#sList li").length === 3, null, { timeout: 15000 });
+  const rows = await p.$$eval("#sList li", (ls) => ls.map((l) => ({ t: l.querySelector(".st").textContent, low: l.classList.contains("low") })));
+  ok(`search PS5 ${name}: consoles first, cheapest console first, the R1,228 game after them`, rows.map((r) => r.t).join("|") === "Playstation 5 Slim Digital Edition - PS5|PlayStation 5 Slim Console with disc drive (PS5 Slim)|EA Sports FC 27 Ultimate Bundle PS5" && rows[0].low && !rows[2].low, JSON.stringify(rows));
+  const st = await p.textContent("#sStatus");
+  ok(`search PS5 ${name}: says accessories were left out and how to find them`, /consoles first, then lowest price/.test(st) && /We did not show 9 accessories, games or covers\. To find them, add the word to your search, for example \u201cPS5 controller\u201d\./.test(st), st);
+  ok(`search PS5 ${name}: no sideways page scroll`, await noSideScroll(p));
+  ok(`search PS5 ${name}: no JS errors`, p._errs.length === 0, p._errs.join(" | "));
+  await p.screenshot({ path: `${SHOTS}/search-ps5-${name}.png`, fullPage: !!o.isMobile });
   await p.context().close();
 });
 for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`search empty ${name}`, async () => {

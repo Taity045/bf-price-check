@@ -26,7 +26,8 @@ export const NAMES = [
   "CMP_SHOPS", "CMP_SEARCH", "CMP_DETAIL", "cmpNorm", "cmpWords", "cmpCodes", "cmpCodesMatch", "cmpGtin", "cmpAttrs", "cmpIdentity", "cmpIdentityFromCurrent", "cmpApplyDetail", "cmpCodesConflict", "cmpCategory", "cmpCatOf", "cmpWooItem", "cmpPlan", "cmpQuery", "cmpCoreQuery", "cmpMatch", "cmpSearchShop", "cmpShopForHost", "takealotAttr", "cmpShortQuery", "cmpOwnBrand", "cmpGroceryCheck", "cmpGroceryClose", "cmpGtinCheck", "cmpPnpItem", "cmpPnpMember", "cmpMorrisonsItem", "CMP_NOT_SEARCHED", "pnpFacts",
   "cmpAiKind", "cmpAiPick", "cmpAiParse", "cmpAiJudge", "cmpAiText", "CMP_AI_MODEL", "CMP_AI_DAILY", "CMP_AI_TIMEOUT", "CMP_AI_SYSTEM", "CMP_VER", "cmpShopById",
   "FLM_FLYER", "FLM_FROM", "FLM_UNTIL", "FLM_LABEL", "FLM_HOME", "flmActive", "flmSecondsLeft", "flmDealText", "flmItem", "flmSearch", "flmMatchWhy", "flmCompare", "flmCompareAnswer", "flmVariants", "flmValidText",
-  "srchIsLink", "srchClean", "srchCountry", "srchWords", "srchKey", "srchPlan", "srchHas", "srchFilter", "srchCacheUrl", "apiSearch", "apiSearchShop", "SRCH_TTL", "SRCH_MIN", "SRCH_MAX",
+  "srchIsLink", "srchClean", "srchCountry", "srchWords", "srchKey", "srchPlan", "srchHas", "srchFilter", "srchCacheUrl", "apiSearch", "apiSearchShop", "SRCH_TTL", "SRCH_MIN", "SRCH_MAX", "srchDevice", "srchKind",
+  "dealScore", "dsRaw", "dsCompare", "publicDeal",
 ];
 
 const source = [
@@ -42,6 +43,7 @@ const source = [
   read("src/daily.js"),
   read("src/compare.js"),
   read("src/search.js"),
+  read("src/score.js"),
   read("src/flyer.js"),
   read("src/og.js"),
   read("src/stats.js"),

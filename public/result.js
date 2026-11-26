@@ -2,6 +2,7 @@
 // is not part of the first view. Core helpers come in from index.html.
 __dod(({ $, store, esc, money, toast, showError, openRequest, tsPrepare, tsToken, LOC, getSaved, renderSavedCount, boxMode }) => {
 const DAY = 864e5;
+/*DEAL_SCORE*/
 const SITE = location.origin;
 let state = null, runId = 0;
 const pct = (x) => Math.abs(Math.round(x * 100)) + "%";
@@ -36,6 +37,7 @@ function shareInfo() {
   const v = state.v || {}, p = curPrice(), cmp = state.cmp;
   const lines = [clip(state.title || state.host || "A product", 110)];
   if (p && p.price) lines.push(`${p.manual ? "Price I saw at" : "Price at"} ${state.host}: ${money(p.price, p.currency)}`);
+  if (state.deal && state.deal.score != null) lines.push(`Deal Score: ${state.deal.score}/100. ${state.deal.action}.`);
   if (cmp && cmp.best) lines.push(`Cheaper at ${cmp.best.name}: ${money(cmp.best.price, cmp.best.C)}${cmp.best.note ? " " + cmp.best.note : ""} (save ${money(cmp.best.save, cmp.best.C)}).`);
   else {
     if (v.big === "Fake discount" && v.W) lines.push(`Verdict: Fake discount. The shop says it was ${money(v.W, v.C)}, but we did not see that price in the last 90 days.`);
@@ -112,6 +114,7 @@ async function run(url, fresh) {
     $("others").classList.add("hidden"); state.revealed = null;
     // Black Friday week: "cheaper somewhere else?" leads. Its card shows from the first render (no layout shift later).
     const willCmp = !!(d.tracked && d.current.status === "ok");
+    state.cmpScore = willCmp ? { done: 0, total: 1, matches: [] } : null; state.dealH = 0;
     $("cmpHead").classList.toggle("hidden", !willCmp);
     if (willCmp) setCmpHead("", "Checking other shops…", "We look for the exact same product for less.");
     renderHead(); renderPrices(); renderSupport(); renderAll(); renderSaveBtn();
@@ -300,10 +303,11 @@ function renderVerdict() {
   const pr = hist.map((x) => x.price);
   const p90 = hist.filter((x) => x.t >= Date.now() - 90 * DAY).map((x) => x.price);
   let cls, big, body, flags = "";
+  state.dealIn = cur?.currency ? { P: cur.price, W: cur.was || null, C: cur.currency, pts: hist, archived: !!archivedAt } : null;
   if (!cur?.currency) {
     body = cur ? "We need the currency of today's price to compare it with the history." : "We need today's price. Type it in above to compare it with the history.";
     if (pr.length) body += ` History so far: lowest ${money(Math.min(...pr), ccy)}, typical ${money(median(pr), ccy)}.`;
-    setVerdict("unk", "Can't judge yet", `<p class="vbody">${esc(body)}</p>`); state.verdictText = null; return;
+    setVerdict("unk", "Can't judge yet", `<p class="vbody">${esc(body)}</p>`); state.verdictText = null; renderDeal(); return;
   }
   const P = cur.price, W = cur.was, C = cur.currency;
   if (pr.length < 3) {
@@ -318,12 +322,12 @@ function renderVerdict() {
       else { cls = "meh"; vb = `About the same price before: ${when}. Today's price is not a special deal.`; }
       state.v = { big: ev.verdict, P, W, C, low: pt.price, evT: pt.t };
       setVerdict(cls, ev.verdict, `<p class="vbody">${vb}</p><p class="note">Based on ${pr.length} older price${pr.length === 1 ? "" : "s"} from the last 6 months. We give a full verdict from 3 older prices.</p>`);
-      state.verdictText = ev.verdict; return;
+      state.verdictText = ev.verdict; renderDeal(); return;
     }
     body = pr.length >= 1 ? `We found only ${pr.length} older price${pr.length === 1 ? "" : "s"} in ${C} (latest ${money(pr[pr.length - 1], C)} on ${fmtDate(hist[hist.length - 1].t)}). We need at least 3 to judge.` : `We found no older prices in ${C} for this product yet.`;
     body += state.tracked ? " Why: we found few or no older copies of this page in web archives. We saved today's price. We check it again regularly, so the history grows." : " Why: we found few or no older copies of this page in web archives.";
     if (W) body += ` The shop claims ${Math.round((W - P) / W * 100)}% off ${money(W, C)}. We need more history to confirm it.`;
-    setVerdict("unk", "Not enough history", `<p class="vbody">${esc(body)}</p>`); state.verdictText = null; return;
+    setVerdict("unk", "Not enough history", `<p class="vbody">${esc(body)}</p>`); state.verdictText = null; renderDeal(); return;
   }
   const low = Math.min(...pr), high = Math.max(...pr), med = median(pr);
   const high90 = p90.length >= 2 ? Math.max(...p90) : high;
@@ -352,6 +356,24 @@ function renderVerdict() {
     ${bestLine(P, C)}${bfLine}${claimed}
     ${archivedAt ? `<p class="note">Compared using the latest archived price (${esc(fmtDate(archivedAt))}).</p>` : ""}<p class="note">Based on ${pr.length} older price${pr.length === 1 ? "" : "s"}${cur.manual ? " and the price you entered" : ""}.${other ? ` ${other} point(s) with a different or unknown currency were left out.` : ""}</p>`);
   state.verdictText = big;
+  renderDeal();
+}
+// Deal Score + action (src/score.js): from the history above and, once compare has answers, the other shops.
+// Space for the block is kept, so the chart below does not move when the shops answer.
+function renderDeal() {
+  const v = $("verdict"); if (!v || !state) return;
+  let el = document.getElementById("deal");
+  if (!el) { el = document.createElement("div"); el.id = "deal"; const big = v.querySelector(".big"); if (big) big.after(el); else v.prepend(el); }
+  const i = state.dealIn;
+  if (!i || i.archived) { el.className = "deal hidden"; el.innerHTML = ""; state.deal = null; return; }
+  const d = dealScore({ P: i.P, W: i.W, C: i.C, pts: i.pts, cmp: state.cmpScore || null, fmt: money });
+  state.deal = d;
+  el.className = "deal " + d.cls;
+  el.setAttribute("aria-live", "polite");
+  const sc = d.score != null ? `<span class="dscore num" title="Deal Score: ${d.score} out of 100"><b>${d.score}</b><small>/100</small></span>` : `<span class="dscore none" title="No Deal Score yet"><b>–</b></span>`;
+  el.innerHTML = `<div class="dtop">${sc}<span class="dpill">${esc(d.action)}</span><span class="dlab">${d.score != null ? "Deal Score" : "No Deal Score yet"}</span></div>`
+    + `<div class="dwhys">${d.reasons.slice(0, 2).map((r) => `<p class="dwhy">${esc(r)}</p>`).join("")}</div>`;
+  const h = el.offsetHeight; if (h > (state.dealH || 0)) { state.dealH = h; el.style.minHeight = h + "px"; } else el.style.minHeight = state.dealH + "px";
 }
 
 function renderChart() {
@@ -486,13 +508,14 @@ async function loadOthers(my) {
   if (!state.tracked || !state.current || state.current.status !== "ok") return;
   const canon = state.canonical, sec = $("others");
   let plan;
-  const fail = () => { if (my === runId) setCmpHead("", "Couldn't check other shops", "Try again later with Check again."); };
+  const fail = () => { if (my === runId) { setCmpHead("", "Couldn't check other shops", "Try again later with Check again."); state.cmpScore = null; renderDeal(); } };
   try { const r = await fetch("/api/compare?url=" + encodeURIComponent(canon)); if (!r.ok) return fail(); plan = await r.json(); } catch { return fail(); }
   if (my !== runId) return;
-  if (!plan || !plan.product) return setCmpSlim("we couldn't read enough about this product.");
+  if (!plan || !plan.product) { state.cmpScore = null; renderDeal(); return setCmpSlim("we couldn't read enough about this product."); }
   const here = curPrice(), shops = plan.shops || [], results = Object.assign({}, plan.results || {});
   sec.classList.remove("hidden");
   if (!shops.length) {
+    state.cmpScore = null; renderDeal();
     $("otherList").innerHTML = ""; $("cmpProg").classList.add("hidden"); $("cmpStatus").textContent = "";
     $("cmpSum").textContent = plan.reason === "own brand" ? "This is a shop's own brand. Other shops don't sell it, so we didn't compare."
       : plan.noun ? `We don't know other shops here that sell ${plan.noun} yet, so we didn't compare.` : "We couldn't tell what kind of product this is, so we didn't search other shops.";
@@ -551,7 +574,10 @@ async function loadOthers(my) {
     $("cmpSum").textContent = parts.join(" ");
     const [hc, hb, hl, hj, share] = cmpHeadline(plan, shops, results, herePrice, LEVEL);
     setCmpHead(hc, hb, hl, hj || hc === "good");
-    state.cmp = share || null; renderShareLab();
+    state.cmp = share || null;
+    // the Deal Score uses the same in-stock matches (same currency only)
+    state.cmpScore = herePrice == null ? null : { done, total: shops.length, matches: matches.map((r) => ({ name: r.name, price: r.match.price, in_stock: !!r.match.in_stock, flyerQty: r.match.flyer ? r.match.flyer.qty || 1 : 0 })) };
+    renderDeal(); renderShareLab();
   };
   render();
   const queue = shops.filter((s) => !results[s.id]);
@@ -730,22 +756,26 @@ async function search(q, c) {
     const seen = new Set(), items = [];
     // flyer deals share one link (the shop's home page): keep them apart by their id
     for (const s of shops) for (const it of ((results[s.id] || {}).items || [])) { const k = it.flyer ? "flyer:" + it.id : it.url; if (!seen.has(k)) { seen.add(k); items.push({ ...it, shop: s.name }); } }
-    items.sort((a, b) => a.price - b.price);
+    // a search for a main product (plan.device, src/search.js): the products themselves first, then lowest price
+    items.sort((a, b) => (a.rank || 0) - (b.rank || 0) || a.price - b.price);
     const shown = items.slice(0, MAX_SHOWN);
-    const lowTxt = (it, i) => (i === 0 && done.length === shops.length && items.length > 1 ? (it.flyer && it.multi ? ` · lowest price for one, when you buy ${it.qty}` : " · lowest price we found") : "");
+    const dev = plan.device, hidden = done.reduce((n, s) => n + ((results[s.id] || {}).hidden || 0), 0);
+    const isLow = (it, i) => i === 0 && done.length === shops.length && (!dev || !it.rank);
+    const lowTxt = (it, i) => (isLow(it, i) && items.length > 1 ? (it.flyer && it.multi ? ` · lowest price for one, when you buy ${it.qty}` : dev ? ` · lowest price we found (${dev})` : " · lowest price we found") : "");
     $("sList").innerHTML = shown.map((it, i) => it.flyer
       // a flyer deal: the flyer's own words, the multi-buy rule, no price history (it is not a product page)
-      ? `<li class="fl${i === 0 && done.length === shops.length ? " low" : ""}"><div class="st">${esc(it.title)}</div>`
+      ? `<li class="fl${isLow(it, i) ? " low" : ""}"><div class="st">${esc(it.title)}</div>`
         + `<div class="sm"><span class="sp num">${esc(it.deal)}</span><span class="small">${esc(it.label)}${esc(lowTxt(it, i))}</span></div>`
         + (it.need || it.limit ? `<div class="small fn">${esc([it.need, it.limit].filter(Boolean).join(". "))}.</div>` : "")
         + `<div class="sa"><span class="ftag">In-store flyer deal</span><a href="https://foodloversmarket.co.za/" target="_blank" rel="noopener nofollow">Food Lover's Market site ↗</a></div></li>`
-      : `<li${i === 0 && done.length === shops.length ? ' class="low"' : ""}><div class="st">${esc(it.title)}</div>`
+      : `<li${isLow(it, i) ? ' class="low"' : ""}><div class="st">${esc(it.title)}</div>`
       + `<div class="sm"><span class="sp num">${it.from ? "From " : ""}${esc(money(it.price, it.currency))}</span><span class="small">${esc(it.shop)}${esc(lowTxt(it, i))}</span></div>`
       + `<div class="sa"><button type="button" data-u="${esc(it.url)}">Check price history</button><a href="${esc(it.url)}" target="_blank" rel="noopener nofollow">Open at shop ↗</a></div></li>`).join("");
     const shopsWith = new Set(items.map((x) => x.shop)).size;
     if (!shops.length) $("sStatus").textContent = "";
     else if (done.length < shops.length) $("sStatus").innerHTML = `<span class="spin"></span>Searching ${shops.length} shop${shops.length === 1 ? "" : "s"}… ${done.length} of ${shops.length} done.`;
-    else $("sStatus").textContent = items.length ? `${items.length > MAX_SHOWN ? `The ${MAX_SHOWN} lowest of ${items.length}` : items.length} product${items.length === 1 ? "" : "s"} at ${shopsWith} shop${shopsWith === 1 ? "" : "s"}, lowest price first. The prices come from each shop now.${items.some((x) => x.flyer) ? " Food Lover's Market prices come from its printed flyer, for one item." : ""}` : "";
+    else $("sStatus").textContent = items.length ? `${items.length > MAX_SHOWN ? `The ${MAX_SHOWN} lowest of ${items.length}` : items.length} product${items.length === 1 ? "" : "s"} at ${shopsWith} shop${shopsWith === 1 ? "" : "s"}, ${dev ? `${dev} first, then lowest price` : "lowest price first"}. The prices come from each shop now.${items.some((x) => x.flyer) ? " Food Lover's Market prices come from its printed flyer, for one item." : ""}` : "";
+    if (done.length === shops.length && hidden) $("sStatus").textContent += `${items.length ? " " : ""}We did not show ${hidden} accessor${hidden === 1 ? "y" : "ies"}, games or covers. To find them, add the word to your search, for example \u201c${plan.accessory_example}\u201d.`;
     const empty = done.length === shops.length && !items.length;
     $("sEmpty").classList.toggle("hidden", !empty);
     if (empty) $("sEmpty").textContent = shops.length ? `We found no products in stock with all of these words. Use fewer words, or paste a product link.` : `We have no shops in ${where} that we can search for this. Paste a product link to check its price.`;

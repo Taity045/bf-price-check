@@ -1049,8 +1049,8 @@ async function apiCheck(req, env, ctx) {
   }
   const tracked = await softWrite("track", () => track(env, canonInfo.canon, v.url.toString(), current), false);
   const hist = await storedHistory(env, canonInfo.canon).catch(() => ({ checks: [], snaps: [], cc: [] }));
-  let verdict = null;
-  try { const j = judge(current, hist); verdict = publicVerdict(j); if (tracked && j.verdict) ctx.waitUntil(saveVerdict(env, canonInfo.canon, current.title, j).catch(() => {})); } catch {}
+  let verdict = null, deal = null;
+  try { const j = judge(current, hist); verdict = publicVerdict(j); deal = publicDeal(j); if (tracked && j.verdict) ctx.waitUntil(saveVerdict(env, canonInfo.canon, current.title, j).catch(() => {})); } catch {}
   return json({
     url: v.url.toString(), canonical: canonInfo.canon, host: stripWww(host), tld_currency: tldCurrency(host),
     current, cached, tracked,
@@ -1062,7 +1062,7 @@ async function apiCheck(req, env, ctx) {
       checks: hist.checks.map((c) => ({ t: c.ts, price: c.price, was: c.was, currency: c.currency })),
       cc: archivePoints(hist.cc || [], now() - HISTORY_DAYS * 864e5, current.status === "ok" ? current.price : null).map((p) => ({ t: p.t, price: p.price, was: p.was, currency: p.currency, url: p.url, link: p.link })),
     },
-    history_days: HISTORY_DAYS, verdict,
+    history_days: HISTORY_DAYS, verdict, deal,
     ids: { gtin: current.gtin || null, mpn: current.mpn || null },
     shop: (() => { const x = shopFor(v.url.href); return x ? { name: x.name } : null; })(),
     blocked_shop: (() => { const x = shopFor(v.url.href) ? null : blockedShopFor(v.url.href); return x ? (GEO_PRICED_HOSTS.includes(host) ? { name: x.name, geo: true } : { name: x.name }) : null; })(),
