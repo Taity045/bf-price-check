@@ -1163,6 +1163,8 @@ export default {
       if (url.pathname === "/api/admin/archive-load") return await apiArchiveLoad(req, env);
       if (url.pathname === "/api/admin/price-fix") return await apiPriceFix(req, env);
       if (url.pathname === "/api/e2e/mail-test") return await apiMailTest(req, env);
+      // AI Shopping Assistant (src/assist.js): GET ?q=&c= or POST {q, c}
+      if (url.pathname === "/api/assist") return req.method === "GET" || req.method === "POST" ? await apiAssist(req, env, ctx) : json({ error: "method not allowed" }, 405);
       if (req.method !== "GET" && req.method !== "HEAD") return json({ error: "method not allowed" }, 405);
       if (url.pathname === "/api/shops") return await apiShops(env, ctx);
       if (url.pathname === "/api/check") return statsTap(req, env, ctx, "check", await apiCheck(req, env, ctx));

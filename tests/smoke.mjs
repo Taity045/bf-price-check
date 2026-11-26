@@ -23,6 +23,9 @@ check("home page is the app", html.includes("Deal or Dud") && /<script src="\/ap
 const js = html.match(/\/app\.[0-9a-f]{10}\.js/);
 if (js) { const r = await get(js[0]); check("app script loads", r.ok && /javascript/.test(r.headers.get("content-type") || ""), `HTTP ${r.status}`); }
 
+// 1b. AI Shopping Assistant endpoint is there (an empty request: a plain 400, no shop search, no AI call)
+try { const r = await get("/api/assist?q=&c=ZA"); const d = await r.json().catch(() => ({})); check("assistant endpoint answers", r.status === 400 && /what you need/.test(d.error || ""), `HTTP ${r.status}`); } catch (e) { check("assistant endpoint answers", false, String(e)); }
+
 // 2. a live price check
 let checked = null;
 for (const url of EXAMPLES) {

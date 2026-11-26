@@ -1,6 +1,6 @@
 // Result view, Saved list, stats and alerts. Loaded on the first check (loadApp in index.html), so it
 // is not part of the first view. Core helpers come in from index.html.
-__dod(({ $, store, esc, money, toast, showError, openRequest, tsPrepare, tsToken, LOC, getSaved, renderSavedCount, boxMode }) => {
+__dod(({ $, store, esc, money, toast, showError, openRequest, tsPrepare, tsToken, LOC, getSaved, renderSavedCount, boxMode, setCc }) => {
 const DAY = 864e5;
 /*DEAL_SCORE*/
 const SITE = location.origin;
@@ -108,7 +108,7 @@ async function run(url, fresh) {
     state = { ...d, title: d.current.title, archive_meta: null, archive: d.history.archive.slice(), cc: (d.history.cc || []).slice(), manual: null, failed: d.history.archive_failed, blocked: d.history.archive_blocked || 0, unusable: d.history.archive_unusable || 0 };
     $("mcur").value = d.current.currency || d.tld_currency || window.pasteCur || ""; window.pasteCur = "";
     $("result").classList.remove("hidden");
-    $("search").classList.add("hidden"); if (boxMode) boxMode();
+    $("search").classList.add("hidden"); $("assist").classList.add("hidden"); if (boxMode) boxMode();
     $("tip").textContent = "Tap a point to see its date and price."; $("pts").open = false;
     $("plink").href = d.url;
     $("others").classList.add("hidden"); state.revealed = null;
@@ -745,7 +745,7 @@ async function search(q, c) {
     if (!r.ok || plan.error) { finish(); showError(plan.error || "The search stopped. Try again."); return; }
   } catch { if (my === searchId) { finish(); showError("Couldn't reach the search. Check your connection and try again."); } return; }
   history.replaceState(null, "", "/?q=" + encodeURIComponent(plan.q).replace(/%20/g, "+") + "&c=" + c);
-  $("result").classList.add("hidden");
+  $("result").classList.add("hidden"); $("assist").classList.add("hidden");
   S.classList.remove("hidden"); boxMode();
   $("sLab").textContent = "Search results · shops in " + where;
   $("sTitle").textContent = "\u201c" + plan.q + "\u201d";
@@ -810,16 +810,95 @@ async function search(q, c) {
   await Promise.all([worker(), worker(), worker(), worker(), worker()]);
   finish();
 }
+// ---------- AI Shopping Assistant: /api/assist (src/assist.js) ----------
+// The server reads the request (Workers AI or rules), searches the shops, and sends the top 3 real products.
+// Every product, price, shop and link here comes from a shop's own site. The AI only writes the short reasons.
+const shareUrl = (q, c) => SITE + "/?q=" + encodeURIComponent(q).replace(/%20/g, "+") + "&c=" + c;
+let assistShare = "";
+async function assist(q, c) {
+  q = String(q || "").replace(/\s+/g, " ").trim();
+  c = c === "GB" ? "GB" : "ZA";
+  const my = ++searchId; runId++;
+  document.documentElement.classList.add("q");
+  $("error").classList.add("hidden");
+  const S = $("assist"), go = $("go");
+  const finish = () => { if (my !== searchId) return; go.disabled = false; boxMode(); };
+  go.disabled = true; go.innerHTML = '<span class="spin"></span>Finding picks…';
+  $("result").classList.add("hidden"); $("search").classList.add("hidden");
+  S.classList.remove("hidden");
+  const where = (x) => (x === "GB" ? "the UK" : "South Africa");
+  $("asLab").textContent = "AI Shopping Assistant · shops in " + where(c);
+  $("asTitle").textContent = "\u201c" + q + "\u201d";
+  $("asWhat").textContent = "";
+  $("asStatus").innerHTML = '<span class="spin"></span>We read your request and search the shops now. This can take up to 15 seconds.';
+  ["asH", "asNoteTop", "asEmpty", "asMore", "asAct"].forEach((id) => $(id).classList.add("hidden"));
+  $("asPicks").innerHTML = ""; $("asList").innerHTML = ""; $("asShops").textContent = ""; $("asNote").textContent = "";
+  $("asMore").open = false;
+  document.title = q + " · Picks · Deal or Dud?";
+  boxMode();
+  let d;
+  try {
+    const r = await fetch(`/api/assist?q=${encodeURIComponent(q)}&c=${c}`);
+    d = await r.json().catch(() => ({ error: "The search sent an answer we cannot read. Try again." }));
+    if (my !== searchId) return;
+    if (!r.ok || d.error) { S.classList.add("hidden"); finish(); showError(d.error || "The search stopped. Try again."); return; }
+  } catch { if (my === searchId) { S.classList.add("hidden"); finish(); showError("Couldn't reach the search. Check your connection and try again."); } return; }
+  // a budget in pounds searches UK shops (and rand, South African shops)
+  if (d.country !== c && setCc) setCc(d.country);
+  history.replaceState(null, "", "/?q=" + encodeURIComponent(d.q).replace(/%20/g, "+") + "&c=" + d.country);
+  assistShare = shareUrl(d.q, d.country);
+  $("asLab").textContent = "AI Shopping Assistant · shops in " + where(d.country);
+  $("asWhat").textContent = d.understanding || "";
+  const picks = d.picks || [], more = d.more || [];
+  const shopsN = new Set(picks.concat(more).map((x) => x.shop)).size;
+  $("asStatus").textContent = picks.length ? `We found ${d.total} matching product${d.total === 1 ? "" : "s"} at ${shopsN} shop${shopsN === 1 ? "" : "s"}. The prices come from each shop now.` : "";
+  $("asH").classList.toggle("hidden", !picks.length);
+  $("asH").textContent = picks.length === 1 ? "Top pick" + (d.intent && d.intent.maxBudget != null ? " for your budget" : "") : `Top ${picks.length} picks` + (d.intent && d.intent.maxBudget != null ? " for your budget" : "");
+  const noteTop = picks.length && d.note ? d.note : "";
+  $("asNoteTop").textContent = noteTop; $("asNoteTop").classList.toggle("hidden", !noteTop);
+  const ob = (it) => (it.over_budget ? '<span class="obud">Over budget</span>' : "");
+  $("asPicks").innerHTML = picks.map((p, i) => `<li><span class="rk">#${i + 1}${i === 0 ? " Best match" : ""}</span>${ob(p)}`
+    + `<div class="st">${esc(p.title)}</div>`
+    + `<div class="sm"><span class="sp num">${esc(money(p.price, p.currency))}</span><span class="small">${esc(p.shop)}</span></div>`
+    + `<p class="why">${esc(p.reason)}</p>`
+    + `<div class="sa"><button type="button" data-u="${esc(p.url)}">Check price history</button><a href="${esc(p.url)}" target="_blank" rel="noopener nofollow">Open at shop ↗</a></div></li>`).join("");
+  $("asEmpty").classList.toggle("hidden", !!picks.length);
+  if (!picks.length) $("asEmpty").textContent = d.note || "We found no products in stock that match. Use other words, or paste a product link.";
+  $("asMore").classList.toggle("hidden", !more.length);
+  $("asMoreSum").textContent = `All matching results (${more.length} more)`;
+  $("asList").innerHTML = more.map((it) => `<li><div class="st">${esc(it.title)}</div>`
+    + `<div class="sm"><span class="sp num">${esc(money(it.price, it.currency))}</span><span class="small">${esc(it.shop)}</span>${ob(it)}</div>`
+    + `<div class="sa"><button type="button" data-u="${esc(it.url)}">Check price history</button><a href="${esc(it.url)}" target="_blank" rel="noopener nofollow">Open at shop ↗</a></div></li>`).join("");
+  $("asAct").classList.toggle("hidden", !picks.length);
+  const sh = d.shops || {}, parts = [];
+  if ((sh.searched || []).length) parts.push(`Searched: ${sh.searched.join(", ")}.`);
+  if ((sh.failed || []).length) parts.push(`Couldn't search now: ${sh.failed.join(", ")} (try again later).`);
+  if ((sh.robots || []).length) parts.push(`Not searched: ${sh.robots.join(", ")} (the shop asks tools not to use its search).`);
+  const ns = sh.notSearched || [];
+  const nsTxt = NS_WHY.map(([w, t]) => [ns.filter((x) => x.why === w).map((x) => x.name), t]).filter(([n]) => n.length).map(([n, t]) => `${srchAnd(n)} (${t})`);
+  if (nsTxt.length) parts.push(`We can't search ${nsTxt.join("; ")}.`);
+  $("asShops").textContent = parts.join(" ");
+  const ai = d.ai || {};
+  $("asNote").textContent = (ai.intent ? "AI read your request. " : "") + (ai.reasons ? "AI wrote the short reasons from the product names and prices only. " : "")
+    + "We pick only real products that are in stock at each shop's own website. Check the details at the shop before you buy. Delivery is not included.";
+  finish();
+}
+$("asShare").addEventListener("click", async () => {
+  if (!assistShare) return;
+  try { if (navigator.share && matchMedia("(pointer:coarse)").matches) { await navigator.share({ title: "Top picks · Deal or Dud?", url: assistShare }); return; } } catch (e) { if (e && e.name === "AbortError") return; }
+  try { await navigator.clipboard.writeText(assistShare); toast("Link copied."); } catch { prompt("Copy this link:", assistShare); }
+});
 // "Check price history": runs the normal check on that product (Back returns to the search)
-$("sList").addEventListener("click", (e) => {
+const checkFromList = (list) => (e) => {
   const b = e.target.closest("button[data-u]"); if (!b) return;
   const u = b.dataset.u;
-  $("sList").querySelectorAll('button[aria-busy="true"]').forEach((x) => { x.removeAttribute("aria-busy"); x.textContent = "Check price history"; });
+  list.querySelectorAll('button[aria-busy="true"]').forEach((x) => { x.removeAttribute("aria-busy"); x.textContent = "Check price history"; });
   b.setAttribute("aria-busy", "true"); b.textContent = "Checking…";
   history.pushState(null, "", location.href);
   $("u").value = u;
   run(u).finally(() => { b.removeAttribute("aria-busy"); b.textContent = "Check price history"; });
-});
+};
+["sList", "asPicks", "asList"].forEach((id) => $(id).addEventListener("click", checkFromList($(id))));
 
-return { run, search, openSaved, ask: () => (state && !state.shop ? [state.host, state.url] : ["", ""]) };
+return { run, search, assist, openSaved, ask: () => (state && !state.shop ? [state.host, state.url] : ["", ""]) };
 });
