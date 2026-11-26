@@ -382,22 +382,103 @@ html.q .hero .steps,.hero:has(~#result:not(.hidden)) .steps{display:none}
   footer{margin-top:auto;padding:16px 0 20px}
   #result,.page{margin-bottom:40px}
 }
+/* AB-37 home page: search box with mode pills, today's genuine deals, quick searches, AI block, bottom bar */
+.box{position:relative;flex:none;width:100%;min-width:0}
+.box #u{width:100%;padding-left:44px}
+.mag{position:absolute;left:14px;top:50%;width:20px;height:20px;transform:translateY(-50%);fill:none;stroke:var(--mut);stroke-width:2.2;stroke-linecap:round;pointer-events:none}
+@media (min-width:480px){.box{flex:1;width:auto}}
+.modes{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin:12px 0 0}
+.mode{min-height:40px;padding:0 14px;border:1.5px solid var(--line);border-radius:99px;background:var(--bg);font-size:14px;font-weight:600;color:var(--ink)}
+.mode:hover{border-color:var(--ink)}
+.mode[aria-pressed=true]{background:var(--acc);color:var(--acc-ink);border:1.5px solid var(--ink)}
+.ccrow{margin-top:10px}
+.hsec{margin:28px 0 0;padding:20px 0 0;border-top:1px solid var(--line);text-align:left}
+.hsec h2{display:flex;align-items:center;gap:8px;font-size:17px;line-height:1.3;margin:0 0 10px;letter-spacing:-.01em}
+.hsec h2 svg{width:20px;height:20px;flex:none;fill:none;stroke:var(--ink);stroke-width:1.8;stroke-linejoin:round}
+.hhead{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:40px}
+.hhead h2{margin:0}
+.more{min-height:40px;padding:0 4px;border:0;background:none;font-size:14px;font-weight:600;color:var(--mut);text-decoration:underline;text-underline-offset:3px}
+.dgrid{list-style:none;margin:12px 0 0;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+@media (max-width:339px){.dgrid{grid-template-columns:1fr}}
+.dgrid li{min-width:0;display:flex}
+.dgrid li[hidden]{display:none}
+.dcard{display:flex;flex-direction:column;gap:4px;width:100%;min-width:0;padding:12px;border:2px solid var(--ink);border-radius:var(--r);background:var(--card,var(--bg));color:var(--ink);text-decoration:none;transition:transform .08s,box-shadow .08s}
+.dcard:hover{transform:translate(-1px,-1px);box-shadow:3px 3px 0 var(--ink)}
+.dcard[aria-busy=true]{opacity:.7}
+.dshop{font-size:12px;color:var(--mut);font-family:var(--mono);text-transform:uppercase;letter-spacing:.02em;overflow-wrap:anywhere}
+.dtag{align-self:flex-start;font-size:12px;font-weight:700;font-family:var(--mono);text-transform:uppercase;letter-spacing:.02em;color:var(--good)}
+.dtag.fly{color:var(--ink);background:var(--acc);color:var(--acc-ink);padding:1px 6px;border-radius:2px}
+.dtitle{font-size:15px;font-weight:600;line-height:1.3;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.dprice{margin-top:auto;padding-top:4px;font-family:var(--mono);font-size:22px;font-weight:600;letter-spacing:-.02em;line-height:1.2}
+.dprice small{font-family:var(--sans);font-size:13px;font-weight:400;letter-spacing:0;color:var(--mut)}
+.dmeta{font-size:13px;line-height:1.35;color:var(--mut);overflow-wrap:anywhere}
+.dmeta b{color:var(--good);font-weight:700}
+.dnote{margin:10px 0 0}
+.dempty{grid-column:1/-1;padding:14px;border:1.5px dashed var(--line);border-radius:var(--r);font-size:14px;color:var(--mut)}
+.tpills{display:flex;flex-wrap:wrap;gap:8px}
+.tp{min-height:40px;padding:0 14px;border:1.5px solid var(--line);border-radius:99px;background:var(--bg);font-size:14px;font-weight:600;color:var(--ink)}
+.tp:hover{border-color:var(--ink)}
+.aiblk .small{margin:0}
+.aiblk .asks{justify-content:flex-start;margin:10px 0 0}
+.aiblk .asks button{min-height:40px;font-size:14px}
+.aigo{margin-top:12px;min-height:44px;padding:0 18px;border:2px solid var(--ink);border-radius:var(--r);background:var(--acc);color:var(--acc-ink);font-weight:700;box-shadow:3px 3px 0 var(--ink)}
+html.q .home-only{display:none}
+.hero:has(~#result:not(.hidden)) .home-only,.hero:has(~#search:not(.hidden)) .home-only,.hero:has(~#assist:not(.hidden)) .home-only{display:none}
+.topnav{align-items:center}
+.topnav .tn{display:none;align-items:center;min-height:44px;border:0;background:none}
+.topnav .tn[aria-current=page]{text-decoration:underline;text-decoration-thickness:2px;text-decoration-color:var(--acc)}
+.bnav{position:fixed;left:0;right:0;bottom:0;z-index:8;display:grid;grid-template-columns:repeat(4,1fr);padding:0 max(4px,env(safe-area-inset-right)) env(safe-area-inset-bottom) max(4px,env(safe-area-inset-left));background:var(--card,var(--bg));border-top:2px solid var(--ink)}
+.bnav a,.bnav button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:58px;padding:4px 0;border:0;background:none;color:var(--mut);font-size:12px;font-weight:600;text-decoration:none}
+.bnav svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linejoin:round}
+.bnav [aria-current=page]{color:var(--ink)}
+.bnav [aria-current=page] svg{fill:var(--acc)}
+body{padding-bottom:calc(60px + env(safe-area-inset-bottom))}
+.toast{bottom:calc(76px + env(safe-area-inset-bottom))}
+@media (min-width:900px){
+  .bnav{display:none}
+  body{padding-bottom:env(safe-area-inset-bottom)}
+  .toast{bottom:calc(20px + env(safe-area-inset-bottom))}
+  .topnav .tn{display:inline-flex}
+  h1{font-size:clamp(44px,4.4vw,60px)}
+  .hero:has(~#result.hidden){min-height:0;display:block}
+  .hsec{margin-top:36px}
+  .hsec h2{font-size:19px}
+  .dgrid{gap:14px}
+  .dcard{padding:16px}
+  .dtitle{font-size:16px}
+  .dprice{font-size:26px}
+}
 </style>
 </head>
 <body>
 <main>
-  <header class="top"><a class="brand" href="/">Deal or Dud?</a><nav class="topnav" aria-label="Your things"><button type="button" class="linkbtn" id="savedBtn" aria-haspopup="dialog">Saved<span class="cnt hidden" id="savedN"></span></button></nav></header>
+  <header class="top"><a class="brand" href="/">Deal or Dud?</a><nav class="topnav" aria-label="Main"><a class="linkbtn tn" href="/" data-nav="home">Home</a><a class="linkbtn tn" href="/#deals" data-nav="deals">Deals</a><button type="button" class="linkbtn tn" data-nav="ai">AI</button><button type="button" class="linkbtn" id="savedBtn" aria-haspopup="dialog">Saved<span class="cnt hidden" id="savedN"></span></button></nav></header>
 
   <section class="hero">
     <h1>You think you found a <mark>good deal</mark>? Let's find out!</h1>
-    <p class="sub">Paste a product link or type a product name. We look for the same product for less at other shops, and compare today's price with older prices, up to 12 months back.</p>
+    <p class="sub">Real prices from real shops. Search a product, paste a link, or ask AI. We compare today's price with older prices, up to 12 months back.</p>
     <form id="f" action="/" method="get" autocomplete="off" novalidate>
       <label for="u" class="hidden">Product link or product name</label>
-      <input id="u" name="u" type="text" placeholder="Paste a link or type a product name" aria-label="Product link or product name" enterkeyhint="go" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="2048">
+      <div class="box"><svg class="mag" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input id="u" name="u" type="text" placeholder="Search, paste a link or ask AI" aria-label="Product link or product name" enterkeyhint="go" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="2048"></div>
       <button class="go" id="go" type="submit">Check price</button>
     </form>
-    <div class="ccrow hidden" id="ccrow" role="group" aria-label="Search shops in"><span>Shops in</span><button type="button" class="ccb" data-c="ZA" aria-pressed="true">South Africa</button><button type="button" class="ccb" data-c="GB" aria-pressed="false">UK</button></div>
-    <p class="asks" id="asks"><span>Or ask:</span><button type="button" class="ask" data-q="I have R10,000. I need a laptop for a law student">Laptop for a law student, R10,000</button><button type="button" class="ask" data-q="Best running watch under R6000">Running watch under R6,000</button><button type="button" class="ask" data-q="Good coffee machine under R3000">Coffee machine under R3,000</button></p>
+    <div class="modes" id="modes" role="group" aria-label="What do you want to do?"><button type="button" class="mode" data-m="find" aria-pressed="false">Find a product</button><button type="button" class="mode" data-m="verify" aria-pressed="false">Verify a deal</button><button type="button" class="mode" data-m="ai" aria-pressed="false">Ask AI</button></div>
+    <div class="ccrow" id="ccrow" role="group" aria-label="Search shops in"><span>Shops in</span><button type="button" class="ccb" data-c="ZA" aria-pressed="true">South Africa</button><button type="button" class="ccb" data-c="GB" aria-pressed="false">UK</button></div>
+    <section class="home-only hsec" id="deals" aria-labelledby="dealsH">
+      <div class="hhead"><h2 id="dealsH">Today's genuine deals</h2><button type="button" class="linkbtn more hidden" id="dealsAll" aria-expanded="false" aria-controls="dealList">View all</button></div>
+      <ul class="dgrid" id="dealList"></ul>
+      <p class="small dnote" id="dealsNote">We show only prices we checked, and flyer deals for the dates on the flyer.</p>
+    </section>
+    <section class="home-only hsec" id="trending" aria-labelledby="trendH">
+      <h2 id="trendH">Quick searches</h2>
+      <div class="tpills"><button type="button" class="tp" data-q="iPhone 16">iPhone 16</button><button type="button" class="tp" data-q="gaming laptop">Gaming laptops</button><button type="button" class="tp" data-q="running watch">Running watches</button><button type="button" class="tp" data-q="air fryer">Air fryers</button><button type="button" class="tp" data-q="TV">TVs</button></div>
+    </section>
+    <section class="home-only hsec aiblk" id="aiblk" aria-labelledby="aiH">
+      <h2 id="aiH"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>Your AI shopping expert</h2>
+      <p class="small">Tell us what you need and how much you can pay. We look at real shops and show the best value for your money.</p>
+      <p class="asks" id="asks"><button type="button" class="ask" data-q="I have R10,000. I need a laptop for a law student">Laptop for a law student, R10,000</button><button type="button" class="ask" data-q="Best running watch under R6000">Running watch under R6,000</button><button type="button" class="ask" data-q="Good coffee machine under R3000">Coffee machine under R3,000</button></p>
+      <button type="button" class="aigo" id="aiGo">Ask AI</button>
+    </section>
     <section class="tries" id="tries" aria-labelledby="triesH">
       <h2 class="tryh" id="triesH">Try a popular product</h2>
       <!--PICKS-->
@@ -539,6 +620,12 @@ html.q .hero .steps,.hero:has(~#result:not(.hidden)) .steps{display:none}
     We show only real prices from the shop and price archives. If we find no history, we tell you. Always check the shop's page before you buy.
   </footer>
 </main>
+<nav class="bnav" id="bnav" aria-label="Main">
+  <a href="/" data-nav="home"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-7 8 7v9h-5v-6H9v6H4z"/></svg>Home</a>
+  <a href="/#deals" data-nav="deals"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3c1 4 5 5.5 5 10a5 5 0 0 1-10 0c0-2 1-3.5 2-4.5 0 2 1 3 2 3 0-3-1-5.5 1-8.5z"/></svg>Deals</a>
+  <button type="button" data-nav="ai"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg>AI</button>
+  <button type="button" id="savedTab" aria-haspopup="dialog"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>Saved</button>
+</nav>
 
 <dialog id="shopsDlg" aria-labelledby="shopsTitle">
   <div class="dlg">
@@ -667,6 +754,20 @@ const ASK_RE = /(?:^|[^\w£])(?:R ?\d{1,3}(?:[ ,]\d{3})+|R ?\d{3,}(?:\.\d+)?|R ?
 // assistant, which answers with a short shopping-only message and calls no AI. Same rule as AS_OFF_RE in src/assist.js.
 const OFF_RE = /\b(?:ignore|disregard|forget|override|bypass)\b.{0,40}\b(?:instructions?|rules?|prompts?|guidelines?|messages?|context)\b|\b(?:system|developer|hidden|initial) (?:prompt|message|instructions?)\b|\b(?:act|behave|respond|talk) (?:as|like)\b|\bpretend (?:to be|you)\b|\byou are now\b|\b(?:jailbreak|developer mode|roleplay|role-play|dan mode)\b|\bdo anything now\b|\b(?:write|create|make|build|generate|debug|fix|code|explain)\b.{0,30}\b(?:code|script|program|function|class|regex|sql query|algorithm|api|website|web app)\b|\b(?:python|javascript|typescript|java|c\+\+|c#|golang|rust|php|html|css|sql|bash|regex|react)\b.{0,20}\b(?:script|code|program|function|tutorial|loop|syntax|error|exception|snippet)\b|\bhow (?:do i|to|can i) (?:code|program|sort|reverse|install python|use git)\b|\b(?:write|compose|draft|generate|create)\b(?: me)?(?: an?| the| my)? (?:short |long )?(?:essays?|poems?|stor(?:y|ies)|songs?|lyrics|letters?|emails?|cover letters?|cv|resume|speech|articles?|blog posts?|tweets?|captions?|haikus?|limericks?|summary|reports?)\b|\bessays?\b|\b(?:do|solve|answer|help (?:me )?with) (?:my |this |the )?(?:homework|assignment|exam|test questions?|maths?|math problem)\b|\b(?:summari[sz]e|paraphrase|translate|proofread)\b|\bwhat is \d+(?:\.\d+)? ?[-+*/x×÷^] ?\d|\b(?:solve|equation|integral|derivative|algebra|calculus)\b|^\s*\d+(?:\.\d+)? ?[-+*/×÷^] ?\d+(?:\.\d+)? ?=?\s*\??\s*$|\b(?:capital of|who (?:is|was) the (?:president|king|queen|prime minister)|who (?:won|invented|discovered|wrote)|when (?:did|was) .{2,40} (?:born|die|start|end|invented)|meaning of life|weather (?:in|today|tomorrow))\b|\b(?:tell|give) me (?:a |an |some )?(?:jokes?|story|stories|riddles?|fun facts?|poems?)\b|\bjokes?\b|\b(?:poems?|haikus?|limericks?)\b|\brecipes?\b(?! books?)|\bhow (?:do i|to|can i) (?:cook|bake|boil|fry|roast|grill)\b|^\s*(?:hi|hello|hey|yo|howzit|good (?:morning|afternoon|evening))\b[\s!.,]*(?:how are you|there|bot|$)|\bhow are you\b|\b(?:who|what) are you\b|\bwhat is your name\b|\bwhat can you do\b|\bare you (?:an? )?(?:ai|bot|robot|human|chatgpt|gpt)\b|\btell me about yourself\b/i;
 const isAsk = (v) => { const s = String(v || "").replace(/\s+/g, " ").trim(); return !!s && !isLink(s) && (ASK_RE.test(s) || OFF_RE.test(s)); };
+// The mode pills under the box: "find" (normal search), "verify" (paste a link), "ai" (AI Shopping Assistant).
+// No pill on: the box works it out (link, product name or a need with a budget). Off-topic text always goes to the
+// assistant, which answers with the shopping-only message and calls no AI.
+let mode = "";
+const MODE_PH = { "": "Search, paste a link or ask AI", find: "Type a product name, like PS5 Slim", verify: "Paste a product link from a shop", ai: "Say what you need, like: laptop for a law student, R10,000" };
+const MODE_GO = { "": "Check price", find: "Search", verify: "Check price", ai: "Find picks" };
+const wantAsk = (v) => { const s = String(v || "").replace(/\s+/g, " ").trim(); return !!s && !isLink(s) && (mode === "ai" || OFF_RE.test(s) || (mode !== "find" && ASK_RE.test(s))); };
+function setMode(m, focus) {
+  mode = MODE_PH[m] != null ? m : "";
+  document.querySelectorAll("#modes .mode").forEach((b) => b.setAttribute("aria-pressed", b.dataset.m === mode ? "true" : "false"));
+  $("u").placeholder = MODE_PH[mode];
+  boxMode();
+  if (focus) { $("u").focus({ preventScroll: true }); window.scrollTo({ top: 0, behavior: "smooth" }); }
+}
 // Search country: South Africa (ZA) or the UK (GB). Kept on this device.
 let cc = store.get("cc", "ZA"); if (cc !== "ZA" && cc !== "GB") cc = "ZA";
 // The example requests under the box follow the country (rand or pounds).
@@ -678,16 +779,22 @@ function setCc(c) {
 }
 setCc(cc);
 function boxMode() {
-  const v = $("u").value.trim(), name = !!v && !isLink(v);
-  if (!$("go").disabled) $("go").textContent = !name ? "Check price" : isAsk(v) ? "Find picks" : "Search";
-  $("ccrow").classList.toggle("hidden", !name && $("search").classList.contains("hidden") && $("assist").classList.contains("hidden"));
+  const v = $("u").value.trim(), link = !!v && isLink(v);
+  if (!$("go").disabled) $("go").textContent = !v ? MODE_GO[mode] : link ? "Check price" : wantAsk(v) ? "Find picks" : "Search";
+  // SA / UK: always on the home page and with a product name; not for a product link or a price check result
+  const hide = (link || !$("result").classList.contains("hidden")) && $("search").classList.contains("hidden") && $("assist").classList.contains("hidden");
+  $("ccrow").classList.toggle("hidden", hide);
 }
 $("u").addEventListener("input", boxMode);
-const search = (q) => loadApp().then((a) => (isAsk(q) ? a.assist(q, cc) : a.search(q, cc)), () => showError("Couldn't reach the search. Check your connection and try again."));
-document.querySelectorAll("#asks .ask").forEach((b) => b.addEventListener("click", () => { $("u").value = b.dataset.q; boxMode(); search(b.dataset.q); }));
+const search = (q, kind) => loadApp().then((a) => ((kind ? kind === "ai" : wantAsk(q)) ? a.assist(q, cc) : a.search(q, cc)), () => showError("Couldn't reach the search. Check your connection and try again."));
+document.querySelectorAll("#asks .ask").forEach((b) => b.addEventListener("click", () => { $("u").value = b.dataset.q; boxMode(); search(b.dataset.q, "ai"); }));
+document.querySelectorAll("#modes .mode").forEach((b) => b.addEventListener("click", () => setMode(b.dataset.m === mode ? "" : b.dataset.m, true)));
+// Quick searches: the normal product search (never the AI)
+document.querySelectorAll("#trending .tp").forEach((b) => b.addEventListener("click", () => { setMode("find"); $("u").value = b.dataset.q; boxMode(); search(b.dataset.q, "find"); }));
+$("aiGo").addEventListener("click", () => setMode("ai", true));
 document.querySelectorAll("#ccrow .ccb").forEach((b) => b.addEventListener("click", () => {
   if (b.dataset.c === cc) return;
-  setCc(b.dataset.c); store.set("cc", cc);
+  setCc(b.dataset.c); store.set("cc", cc); renderDeals();
   const v = $("u").value.trim();
   if (v && !isLink(v) && (!$("search").classList.contains("hidden") || !$("assist").classList.contains("hidden") || v.length >= 2)) search(v);
 }));
@@ -762,6 +869,51 @@ $("reqForm").addEventListener("submit", async (e) => {
     setTimeout(() => { if ($("reqDlg").open) $("reqDlg").close(); }, 1800);
   } catch { bad("We could not send the request. Check your connection and try again."); btn.disabled = false; btn.textContent = "Send request"; }
 });
+// ---------- home: today's genuine deals (GET /api/home, src/home.js) ----------
+// Only real data: price drops from our own checks, and live flyer deals with the flyer's normal price.
+// No deal score and no images: we show only what we know.
+// The cards are written into the page by the Worker (src/home.js); here we only show the chosen country's deals.
+let dealsOpen = false;
+const DEALS_FIRST = 4;
+function renderDeals() {
+  const lis = [...document.querySelectorAll("#dealList li[data-cc]")];
+  const all = lis.filter((li) => li.dataset.cc === cc && !(li.dataset.until && +li.dataset.until <= Date.now()));
+  lis.forEach((li) => { li.hidden = true; });
+  all.forEach((li, i) => { li.hidden = !dealsOpen && i >= DEALS_FIRST; });
+  document.querySelectorAll("#dealList [data-empty]").forEach((li) => { li.hidden = !!all.length || li.dataset.empty !== cc; });
+  const b = $("dealsAll"); b.classList.toggle("hidden", all.length <= DEALS_FIRST);
+  b.textContent = dealsOpen ? "Show fewer" : `View all (${all.length})`; b.setAttribute("aria-expanded", dealsOpen ? "true" : "false");
+  const fly = all.some((li) => li.dataset.kind === "flyer"), drop = all.some((li) => li.dataset.kind === "drop");
+  $("dealsNote").textContent = (drop ? "Price drops come from prices we checked at the shop. " : "") + (fly ? "Flyer deals come from the shop's printed flyer and stop after its last day. " : "") + (all.length ? "Tap a deal to check it." : "We show only prices we checked, and flyer deals for the dates on the flyer.");
+}
+renderDeals();
+$("dealsAll").addEventListener("click", () => { dealsOpen = !dealsOpen; renderDeals(); });
+$("dealList").addEventListener("click", (ev) => {
+  const a = ev.target.closest && ev.target.closest("a.dcard");
+  if (!a || ev.ctrlKey || ev.metaKey || ev.shiftKey) return;
+  ev.preventDefault();
+  const sp2 = new URL(a.href).searchParams;
+  if (a.dataset.kind === "flyer") { setCc("ZA"); setMode("find"); $("u").value = sp2.get("q"); boxMode(); search(sp2.get("q"), "find"); return; }
+  const u = sp2.get("u"); $("u").value = u; boxMode();
+  a.setAttribute("aria-busy", "true"); const done = () => a.removeAttribute("aria-busy");
+  run(u).then(done, done);
+});
+
+// ---------- top bar (desktop) and bottom bar (phone): Home, Deals, AI, Saved ----------
+const atHome = () => !document.documentElement.classList.contains("q") && $("result").classList.contains("hidden") && $("search").classList.contains("hidden") && $("assist").classList.contains("hidden");
+document.querySelectorAll('[data-nav="deals"]').forEach((a) => a.addEventListener("click", (ev) => {
+  if (!atHome() || location.pathname !== "/") return;   // from a result: open the home page at the deals
+  ev.preventDefault(); $("deals").scrollIntoView({ behavior: "smooth", block: "start" });
+}));
+document.querySelectorAll('[data-nav="ai"]').forEach((b) => b.addEventListener("click", () => {
+  if (location.pathname !== "/") { location.href = "/?m=ai"; return; }
+  setMode("ai", true);
+}));
+document.querySelectorAll('[data-nav="home"]').forEach((a) => a.addEventListener("click", (ev) => {
+  if (atHome() && location.pathname === "/") { ev.preventDefault(); window.scrollTo({ top: 0, behavior: "smooth" }); }
+}));
+if (location.pathname === "/") document.querySelectorAll('[data-nav="home"]').forEach((a) => a.setAttribute("aria-current", "page"));
+$("savedTab").addEventListener("click", () => $("savedBtn").click());
 const getSaved = () => store.get("saved", []);
 function renderSavedCount() { const n = getSaved().length; $("savedN").textContent = n; $("savedN").classList.toggle("hidden", !n); }
 
@@ -811,13 +963,14 @@ if (path === "/wall" || path === "/privacy") {
 }
 renderSavedCount();
 const sp = new URLSearchParams(location.search), qs = sp.get("u") || sp.get("url"), qn = sp.get("q");
+if (sp.get("m") === "ai" && path === "/") setMode("ai", !qn);
 if (qs && path === "/") { $("u").value = qs; run(qs); }
-else if (qn && path === "/") { const c = (sp.get("c") || "").toUpperCase(); if (c === "ZA" || c === "GB" || c === "UK") setCc(c === "UK" ? "GB" : c); $("u").value = qn; boxMode(); search(qn); }
+else if (qn && path === "/") { const c = (sp.get("c") || "").toUpperCase(); if (c === "ZA" || c === "GB" || c === "UK") setCc(c === "UK" ? "GB" : c); $("u").value = qn; boxMode(); search(qn, sp.get("m") === "ai" || isAsk(qn) ? "ai" : "find"); }
 // Back and forward between a search and a check
 window.addEventListener("popstate", () => {
   const p = new URLSearchParams(location.search), u = p.get("u"), q = p.get("q");
   if (u) { $("u").value = u; run(u); }
-  else if (q) { const c = (p.get("c") || "").toUpperCase(); if (c === "ZA" || c === "GB") setCc(c); $("u").value = q; boxMode(); search(q); }
+  else if (q) { const c = (p.get("c") || "").toUpperCase(); if (c === "ZA" || c === "GB") setCc(c); $("u").value = q; boxMode(); search(q, p.get("m") === "ai" || isAsk(q) ? "ai" : "find"); }
 });
 })();
 

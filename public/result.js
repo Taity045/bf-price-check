@@ -853,7 +853,7 @@ async function assist(q, c) {
   } catch { if (my === searchId) { S.classList.add("hidden"); finish(); showError("Couldn't reach the search. Check your connection and try again."); } return; }
   // a budget in pounds searches UK shops (and rand, South African shops)
   if (d.country !== c && setCc) setCc(d.country);
-  history.replaceState(null, "", "/?q=" + encodeURIComponent(d.q).replace(/%20/g, "+") + "&c=" + d.country);
+  history.replaceState(null, "", "/?q=" + encodeURIComponent(d.q).replace(/%20/g, "+") + "&c=" + d.country + "&m=ai");
   assistShare = shareUrl(d.q, d.country);
   $("asLab").textContent = "AI Shopping Assistant · shops in " + where(d.country);
   $("asWhat").textContent = d.understanding || "";

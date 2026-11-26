@@ -265,8 +265,9 @@ describe("search: the built page", () => {
   const worker = readFileSync(new URL("../../dist/worker.js", import.meta.url), "utf8");
   const html = JSON.parse(worker.match(/\nconst HTML = (".*");\n/)[1]);
   test("one box for a link or a name, the SA / UK switch, and the search results area", () => {
-    assert.match(html, /<input id="u" name="u" type="text" placeholder="Paste a link or type a product name" aria-label="Product link or product name"/);
-    assert.match(html, /<div class="ccrow hidden" id="ccrow" role="group" aria-label="Search shops in">/);
+    assert.match(html, /<input id="u" name="u" type="text" placeholder="Search, paste a link or ask AI" aria-label="Product link or product name"/);
+    // AB-37: the switch shows on the home page (the deals follow it); the page hides it for a link or a result
+    assert.match(html, /<div class="ccrow" id="ccrow" role="group" aria-label="Search shops in">/);
     assert.match(html, /data-c="ZA" aria-pressed="true">South Africa</);
     assert.match(html, /data-c="GB" aria-pressed="false">UK</);
     assert.match(html, /<section id="search" class="hidden" aria-label="Search results">/);
