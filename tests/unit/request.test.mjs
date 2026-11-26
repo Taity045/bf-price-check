@@ -151,7 +151,7 @@ describe("rate limiter", () => {
     assert.equal(await W.rateLimit(env, "9.9.9.9", "req"), false);
   });
   test("limits per minute", () => {
-    assert.deepEqual(W.RL, { check: 20, snap: 120, req: 5, verdict: 40, others: 20 });
+    assert.deepEqual(W.RL, { check: 20, snap: 120, req: 5, verdict: 40, others: 20, search: 30 });
   });
   test("/api/check answers 429 after 20 checks a minute", async (t) => {
     const { env } = testDb(t);

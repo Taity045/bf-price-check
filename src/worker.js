@@ -17,7 +17,7 @@ const SNAP_SPACINGS = [1, 2, 3, 4, 6];       // days between used copies: the sm
 const MAX_SNAPS = 64;
 const MAX_TRACKED = 1000;
 const LIVE_CACHE_PREFIX = "check-v4:";
-const RL = { check: 20, snap: 120, req: 5, verdict: 40, others: 20 };       // requests per IP per minute
+const RL = { check: 20, snap: 120, req: 5, verdict: 40, others: 20, search: 30 };       // requests per IP per minute
 const MAX_HTML = 4 * 1024 * 1024;
 
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
@@ -882,7 +882,7 @@ async function cachePut(env, k, v, ttl) {
 // rows written per day. Without the binding (unit tests, old config) they fall back to the D1 table
 // `rl`. If the limiter itself fails, the request is allowed (fail open): a limiter outage must not
 // take the site down.
-const RL_BINDING = { check: "RL_CHECK", snap: "RL_SNAP", req: "RL_REQ", verdict: "RL_VERDICT", others: "RL_OTHERS", cmp: "RL_CMP_IP", cmpshop: "RL_CMP_SHOP", cmpslow: "RL_CMP_SLOW" };
+const RL_BINDING = { check: "RL_CHECK", snap: "RL_SNAP", req: "RL_REQ", verdict: "RL_VERDICT", others: "RL_OTHERS", cmp: "RL_CMP_IP", cmpshop: "RL_CMP_SHOP", cmpslow: "RL_CMP_SLOW", search: "RL_SEARCH" };
 async function overLimit(env, bucket, key, limit) {
   const b = env[RL_BINDING[bucket]];
   try {
@@ -1142,7 +1142,7 @@ async function pageHtml(req, env, ctx) {
   let html = HTML.split("__ORIGIN__").join(origin).replace("<!--CANONICAL-->", `<link rel="canonical" href="${origin}/">`);
   if (new URL(req.url).pathname === "/") { try { html = await homeWithMeta(req, env, html, ctx); } catch {} }
   // A shared or bookmarked result link (?u= / ?url=): the page starts in its result layout, so nothing moves when the result appears.
-  { const q = new URL(req.url).searchParams; if (new URL(req.url).pathname === "/" && (q.get("u") || q.get("url"))) html = html.replace('<html lang="en">', '<html lang="en" class="q">'); }
+  { const q = new URL(req.url).searchParams; if (new URL(req.url).pathname === "/" && (q.get("u") || q.get("url") || q.get("q"))) html = html.replace('<html lang="en">', '<html lang="en" class="q">'); }
   return html.replace("<!--NOSCRIPT-->", '<noscript><p class="note" style="text-align:center">Turn on JavaScript to see price history. You can still paste a link and press Check price.</p></noscript>');
 }
 
@@ -1172,6 +1172,8 @@ export default {
       if (url.pathname === "/api/verdict") return await apiVerdict(req, env);
       if (url.pathname === "/api/compare") return statsTap(req, env, ctx, "compare", await apiCompare(req, env));
       if (url.pathname === "/api/compare/shop") return statsTap(req, env, ctx, "compare_shop", await apiCompareShop(req, env, ctx));
+      if (url.pathname === "/api/search") return statsTap(req, env, ctx, "search", await apiSearch(req, env));
+      if (url.pathname === "/api/search/shop") return await apiSearchShop(req, env, ctx);
       if (url.pathname === "/api/others") return await apiOthersCompat(req, env);
       if (env.WALL !== "on" && (url.pathname === "/wall" || url.pathname === "/api/wall" || url.pathname === "/api/stats")) return url.pathname === "/wall" ? Response.redirect(url.origin + "/", 302) : json({ error: "off" }, 404);
       if (url.pathname === "/api/wall") return json(await wallData(env), 200, { "cache-control": "public, max-age=300" });

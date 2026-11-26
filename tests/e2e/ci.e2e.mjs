@@ -93,8 +93,13 @@ await step("link box errors", async () => {
   await p.goto(BASE + "/");
   await p.click("#go");
   ok("empty link shows an error", (await p.textContent("#error")).includes("Paste a product link"), await p.textContent("#error"));
+  ok("empty box: the error names both ways", (await p.textContent("#error")).includes("Paste a product link or type a product name"), await p.textContent("#error"));
+  const [req] = await Promise.all([p.waitForRequest(/\/api\/check\?/), (async () => { await p.fill("#u", "takealot.com"); await p.click("#go"); })()]);
+  ok("a shop address without https is checked as a link (never searched as words)", new URL(req.url()).searchParams.get("url") === "https://takealot.com", req.url());
+  await p.route(/\/api\/search\/shop\?/, (r) => r.fulfill({ json: { status: "none", items: [] } }));
   await p.fill("#u", "hello there"); await p.click("#go");
-  ok("text that is not a link shows an error", /doesn.t look like/.test(await p.textContent("#error")), await p.textContent("#error"));
+  await p.waitForSelector("#search:not(.hidden)", { timeout: 10000 });
+  ok("words that are not a link start a product search", /hello there/.test(await p.textContent("#sTitle")) && /[?&]q=hello\+there/.test(p.url()), p.url());
   await p.context().close();
 });
 
@@ -394,6 +399,96 @@ for (const [name, o] of [["desktop", desktop], ["1440", { viewport: { width: 144
   ok(`home picks ${name}: the result shows after a tap`, await p.isVisible("#result") && /CI Test Kettle/.test(await p.textContent("#ptitle")));
   ok(`home picks ${name}: no sideways page scroll after the check`, await noSideScroll(p));
   ok(`home picks ${name}: no JS errors`, p._errs.length === 0, p._errs.join(" | "));
+  await p.context().close();
+});
+
+// 3f. Product search by name: one box for a link or a name, SA / UK switch, results shop by shop (shop answers faked)
+const SRCH_ITEMS = {
+  takealot: [{ title: "PlayStation 5 Slim Console with disc drive (PS5 Slim)", price: 15999, was: null, from: false, currency: "ZAR", url: "https://www.takealot.com/playstation-5-slim/PLID95228805" },
+    { title: "PlayStation 5 Slim Console + DualSense Controller", price: 17990, was: 18999, from: false, currency: "ZAR", url: "https://www.takealot.com/ps5-slim-dualsense/PLID97993066" }],
+  loot: [{ title: "PS5 Slim Digital Edition", price: 13499, was: null, from: false, currency: "ZAR", url: "https://www.loot.co.za/product/ps5-slim-digital/abc1" }],
+  computermania: [{ title: "PlayStation 5 Slim Console with disc drive (Slim Version) — a very long product name to test that the card wraps on a small phone screen", price: 14499, was: null, from: false, currency: "ZAR", url: "https://computermania.co.za/products/ps5-slim" }],
+};
+const srchShop = (o = {}) => async (r) => {
+  const u = new URL(r.request().url()), id = u.searchParams.get("shop");
+  if (o.asked) o.asked.push(u.searchParams.get("c") + ":" + id);
+  if (id === "loot") await new Promise((ok) => setTimeout(ok, o.lootMs || 1800));
+  if (o.empty) return r.fulfill({ json: { shop: id, status: "none", items: [] } });
+  if (id === "matrix") return r.fulfill({ json: { shop: id, status: "error", items: [] } });
+  if (id === "hirschs") return r.fulfill({ json: { shop: id, status: "robots", items: [] } });
+  const items = SRCH_ITEMS[id] || [];
+  r.fulfill({ json: { shop: id, status: items.length ? "ok" : "none", items } });
+};
+for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`search ${name}`, async () => {
+  const p = await open(o);
+  const checked = [];
+  await p.route(/\/api\/check\?/, (r) => { checked.push(new URL(r.request().url()).searchParams.get("url")); r.fulfill({ json: checkAnswer() }); });
+  await p.route(/\/api\/compare\?/, (r) => r.fulfill({ json: { ...CMP_PLAN, shops: [], results: {}, specialists: 0, reason: "no shops" } }));
+  const asked = [];
+  await p.route(/\/api\/search\/shop\?/, srchShop({ asked }));
+  await p.goto(BASE + "/", { waitUntil: "networkidle" });
+  ok(`search ${name}: the box says link or product name`, (await p.getAttribute("#u", "placeholder")) === "Paste a link or type a product name" && (await p.getAttribute("#u", "type")) === "text");
+  ok(`search ${name}: no SA / UK switch on the clean home page`, !(await p.isVisible("#ccrow")));
+  await p.fill("#u", "PS5 Slim");
+  ok(`search ${name}: a product name turns the button into Search and shows the switch`, (await p.textContent("#go")).trim() === "Search" && await p.isVisible("#ccrow") && (await p.getAttribute('#ccrow [data-c="ZA"]', "aria-pressed")) === "true");
+  await p.fill("#u", "https://www.takealot.com/x/PLID1");
+  ok(`search ${name}: a link keeps Check price and hides the switch`, (await p.textContent("#go")).trim() === "Check price" && !(await p.isVisible("#ccrow")));
+  await p.fill("#u", "takealot.com/x/PLID1");
+  ok(`search ${name}: a link without https is a link too`, (await p.textContent("#go")).trim() === "Check price");
+  await p.fill("#u", "a"); await p.press("#u", "Enter");
+  await p.waitForSelector("#error:not(.hidden)");
+  ok(`search ${name}: a 1-letter search is refused in plain words`, /at least 2/.test(await p.textContent("#error")) && !(await p.isVisible("#search")), await p.textContent("#error"));
+  await p.fill("#u", "PS5 Slim"); await p.press("#u", "Enter");
+  await p.waitForSelector("#sList li", { timeout: 10000 });
+  ok(`search ${name}: fast shops show before a slow shop is done`, /Searching \d+ shops/.test(await p.textContent("#sStatus")) && !(await p.textContent("#sList")).includes("Digital Edition"), await p.textContent("#sStatus"));
+  ok(`search ${name}: the error box goes away`, !(await p.isVisible("#error")));
+  await p.waitForFunction(() => !/Searching/.test(document.getElementById("sStatus").textContent), null, { timeout: 15000 });
+  const rows = await p.$$eval("#sList li", (ls) => ls.map((l) => ({ t: l.querySelector(".st").textContent, p: l.querySelector(".sp").textContent, btn: l.querySelector("button").textContent, a: l.querySelector("a").textContent, href: l.querySelector("a").href, tgt: l.querySelector("a").target, rel: l.querySelector("a").rel, w: l.getBoundingClientRect().right <= innerWidth })));
+  ok(`search ${name}: every product from every shop, lowest price first`, rows.map((r) => r.p.replace(/\D/g, "")).join() === "13499,14499,15999,17990", JSON.stringify(rows.map((r) => r.p)));
+  ok(`search ${name}: each row has Check price history and Open at shop`, rows.every((r) => r.btn === "Check price history" && r.a === "Open at shop ↗" && r.tgt === "_blank" && /noopener/.test(r.rel)) && rows[0].href === SRCH_ITEMS.loot[0].url, JSON.stringify(rows[0]));
+  ok(`search ${name}: only the lowest price is marked, once every shop answered`, (await p.$$eval("#sList li.low", (ls) => ls.length)) === 1 && (await p.$eval("#sList li", (l) => l.classList.contains("low") && /lowest price we found/.test(l.textContent))));
+  ok(`search ${name}: prices are the shops' prices in rand`, rows.every((r) => /^R\s?\d/.test(r.p.replace(/\u00a0/g, " "))), rows.map((r) => r.p).join(" | "));
+  const shopsTxt = await p.textContent("#sShops");
+  ok(`search ${name}: says which shops were searched and which were not`, /^Searched: Takealot/.test(shopsTxt) && /Couldn't search now: Matrix Warehouse/.test(shopsTxt) && /Not searched: Hirsch's/.test(shopsTxt) && /We can't search .*Amazon South Africa \(block tools like ours\)/.test(shopsTxt), shopsTxt);
+  ok(`search ${name}: sums up honestly`, /^4 products at 3 shops, lowest price first\. The prices come from each shop now\.$/.test(await p.textContent("#sStatus")), await p.textContent("#sStatus"));
+  ok(`search ${name}: a shareable link (/?q=…&c=ZA)`, new URL(p.url()).search === "?q=PS5+Slim&c=ZA", p.url());
+  ok(`search ${name}: no sideways page scroll`, await noSideScroll(p) && rows.every((r) => r.w));
+  ok(`search ${name}: the popular picks step aside`, !(await p.isVisible("#tries")));
+  await p.screenshot({ path: `${SHOTS}/search-${name}.png`, fullPage: !!o.isMobile });
+  // SA / UK: a tap searches again in the other country, and the choice is kept
+  asked.length = 0;
+  const uk = p.locator('#ccrow [data-c="GB"]'); if (o.hasTouch) await uk.tap(); else await uk.click();
+  await p.waitForFunction(() => /c=GB/.test(location.search) && !/Searching/.test(document.getElementById("sStatus").textContent), null, { timeout: 15000 });
+  ok(`search ${name}: UK searches UK shops only`, asked.length > 0 && asked.every((a) => a.startsWith("GB:")) && /shops in the UK/.test(await p.textContent("#sLab")), asked.join());
+  ok(`search ${name}: UK is kept on this device`, (await p.evaluate(() => localStorage.getItem("dod:cc"))) === '"GB"' && (await p.getAttribute('#ccrow [data-c="GB"]', "aria-pressed")) === "true");
+  // a shared link opens the search in its own country
+  asked.length = 0;
+  await p.goto(BASE + "/?q=PS5+Slim&c=ZA", { waitUntil: "networkidle" });
+  await p.waitForFunction(() => !/Searching/.test(document.getElementById("sStatus").textContent) && document.querySelectorAll("#sList li").length === 4, null, { timeout: 15000 });
+  ok(`search ${name}: a shared link fills the box and searches its country`, (await p.inputValue("#u")) === "PS5 Slim" && (await p.getAttribute('#ccrow [data-c="ZA"]', "aria-pressed")) === "true" && asked.every((a) => a.startsWith("ZA:")), asked.join());
+  // Check price history: runs the normal check on that product; Back shows the search again
+  const first = p.locator("#sList li button").first(); if (o.hasTouch) await first.tap(); else await first.click();
+  await p.waitForSelector("#result:not(.hidden)", { timeout: 10000 });
+  ok(`search ${name}: Check price history checks that product`, checked.at(-1) === SRCH_ITEMS.loot[0].url && (await p.inputValue("#u")) === SRCH_ITEMS.loot[0].url, checked.join(" "));
+  ok(`search ${name}: the result replaces the search`, !(await p.isVisible("#search")) && /CI Test Kettle/.test(await p.textContent("#ptitle")) && !(await p.isVisible("#ccrow")));
+  ok(`search ${name}: no sideways page scroll on the result`, await noSideScroll(p));
+  await p.goBack();
+  await p.waitForSelector("#search:not(.hidden)", { timeout: 10000 });
+  await p.waitForFunction(() => document.querySelectorAll("#sList li").length === 4, null, { timeout: 15000 });
+  ok(`search ${name}: Back shows the search again`, new URL(p.url()).searchParams.get("q") === "PS5 Slim" && (await p.inputValue("#u")) === "PS5 Slim");
+  ok(`search ${name}: no JS errors`, p._errs.length === 0, p._errs.join(" | "));
+  await p.context().close();
+});
+for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`search empty ${name}`, async () => {
+  const p = await open(o);
+  await p.route(/\/api\/search\/shop\?/, srchShop({ empty: true, lootMs: 50 }));
+  await p.goto(BASE + "/?q=" + encodeURIComponent("zorbix 3000") + "&c=ZA", { waitUntil: "networkidle" });
+  await p.waitForSelector("#sEmpty:not(.hidden)", { timeout: 15000 });
+  ok(`search empty ${name}: no results says so in plain words`, /We found no products in stock with all of these words\. Use fewer words, or paste a product link\./.test(await p.textContent("#sEmpty")) && (await p.$$("#sList li")).length === 0, await p.textContent("#sEmpty"));
+  ok(`search empty ${name}: the button is back to Search`, (await p.textContent("#go")).trim() === "Search" && !(await p.isDisabled("#go")));
+  ok(`search empty ${name}: no sideways page scroll`, await noSideScroll(p));
+  ok(`search empty ${name}: no JS errors`, p._errs.length === 0, p._errs.join(" | "));
+  if (name === "phone") await p.screenshot({ path: `${SHOTS}/search-empty-phone.png` });
   await p.context().close();
 });
 

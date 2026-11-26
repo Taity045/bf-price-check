@@ -61,7 +61,7 @@ h1{font-size:clamp(26px,6.4vw,40px);line-height:1.15;letter-spacing:-.02em;margi
 #u:focus{outline:none;border-color:var(--ink);background:var(--bg)}
 .go{height:50px;padding:0 20px;border:0;border-radius:var(--r);background:var(--acc);color:var(--bg);font-weight:600;white-space:nowrap;width:100%}
 .go[disabled]{opacity:.65;cursor:progress}
-html.q main:has(#result.hidden) footer{display:none}
+html.q main:has(#result.hidden):has(#search.hidden) footer{display:none}
 .tries{margin:22px 0 0;text-align:left}
 .tryh{font-size:15px;margin:0 0 8px;text-align:center}
 .cats{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 6px;margin:0 -2px;scrollbar-width:none;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity}
@@ -76,6 +76,23 @@ html.q main:has(#result.hidden) footer{display:none}
 .picks a[aria-busy=true] span::after{content:" · Checking…"}
 .trynote{margin:8px 0 0;text-align:center}
 .picks[hidden]{display:none}
+.ccrow{display:flex;align-items:center;justify-content:center;gap:6px;margin:10px 0 0;font-size:14px;color:var(--mut)}
+.ccb{min-height:36px;padding:0 12px;border:1px solid var(--line);border-radius:99px;background:var(--bg);font-size:14px;font-weight:600;color:var(--ink)}
+.ccb[aria-pressed=true]{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+#search{margin-top:20px}
+#search .sh{font-size:18px;line-height:1.3;margin:2px 0 4px;overflow-wrap:anywhere}
+.slist{list-style:none;margin:12px 0 0;padding:0;display:grid;gap:8px}
+.slist li{border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;min-width:0}
+.slist .st{font-size:15px;font-weight:600;line-height:1.3;overflow-wrap:anywhere}
+.slist .sm{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px;margin-top:4px}
+.slist .sp{font-size:20px;font-weight:700;letter-spacing:-.01em}
+.slist .sa{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.slist .sa button,.slist .sa a{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);font-size:14px;font-weight:600;text-decoration:none;color:var(--ink)}
+.slist .sa button{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+.slist .sa button[aria-busy=true]{opacity:.7}
+.slist li.low{border-color:var(--good)}
+.sshops{margin:12px 0 0}
+.hero:has(~#search:not(.hidden)) .tries,.hero:has(~#search:not(.hidden)) .steps{display:none}
 .err{margin-top:18px;padding:12px 14px;border-radius:var(--r);background:rgba(204,36,24,.08);background:color-mix(in srgb,var(--bad) 10%,var(--bg));color:var(--bad);font-size:15px}
 
 #result{margin-top:28px}
@@ -281,6 +298,14 @@ dialog{border:2px solid var(--ink);border-radius:6px;box-shadow:6px 6px 0 rgba(0
 .unsup{background:none;border:2px dashed var(--ink);border-radius:var(--r)}
 .chip{border-radius:2px;background:none;border:1.5px solid currentColor;font-family:var(--mono);text-transform:uppercase;font-size:11px;letter-spacing:.02em}
 .badge{border:2px dashed var(--line);border-radius:var(--r)}
+.ccb{border-radius:var(--r)}
+.ccb[aria-pressed=true]{background:var(--acc);color:var(--acc-ink);border:2px solid var(--ink)}
+.slist li{border:1.5px solid var(--line);border-radius:var(--r);background:var(--card,var(--bg))}
+.slist li.low{border:2px solid var(--ink);box-shadow:3px 3px 0 var(--ink)}
+.slist .sp{font-family:var(--mono);font-weight:600;letter-spacing:-.02em}
+.slist .sa button{background:var(--acc);color:var(--acc-ink);border:2px solid var(--ink);border-radius:var(--r)}
+.slist .sa a{border:2px solid var(--ink);border-radius:var(--r)}
+.slist .sa a:hover{background:var(--acc);color:var(--acc-ink)}
 .badge.on{border:2px solid var(--ink);background:var(--acc);color:var(--acc-ink)}
 .badge.on .small{color:var(--acc-ink)}
 .tabs{border-bottom:2px solid var(--ink)}.tabs button[aria-selected=true]{border-bottom:4px solid var(--acc);color:var(--ink)}
@@ -323,23 +348,35 @@ footer{border-top:2px dashed var(--ink)}
 
   <section class="hero">
     <h1>You think you found a <mark>good deal</mark>? Let's find out!</h1>
-    <p class="sub">Paste a product link. We look for the same product for less at other shops, and compare today's price with older prices, up to 12 months back.</p>
+    <p class="sub">Paste a product link or type a product name. We look for the same product for less at other shops, and compare today's price with older prices, up to 12 months back.</p>
     <form id="f" action="/" method="get" autocomplete="off" novalidate>
-      <label for="u" class="hidden">Product link</label>
-      <input id="u" name="u" type="url" inputmode="url" placeholder="Paste a product link" aria-label="Product link" enterkeyhint="go">
+      <label for="u" class="hidden">Product link or product name</label>
+      <input id="u" name="u" type="text" placeholder="Paste a link or type a product name" aria-label="Product link or product name" enterkeyhint="go" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="2048">
       <button class="go" id="go" type="submit">Check price</button>
     </form>
+    <div class="ccrow hidden" id="ccrow" role="group" aria-label="Search shops in"><span>Shops in</span><button type="button" class="ccb" data-c="ZA" aria-pressed="true">South Africa</button><button type="button" class="ccb" data-c="GB" aria-pressed="false">UK</button></div>
     <section class="tries" id="tries" aria-labelledby="triesH">
       <h2 class="tryh" id="triesH">Try a popular product</h2>
       <!--PICKS-->
       <p class="small trynote">Tap a product to check its price now.</p>
     </section>
-    <ol class="steps" aria-label="How it works"><li>Paste a link</li><li>We check up to 12 months of prices</li><li>See if the deal is real</li></ol>
+    <ol class="steps" aria-label="How it works"><li>Paste a link or type a name</li><li>We check up to 12 months of prices</li><li>See if the deal is real</li></ol>
   </section>
 
   <!--NOSCRIPT-->
   <div id="error" class="err hidden" role="alert"></div>
   <p id="sr" class="sr" role="status" aria-live="polite"></p>
+
+  <section id="search" class="hidden" aria-label="Search results">
+    <div class="card">
+      <span class="lab" id="sLab">Search results</span>
+      <h2 class="sh" id="sTitle"></h2>
+      <p class="small" id="sStatus" role="status"></p>
+      <ol class="slist" id="sList"></ol>
+      <p class="note hidden" id="sEmpty"></p>
+      <p class="small sshops" id="sShops"></p>
+    </div>
+  </section>
 
   <section id="result" class="hidden" aria-label="Result">
     <div class="card">
@@ -562,11 +599,31 @@ document.querySelectorAll("#chips a").forEach((a) => a.addEventListener("click",
   run(u).then(done, done);
 }));
 
+// One box for a product link or a product name. Same rule as srchIsLink in src/search.js.
+const isLink = (v) => /https?:\/\/\S+/i.test(v) || /^(www\.)?[\w-]+(\.[\w-]+)+\/\S*/i.test(v) || (!/\s/.test(v) && /^(www\.)?[a-z0-9-]+(\.[a-z0-9-]+)*\.(com|co\.za|za|co\.uk|uk|net|org|eu|de|fr|nl|ie|io|shop|store|to|co)$/i.test(v));
+// Search country: South Africa (ZA) or the UK (GB). Kept on this device.
+let cc = store.get("cc", "ZA"); if (cc !== "ZA" && cc !== "GB") cc = "ZA";
+function setCc(c) { cc = c === "GB" ? "GB" : "ZA"; document.querySelectorAll("#ccrow .ccb").forEach((b) => b.setAttribute("aria-pressed", b.dataset.c === cc ? "true" : "false")); }
+setCc(cc);
+function boxMode() {
+  const v = $("u").value.trim(), name = !!v && !isLink(v);
+  if (!$("go").disabled) $("go").textContent = name ? "Search" : "Check price";
+  $("ccrow").classList.toggle("hidden", !name && $("search").classList.contains("hidden"));
+}
+$("u").addEventListener("input", boxMode);
+const search = (q) => loadApp().then((a) => a.search(q, cc), () => showError("Couldn't reach the search. Check your connection and try again."));
+document.querySelectorAll("#ccrow .ccb").forEach((b) => b.addEventListener("click", () => {
+  if (b.dataset.c === cc) return;
+  setCc(b.dataset.c); store.set("cc", cc);
+  const v = $("u").value.trim();
+  if (v && !isLink(v) && (!$("search").classList.contains("hidden") || v.length >= 2)) search(v);
+}));
+
 $("f").addEventListener("submit", (e) => {
   e.preventDefault();
   const v = $("u").value.trim(); const m = v.match(/https?:\/\/\S+/);
-  if (!v) { showError("Paste a product link first."); $("u").focus(); return; }
-  if (!m && !/^[\w-]+(\.[\w-]+)+\//.test(v)) { showError("That doesn't look like a product link. It should start with https://"); return; }
+  if (!v) { showError("Paste a product link or type a product name."); $("u").focus(); return; }
+  if (!isLink(v)) { search(v); return; }
   // A shared Amazon text ends with the shop name ("…: Amazon.co.za: Electronics"): a currency hint for the price box.
   window.pasteCur = /\bAmazon\.co\.za\b/i.test(v) ? "ZAR" : /\bAmazon\.co\.uk\b/i.test(v) ? "GBP" : "";
   run(m ? m[0] : "https://" + v);
@@ -579,7 +636,7 @@ function showError(msg) { const e = $("error"); e.textContent = msg; e.classList
 let app = null, A = null;
 function loadApp() {
   return app || (app = new Promise((ok, no) => {
-    window.__dod = (init) => ok(A = init({ $, store, esc, money, toast, showError, openRequest, tsPrepare, tsToken, LOC, getSaved, renderSavedCount }));
+    window.__dod = (init) => ok(A = init({ $, store, esc, money, toast, showError, openRequest, tsPrepare, tsToken, LOC, getSaved, renderSavedCount, boxMode }));
     const sc = document.createElement("script"); sc.src = "/*LAZY*/"; sc.onerror = () => { app = null; no(); }; document.head.appendChild(sc);
   }));
 }
@@ -680,8 +737,15 @@ if (path === "/wall" || path === "/privacy") {
   if (path === "/wall") showWall();
 }
 renderSavedCount();
-const sp = new URLSearchParams(location.search), qs = sp.get("u") || sp.get("url");
+const sp = new URLSearchParams(location.search), qs = sp.get("u") || sp.get("url"), qn = sp.get("q");
 if (qs && path === "/") { $("u").value = qs; run(qs); }
+else if (qn && path === "/") { const c = (sp.get("c") || "").toUpperCase(); if (c === "ZA" || c === "GB" || c === "UK") setCc(c === "UK" ? "GB" : c); $("u").value = qn; boxMode(); search(qn); }
+// Back and forward between a search and a check
+window.addEventListener("popstate", () => {
+  const p = new URLSearchParams(location.search), u = p.get("u"), q = p.get("q");
+  if (u) { $("u").value = u; run(u); }
+  else if (q) { const c = (p.get("c") || "").toUpperCase(); if (c === "ZA" || c === "GB") setCc(c); $("u").value = q; boxMode(); search(q); }
+});
 })();
 
 // ---------- button counts: no cookies, no IDs, only the button name (see the Privacy page) ----------
@@ -689,7 +753,7 @@ const CLICKS = { share: "share", shareWa: "share_whatsapp", shareCopy: "share_co
 document.addEventListener("click", (e) => {
   const el = e.target && e.target.closest ? e.target.closest("button, a") : null;
   if (!el || !navigator.sendBeacon) return;
-  const name = CLICKS[el.id] || (el.closest("#otherList") && el.tagName === "A" ? "compare_open" : el.closest("#chips") && el.tagName === "A" ? "example" : "");
+  const name = CLICKS[el.id] || (el.closest("#otherList") && el.tagName === "A" ? "compare_open" : el.closest("#chips") && el.tagName === "A" ? "example" : el.closest("#sList") ? (el.tagName === "A" ? "search_open" : "search_check") : "");
   if (name) try { navigator.sendBeacon("/api/m", name); } catch {}
 }, { capture: true, passive: true });
 </script>
