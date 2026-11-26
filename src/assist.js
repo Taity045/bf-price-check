@@ -30,7 +30,7 @@
 // request and country. No D1 writes: the AI day count is in the Cloudflare cache and in memory, and it also
 // reads (never writes) the compare AI day count, so the assistant never goes past the shared daily cap.
 
-const AS_VER = "v6";               // v2: shop_count (shops with a match, not only the shown ones); v5: ai.models; v6: named brand/model, accessories (AB-39)
+const AS_VER = "v7";               // v2: shop_count (shops with a match, not only the shown ones); v5: ai.models; v6: named brand/model, accessories (AB-39); v7: companion items, brand position, price floors, "good" ranking
 const AS_MAX = 200;                       // characters in a request
 const AS_TTL = 20 * 60;                   // seconds: one answer for one request and country
 const AS_AI_TIMEOUT = 2800;               // ms for one AI answer; a slow answer is dropped (rules decide)
@@ -135,7 +135,7 @@ function asBudget(q) {
 // and the shop searches for it. Text is lower case.
 const AS_CAT = {
   tv: { re: /\b(tvs?|televisions?|smart ?tv|oled tv|qled tv)\b/, noun: "TV",
-    main: /\b(tvs?|television|google tv|smart tv|oled|qled|mini ?led|uhd|ultra hd)\b/, acc: /\b(wall ?mounts?|brackets?|remotes?|stands? for|cables?|antennas?|aerials?|soundbars?|tv box|streamer|stick|covers?|cleaning|av receiver)\b/ },
+    main: /\b(tvs?|television|google tv|smart tv|oled|qled|mini ?led|uhd|ultra hd)\b/, acc: /\b(wall ?mounts?|brackets?|(?:universal |replacement |tv )remotes?|remotes? (?:for|control)|stands? for|cables?|antennas?|aerials?|soundbars?|tv box|streamer|stick|covers?|cleaning|av receiver)\b/ },
   laptop: { re: /\b(laptops?|notebooks?|macbooks?|chromebooks?|ultrabooks?)\b|\b(programming|coding|developer|docker|software development|computer science|for (?:university|varsity|college))\b/, noun: "laptop",
     main: /\b(laptops?|notebooks?|macbook|chromebook|vivobook|zenbook|expertbook|ideapad|thinkpad|thinkbook|yoga|pavilion|envy|spectre|inspiron|latitude|vostro|xps|aspire|swift|nitro|predator|omen|victus|elitebook|probook|galaxy book|surface laptop|tuf gaming|rog|legion|loq|modern \d+|prestige|senna|carrera)\b/,
     acc: /\b(memory modules?|so-?dimm|ddr[345]\b|notebook memory|ram upgrade|sleeves?|bags?|backpacks?|cases?|covers?|chargers?|power adapters?|adapters?|docking|docks?|stands?|cooling pads?|keyboards?|mouse|mice|skins?|screen protectors?|hubs?|batter(?:y|ies)|ssd drive|external)\b/ },
@@ -261,6 +261,11 @@ function asNamedFits(named, title) {
   if (!named || !named.words.length) return true;
   const head = asBeforeFor(title);
   if (!srchHas(named.words, head)) return false;
+  // AB-39b: the named brand or line comes first (after a maker, a year or "new"), not after another brand
+  const hw = cmpWords(head), first = named.words[0];
+  const at = hw.findIndex((w) => w === first || w === first + "s" || (/\d/.test(first) && w.startsWith(first)));
+  const makers = new Set(AS_BRANDS.filter((b) => b.k === "m").flatMap((b) => b.w));
+  if (at < 0 || at > 3 || !hw.slice(0, at).every((w) => makers.has(w) || AS_BEFORE_OK.has(w) || /^(19|20)\d\d$/.test(w))) return false;
   if (named.model.length) {
     const tw = cmpWords(head), last = named.model[named.model.length - 1];
     const k = tw.findIndex((w) => w === last || w.startsWith(last) && /\d/.test(last) && !/\d/.test(w.slice(last.length, last.length + 1)) && w.length - last.length <= 3);
@@ -273,7 +278,7 @@ function asNamedFits(named, title) {
 }
 // Accessories for any kind of product. A request that names one ("phone bag", "laptop sleeve", "iPhone 16
 // case") looks for it; any other request never shows one.
-const AS_ACC_ANY = /\b(bags?|pouch(?:es)?|cases?|covers?|sleeves?|straps?|bands? for|replacement bands?|watch bands?|chargers?|charging (?:cable|dock|stand|pad|clip)|cables?|adapters?|adaptors?|screen protectors?|protectors?|tempered glass|tempered|stands?|mounts?|brackets?|holders?|holsters?|wallets?|skins?|decals?|stickers?|stylus(?:es)?|styli|docks?|docking|replacements?|spare parts?|spares?|lens(?:es)? for|tripods?|selfie sticks?|gimbals?|ring lights?|power ?banks?|grips?|pop ?sockets?|lanyards?|keyboard covers?|remotes?|controllers?|accessor(?:y|ies)|vr (?:headsets?|glasses|goggles|box)|virtual reality)\b/;
+const AS_ACC_ANY = /\b(bags?|pouch(?:es)?|cases?|covers?|sleeves?|straps?|bands? for|replacement bands?|watch bands?|chargers?|charging (?:cable|dock|stand|pad|clip)|cables?|adapters?|adaptors?|screen protectors?|protectors?|tempered glass|tempered|stands?|mounts?|brackets?|holders?|holsters?|wallets?|skins?|decals?|stickers?|stylus(?:es)?|styli|docks?|docking|replacements?|spare parts?|spares?|lens(?:es)? for|tripods?|selfie sticks?|gimbals?|ring lights?|power ?banks?|grips?|pop ?sockets?|lanyards?|keyboard covers?|(?:universal |replacement |tv )remotes?|remotes? (?:for|control)|controllers?|accessor(?:y|ies)|vr (?:headsets?|glasses|goggles|box)|virtual reality)\b/;
 const AS_ACC_ASK = /\b(bags?|pouch(?:es)?|cases?|covers?|sleeves?|straps?|bands?|chargers?|charging|cables?|adapters?|adaptors?|screen protectors?|protectors?|tempered glass|stands?|mounts?|brackets?|holders?|holsters?|wallets?|skins?|decals?|stickers?|stylus(?:es)?|docks?|replacements?|spare parts?|tripods?|selfie sticks?|gimbals?|ring lights?|power ?banks?|grips?|lanyards?|remotes?|controllers?|filters?|liners?|accessor(?:y|ies)|vr (?:headsets?|glasses|goggles))\b/;
 // "for <brand or device>" / "compatible with": made to fit another product.
 const AS_FOR_DEVICE = /\b(?:for|fits|compatible with|suitable for|works with|designed for)\s+(?:the\s+|your\s+|all\s+)?(?:apple|samsung|iphones?|ipads?|android|galaxy|pixel|huawei|xiaomi|oppo|macbooks?|laptops?|phones?|smartphones?|tablets?|ps5|ps4|xbox|nintendo|switch|garmin|fitbit|airpods|kindle|tvs?|gopro|dji|dyson|nespresso)\b/;
@@ -282,8 +287,24 @@ const AS_AUDIO_WORDS = /\b(headphones?|earbuds?|earphones?|headsets?|integrated 
 const asAccessoryAsk = (q) => AS_ACC_ASK.test(asNoBudget(String(q || "").toLowerCase()));
 // "best", "top", "flagship", "latest": the request wants quality, not the lowest price.
 const AS_QUALITY = /\b(best|top|flagship|high[- ]end|premium|latest|newest|most powerful|top of the range|top-end)\b/;
+// "good", "great", "reliable", "new"… with no budget: not the cheapest; higher models and a mainstream price first.
+const AS_GOOD = /\b(good|great|solid|nice|quality|reliable|decent|new|latest|newest)\b/;
+// AB-39b: companion items and accessories, checked on the whole name (not only before " + " or " & "), with
+// the bundle part after "with", "incl…" or "bundle" left out: "Ipad / Iphone / Ipad Sync + charge cable" is a cable.
+const AS_COMPANION = /\b(cables?|sync|charge|charging|chargers?|trackers?|smart ?track|airtags?|finders?|locators?|key ?finders?|tripods?|gimbals?|ring lights?|power ?banks?|car mounts?|holders?|protectors?|screen guards?|tempered glass|lens(?:es)? (?:kit|for|protectors?|caps?|attachments?)|clip-on lens|microsd(?! (?:slot|reader|support|expand))|memory cards?(?! (?:slot|reader))|sd cards?(?! (?:slot|reader))|flash drives?|usb(?:-c)? (?:hubs?|sticks?)|dongles?|cleaning kits?|replacements?|spare parts?|stickers?|decals?|keyrings?|key chains?|lanyards?)\b/;
+// Words that make "charge" a feature of the device, not a cable ("25W fast charging", "wireless charging").
+const AS_CHARGE_FEATURE = /\b(?:fast|super|rapid|quick|turbo|wireless|magsafe|reverse|solar|usb-c|\d+ ?w)[ -]+charg(?:e|ing|er)\b|\b(?:fitness|activity|health|sleep|gps) trackers?\b/g;
+// A name for many devices ("Ipad / Iphone", "Android / iPhone", "iPhone & Android"): made to fit them.
+const AS_MULTI_DEVICE = /\b(?:iphones?|ipads?|ipods?|android|samsung|galaxy|macbooks?|airpods|apple watch|pixel|huawei|xiaomi|ps[45]|xbox|switch)\s*(?:\/|&|\band\b|,|\|)\s*(?:iphones?|ipads?|ipods?|android|samsung|galaxy|macbooks?|airpods|apple watch|pixel|huawei|xiaomi|ps[45]|xbox|switch)\b/;
+// Lowest real prices for a main device (a cable, a sticker or a tracker is never a R160 "phone"). Only for
+// device requests, never for accessory requests. Conservative: real budget devices are above them.
+const AS_FLOOR = { ZAR: { phone: 500, laptop: 2500, tv: 1500, gaming: 2000, watch: 300, tablet: 800 }, GBP: { phone: 40, laptop: 120, tv: 80, gaming: 100, watch: 15, tablet: 40 } };
+// Words that can come before the named brand or line in a real product name: a maker ("Apple iPhone"), a year,
+// "new", a shop's own prefix. "Eufy SmartTrack Link 3 iPhone" or "URBAN Microworld … Iphone" are other brands' products.
+const AS_BEFORE_OK = new Set(["new", "the", "original", "genuine", "brand", "firstshop", "pre", "order", "preorder", "pre-order", "latest", "official", "all-new"]);
 // Version words that mark the higher model of a range (used only to rank "best" requests with no budget).
-const asTier = (title) => { const w = new Set(cmpWords(title)); return (w.has("ultra") ? 3 : 0) + (w.has("max") ? 2 : 0) + (w.has("pro") ? 2 : 0) + (w.has("plus") ? 1 : 0) - (w.has("lite") || w.has("mini") || w.has("fe") || w.has("se") ? 1 : 0); };
+// "Core Ultra" (a processor), "Ultra HD" or "ultra slim" are not the Ultra model of a range.
+const asTier = (title) => { const w = new Set(cmpWords(String(title).replace(/\b(?:core|intel) ultra\b|\bultra[ -]?(?:hd|slim|thin|wide|fast|light|bright|clear|sharp)\b/gi, " "))); return (w.has("ultra") ? 3 : 0) + (w.has("max") ? 2 : 0) + (w.has("pro") ? 2 : 0) + (w.has("plus") ? 1 : 0) - (w.has("lite") || w.has("mini") || w.has("fe") || w.has("se") ? 1 : 0); };
 
 function asRules(q, country) {
   const low = String(q || "").toLowerCase();
@@ -356,7 +377,7 @@ function asRules(q, country) {
     searchQueries = named.model.length || named.lines.length || !catQ ? [named.phrase] : [(named.makers.join(" ") + " " + catQ.replace(/^(?:garmin|samsung) /i, "")).trim()];
   }
   return { category, maxBudget: b ? b.amount : null, currency, searchQueries: searchQueries.slice(0, 2), mustHave, prefer, avoid, by: "rules", use: asUse(low, category),
-    named: accessory ? null : named, accessory, quality: AS_QUALITY.test(low) };
+    named: accessory ? null : named, accessory, quality: AS_QUALITY.test(low), good: AS_GOOD.test(asNoBudget(low)) };
 }
 
 // ---------- 2b. Workers AI: the same fields as strict JSON ----------
@@ -634,6 +655,11 @@ function asFits(intent, title, q) {
   // AB-39, all kinds of products: no accessories, nothing made "for" another device, no headphones or VR sets
   // for a request that is not for audio, and the named brand and model (not only after "for …")
   if (AS_ACC_ANY.test(head)) return false;
+  // AB-39b: companion items on the whole name (minus a bundle part), and names made for many devices
+  const body = t.split(/\b(?:with|incl(?:udes?|uding)?|bundle|and free)\b/)[0].replace(AS_CHARGE_FEATURE, " ");
+  if (AS_COMPANION.test(body)) return false;
+  // many devices named in the product itself ("Ipad / Iphone / Ipad Sync"); after "for" the rule below decides
+  if (AS_MULTI_DEVICE.test(asBeforeFor(t)) || (AS_MULTI_DEVICE.test(t) && !(cat && cat.main && cat.main.test(asBeforeFor(t))))) return false;
   // "… for iPhone": fine when the part before "for" is itself the kind of product asked for ("Smartwatch for Android")
   if (AS_FOR_DEVICE.test(t) && !(cat && cat.main && cat.main.test(asBeforeFor(t)))) return false;
   if (intent.category !== "audio" && AS_AUDIO_WORDS.test(head)) return false;
@@ -664,6 +690,9 @@ function asCandidates(intent, answers) {
       const low = String(c.title).toLowerCase();
       const title = (brand && brand.length < 40 && !brand.toLowerCase().split(/[^a-z0-9]+/).some((w) => w.length > 1 && low.includes(w)) ? brand + " " + c.title : String(c.title)).replace(/\s+/g, " ").trim().slice(0, 200);
       if (!asFits(intent, title, q)) continue;
+      // AB-39b: a main device is never this cheap (a cable, a sticker, a tracker)
+      const floor = !intent.accessory && (AS_FLOOR[shop.cur] || {})[intent.category];
+      if (floor && c.price < floor) continue;
       seen.add(u.href);
       out.push({ title, price: Math.round(c.price * 100) / 100, was: c.was && c.was > c.price ? Math.round(c.was * 100) / 100 : null, currency: shop.cur, shop: shop.name, shop_id: shop.id, url: u.href });
     }
@@ -697,7 +726,13 @@ function asPick(intent, cands) {
   // AB-39: "best …" with no budget: the higher models of a range first (Ultra, Pro Max, Pro), then the
   // higher price, not the cheapest product
   const best = !!intent.quality && intent.maxBudget == null;
-  const within = scored.filter((x) => !x.over).sort(best ? (a, b) => b.s - a.s || asTier(b.title) - asTier(a.title) || b.price - a.price : (a, b) => b.s - a.s || a.price - b.price);
+  // AB-39b: "good", "great", "reliable", "new"… with no budget: the specs, then the higher models, then the
+  // price nearest the middle of the real prices found (mainstream), never the cheapest first
+  const good = !best && !!intent.good && intent.maxBudget == null;
+  const prices = scored.map((x) => x.price).sort((a, b) => a - b), mid = prices.length ? prices[Math.floor(prices.length / 2)] : 0;
+  const away = (x) => Math.abs(Math.log(x.price / (mid || x.price)));
+  const within = scored.filter((x) => !x.over).sort(best ? (a, b) => b.s - a.s || asTier(b.title) - asTier(a.title) || b.price - a.price
+    : good ? (a, b) => b.s - a.s || asTier(b.title) - asTier(a.title) || away(a) - away(b) || b.price - a.price : (a, b) => b.s - a.s || a.price - b.price);
   const over = scored.filter((x) => x.over).sort((a, b) => a.price - b.price || b.s - a.s);
   const ranked = within.concat(over);
   const clean = ({ key, tail, s, ...x }) => x;
@@ -787,13 +822,17 @@ const AS_REASON_SYSTEM = [
 // A reason is used only if: one short sentence, no link, and every number and every capitalised or spec-like
 // word in it is in the facts we gave for that pick.
 const AS_PLAIN_CAPS = new Set(["RAM", "TV", "UK", "SA", "AI"]);
-function asReasonOk(reason, facts) {
+function asReasonOk(reason, facts, product) {
   const r = String(reason || "").replace(/\s+/g, " ").trim();
   if (r.length < 15 || r.length > 300) return false;
   if (/https?:|www\.|\.co\b|\.com\b|[<>{}`]|\b(guarantee|best in|perfect|amazing|unbeatable|must-have|ultimate|world)\b/i.test(r)) return false;
   if ((r.match(/[.!?](\s|$)/g) || []).length > 2) return false;   // AB-32: 2 sentences
   // claims that need a fact from the listing (battery, weight, camera…): only when the facts have them
-  const f0 = String(facts || "").toLowerCase();
+  // claims about the product (camera, battery…) only from the product's own facts, not from the request
+  const f0 = String(product == null ? facts || "" : product).toLowerCase();
+  // AB-39b: no reason that says the pick lacks something, or praises what the name does not show
+  if (/\b(does not|doesn'?t|do not|don'?t|is not|isn'?t|cannot|can'?t|lacks?|lacking|without|not have|no (?!cable\b))\b/i.test(r.replace(/\b(?:less than|more than) (?:your|the) budget\b/gi, ""))) return false;
+  if (/\bhas (?:a |an )?(?:good|nice|strong|solid|great)\b/i.test(r)) return false;
   for (const w of r.toLowerCase().match(/\b(battery|batteries|lightweight|light|weighs?|weight|kg|grams?|durable|warranty|backlit|touch ?screen|fingerprint|camera|webcam|speakers?|waterproof|water-resistant|hours?)\b/g) || []) if (!f0.includes(w)) return false;
   // No comparisons between picks or quality claims: the AI cannot check them (e.g. "256GB SSD, which is larger").
   // Only the computed budget gap ("R4,501 less than your budget") may compare.
@@ -818,7 +857,7 @@ async function asReasons(env, q, intent, picks, ms = AS_REASON_MS) {
   const reasons = rules.slice(), by = picks.map(() => "rules");
   if (obj) picks.forEach((p, i) => {
     const r = asAiText(obj[String(i + 1)], 300);
-    if (asReasonOk(r, factsOf(p) + " " + q + " " + budget + " " + asMoney(Math.abs((intent.maxBudget || 0) - p.price), p.currency))) { reasons[i] = /[.!?]$/.test(r) ? r : r + "."; by[i] = "ai"; }
+    if (asReasonOk(r, factsOf(p) + " " + q + " " + budget + " " + asMoney(Math.abs((intent.maxBudget || 0) - p.price), p.currency), factsOf(p))) { reasons[i] = /[.!?]$/.test(r) ? r : r + "."; by[i] = "ai"; }
   });
   return { reasons, by, why, model: by.includes("ai") ? model : "rules" };
 }
