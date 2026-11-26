@@ -629,6 +629,38 @@ for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`a
   ok(`assist flyer ${name}: no JS errors`, p._errs.length === 0, p._errs.join(" | "));
   await p.context().close();
 });
+// AB-42: general AI picking: an unseen kind of product (a camping tent) shows the AI's picks from real listings;
+// "picks": [] (nothing matches) shows the plain empty note, never accessories
+const tent = (rank, title, price, url, reason) => ({ rank, title, price, was: null, currency: "ZAR", shop: "Takealot", url, over_budget: false, reason_by: "ai", specs: [], reason });
+const AS_TENT = { ...AS_ANSWER, q: "where can i buy a camping tent", intent: { ...AS_ANSWER.intent, category: "other", maxBudget: null, searchQueries: ["camping tent"], mustHave: [], prefer: [] }, understanding: "Budget: not given · Looking for: camping tent",
+  picks: [tent(1, "Coleman Darwin 4 Person Dome Tent", 2499, "https://www.takealot.com/coleman-darwin/PLID11", "It is a dome tent for 4 people, for your camping trip."),
+    tent(2, "First Ascent Amp 2 Hiking Tent", 3299, "https://www.takealot.com/first-ascent-amp/PLID12", "It is a tent for 2 people for hiking and camping."),
+    tent(3, "Natural Instinct Explorer 6 Person Tunnel Tent", 3999, "https://www.takealot.com/explorer/PLID13", "It is a tunnel tent for 6 people.")],
+  more: [{ title: "Campmaster Dome Tent 3 Person", price: 1299, was: null, currency: "ZAR", shop: "Loot", url: "https://www.loot.co.za/product/campmaster-dome/abc1", over_budget: false }],
+  total: 4, shop_count: 2, within_budget: 4, note: "", ai: { intent: true, reasons: true, pick: true, models: { intent: "workers-ai:@cf/meta/llama-3.1-8b-instruct-fp8-fast", reasons: "workers-ai:@cf/meta/llama-3.1-8b-instruct-fp8-fast", pick: "workers-ai:@cf/meta/llama-3.1-8b-instruct-fp8-fast" } },
+  shops: { searched: ["Takealot", "Loot"], failed: [], robots: [], notSearched: [] } };
+const AS_NOMATCH = { ...AS_TENT, q: "where can i buy a hammock", understanding: "Budget: not given · Looking for: hammock", picks: [], more: [], total: 0, within_budget: 0, note: "We found no products in stock that match your request. Use other words, or paste a product link." };
+for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`assist ai pick ${name}`, async () => {
+  const p = await open(o);
+  let ans = AS_TENT;
+  await p.route(/\/api\/assist\?/, (r) => r.fulfill({ json: ans }));
+  await p.goto(BASE + "/", { waitUntil: "networkidle" });
+  await p.fill("#u", AS_TENT.q); await p.press("#u", "Enter");
+  await p.waitForSelector("#asPicks li", { timeout: 10000 });
+  const c = await p.$$eval("#asPicks li", (ls) => ls.map((l) => ({ t: l.querySelector(".st").textContent, why: l.querySelector(".why").textContent, w: l.getBoundingClientRect().right <= innerWidth + 1 })));
+  ok(`assist ai pick ${name}: a natural request for an unseen product (tent) runs Ask AI and shows 3 tents`, c.length === 3 && c.every((x) => /Tent/.test(x.t)) && /^We found 4 matching products at 2 shops\./.test(await p.textContent("#asStatus")), JSON.stringify(c));
+  ok(`assist ai pick ${name}: the AI reasons show, with no accessories on the page`, c[0].why.startsWith("It is a dome tent") && !/pegs|repair kit|footprint/i.test(await p.textContent("#assist")));
+  ok(`assist ai pick ${name}: All matching results has the other real tent`, /All matching results \(1 more\)/.test(await p.textContent("#asMoreSum")));
+  ok(`assist ai pick ${name}: no sideways page scroll`, await noSideScroll(p) && c.every((x) => x.w));
+  await p.screenshot({ path: `${SHOTS}/assist-ai-pick-${name}.png`, fullPage: !!o.isMobile });
+  ans = AS_NOMATCH;
+  await p.fill("#u", AS_NOMATCH.q); await p.press("#u", "Enter");
+  await p.waitForSelector("#asEmpty:not(.hidden)", { timeout: 10000 });
+  ok(`assist ai pick ${name}: nothing matches: a plain empty note, no picks`, /^We found no products in stock that match your request\./.test(await p.textContent("#asEmpty")) && (await p.$$("#asPicks li")).length === 0 && !(await p.isVisible("#asMore")));
+  ok(`assist ai pick ${name}: never shows a name or an email`, !/@|Tatenda/i.test(await p.textContent("#assist")));
+  ok(`assist ai pick ${name}: no JS errors`, p._errs.length === 0, p._errs.join(" | "));
+  await p.context().close();
+});
 for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`assist empty ${name}`, async () => {
   const p = await open(o);
   await p.route(/\/api\/assist\?/, (r) => r.fulfill({ json: { ...AS_ANSWER, q: "Need a 4K TV under £500 for PS5", country: "GB", currency: "GBP", understanding: "Budget: up to £500 · Looking for: TV (4K, 120Hz, HDMI 2.1)", picks: [], more: [], total: 0, within_budget: 0, note: "We found no products in stock that match. Use other words, or a higher budget.", shops: { searched: ["Fenwick"], failed: [], robots: [], notSearched: [] } } }));

@@ -44,7 +44,8 @@ describe("guardrails: shopping only, no AI for off-topic requests", () => {
 const prod = (title, price) => ({ title, handle: title.toLowerCase().replace(/[^a-z0-9]+/g, "-"), url: "/products/" + title.toLowerCase().replace(/[^a-z0-9]+/g, "-"), price: String(price), price_min: String(price), price_max: String(price), available: true, vendor: "" });
 const LAPTOPS = [prod("HP 15 Laptop - AMD Ryzen 5 7520U, 16GB LPDDR5, 512GB SSD", 12999), prod("Lenovo Ideapad Slim 3 Ryzen 7 16GB 512GB Laptop", 15999), prod("Packard Bell Senna R32 Ryzen 3 16GB RAM 512GB SSD Laptop", 8999), prod("MSI Modern 15 Ryzen 5 16GB RAM 512GB SSD Laptop", 13999)];
 const INTENT = JSON.stringify({ category: "laptop", maxBudget: 15000, currency: "ZAR", searchQueries: ["16GB laptop"], mustHave: ["16GB"], prefer: ["SSD"], avoid: ["bag"] });
-const REASONS = JSON.stringify({ 1: "It has 16GB RAM and a 512GB SSD for Docker, within your budget.", 2: "It fits your budget for Docker work.", 3: "It has 16GB RAM for programming." });
+// AB-42: the second AI step picks from our numbered list and writes the reasons in one answer
+const REASONS = JSON.stringify({ picks: [{ i: 1, reason: "It has 16GB RAM and a 512GB SSD for Docker." }, { i: 2, reason: "It fits your request for Docker work." }, { i: 3, reason: "It has 16GB RAM for programming." }], keep: [1, 2, 3] });
 const LQ = "I have R15,000. I need a laptop for programming and Docker";
 // or(model, body, n) -> Response | Promise: the fake OpenRouter
 function setup(t, { or, ai, key = KEY } = {}) {
@@ -94,8 +95,8 @@ describe("/api/assist: OpenRouter free models first, then Workers AI, then the r
     assert.equal(orCalls[0].body.messages[0].role, "system"); assert.match(orCalls[0].body.messages[0].content, /only one JSON object/);
     assert.equal(ai.calls.length, 0, "no Workers AI call");
     assert.equal(d.intent.by, "ai"); assert.equal(d.picks.length, 3);
-    assert.equal(d.picks[0].reason, "It has 16GB RAM and a 512GB SSD for Docker, within your budget."); assert.equal(d.picks[0].reason_by, "ai");
-    assert.deepEqual(d.ai.models, { intent: "openrouter:google/gemma-4-26b-a4b-it:free", reasons: "openrouter:google/gemma-4-26b-a4b-it:free" });
+    assert.equal(d.picks[0].reason, "It has 16GB RAM and a 512GB SSD for Docker. It costs R2,001 less than your budget."); assert.equal(d.picks[0].reason_by, "ai");
+    assert.deepEqual(d.ai.models, { intent: "openrouter:google/gemma-4-26b-a4b-it:free", reasons: "openrouter:google/gemma-4-26b-a4b-it:free", pick: "openrouter:google/gemma-4-26b-a4b-it:free" });
     assert.ok(!JSON.stringify(d).includes(KEY), "the key is never in the answer");
   });
   test("primary rate limited (429): fallback 1, then the free router; a 429 model is skipped for a while", async (t) => {
@@ -124,7 +125,7 @@ describe("/api/assist: OpenRouter free models first, then Workers AI, then the r
     const broke = fakeAI([new Error("5000: internal"), new Error("5000: internal")]);
     ({ env } = setup(t, { ai: broke, or: () => json({ error: { code: 502 } }, 502) }));
     d = await (await get(env, LQ)).json();
-    assert.equal(d.intent.by, "rules"); assert.deepEqual(d.ai.models, { intent: "rules", reasons: "rules" });
+    assert.equal(d.intent.by, "rules"); assert.deepEqual(d.ai.models, { intent: "rules", reasons: "rules", pick: "rules" });
     assert.equal(d.picks.length, 3, "the rules still give real picks");
     assert.ok(d.picks.every((p) => p.reason_by === "rules"));
   });
@@ -303,16 +304,13 @@ describe("/api/assist: speed (AB-32, answers in about 2 to 5 s)", () => {
     assert.equal(d.picks.length, 0); assert.ok(d.note);
     assert.ok(ms < W.AS_SHOP_TIMEOUT + 1500, "took " + ms + " ms");
   });
-  test("after a slow first step the reasons come from the rules (no second AI call)", async (t) => {
+  test("after a very slow start the pick step is skipped (no second AI call): the rules pick", async (t) => {
     quiet(t);
     const { env, orCalls } = setup(t, { or: (model, body, n) => answer(n === 1 ? INTENT : REASONS, model) });
-    const real = globalThis.fetch;
-    globalThis.fetch = async (u, i) => { if (/computermania\.co\.za\/search/.test(typeof u === "string" ? u : u.url)) await new Promise((ok) => setTimeout(ok, W.AS_REASON_SKIP + 200)); return real(u, i); };
-    t.after(() => { globalThis.fetch = real; });
-    const d = await (await get(env, LQ)).json();
-    assert.equal(orCalls.length, 1, "only the first AI call");
-    assert.ok(d.picks.length > 0 && d.picks.every((p) => p.reason_by === "rules"));
-    assert.equal(d.ai.models.reasons, "rules");
+    const list = [{ title: "HP 15 Laptop 16GB 512GB SSD", price: 9999, currency: "ZAR", shop: "Takealot", url: "https://www.takealot.com/x/PLID1", fit: true, rel: 1 }];
+    const r = await W.asAiPick(env, LQ, W.asRules(LQ, "ZA"), list, false, 1000);
+    assert.equal(r.ok, false); assert.equal(r.why, "skipped (slow)"); assert.equal(orCalls.length, 0, "no AI call");
+    assert.ok(W.AS_PICK_END - W.AS_SHOP_TIMEOUT - 300 >= W.AS_PICK_MS, "after the slowest shop search the pick step still has its full time");
   });
   test("tight AI time budgets (3 to 4 s per step)", () => {
     assert.ok(W.AS_INTENT_MS <= 4000 && W.AS_REASON_MS <= 4000 && W.AS_OR_TIMEOUT <= 4000 && W.AS_OR_DEADLINE <= 4000);

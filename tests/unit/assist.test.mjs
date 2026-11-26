@@ -237,7 +237,7 @@ describe("/api/assist", () => {
     assert.equal(r.status, 200);
     const d = await r.json();
     assert.equal(d.understanding, "Budget: up to R15,000 · Looking for: laptop (16GB, SSD)");
-    assert.equal(d.intent.by, "rules"); assert.deepEqual(d.ai, { intent: false, reasons: false, models: { intent: "rules", reasons: "rules" } });
+    assert.equal(d.intent.by, "rules"); assert.deepEqual(d.ai, { intent: false, reasons: false, pick: false, models: { intent: "rules", reasons: "rules", pick: "rules" } });
     assert.equal(d.picks.length, 3);
     assert.deepEqual(d.picks.map((p) => p.price), [12999, 13999, 8999]);
     assert.ok(d.picks.every((p) => p.shop === "Computer Mania" && p.url.startsWith("https://computermania.co.za/products/") && p.reason_by === "rules" && !p.over_budget));
@@ -251,21 +251,25 @@ describe("/api/assist", () => {
     assert.ok(rows.every((k) => k.startsWith("robots-cmp:")), rows.join());
     assert.equal(db.prepare("SELECT COUNT(*) n FROM rl").get().n, 0);
   });
-  test("Workers AI reads the request and writes the reasons; a reason with an invented fact is replaced", async (t) => {
+  test("Workers AI reads the request, picks from the real list and writes the reasons; a reason with an invented fact is replaced", async (t) => {
     quiet(t);
     const ai = fakeAI([
       JSON.stringify({ category: "laptop", maxBudget: 15000, currency: "ZAR", searchQueries: ["16GB laptop", "Ryzen laptop"], mustHave: ["16GB"], prefer: ["SSD"], avoid: ["bag"] }),
-      JSON.stringify({ 1: "It has 16GB RAM and a 512GB SSD for Docker, within your budget.", 2: "It has 64GB RAM and an RTX 4090.", 3: "It fits your budget for Docker work." }),
+      JSON.stringify({ picks: [{ i: 1, reason: "It has 16GB RAM and a 512GB SSD for Docker work" }, { i: 2, reason: "It has 64GB RAM and an RTX 4090." }, { i: 3, reason: "It fits your request for Docker work." }], keep: [1, 2, 3] }),
     ]);
     const { env } = setup(t, LAPTOPS, ai);
     const d = await (await get(env, LQ)).json();
     assert.equal(ai.calls.length, 2);
     assert.equal(ai.calls[0].model, "@cf/meta/llama-3.1-8b-instruct-fp8-fast");
     assert.equal(d.intent.by, "ai"); assert.equal(d.intent.maxBudget, 15000);
-    assert.equal(d.picks[0].reason, "It has 16GB RAM and a 512GB SSD for Docker, within your budget."); assert.equal(d.picks[0].reason_by, "ai");
+    assert.equal(d.picks[0].reason, "It has 16GB RAM and a 512GB SSD for Docker work. It costs R2,001 less than your budget."); assert.equal(d.picks[0].reason_by, "ai");
+    assert.match(ai.calls[1].input.messages[0].content, /"picks"/); assert.match(ai.calls[1].input.messages[1].content, /^Request: /);
+    const lines = ai.calls[1].input.messages[1].content.split("\n").filter((l) => /^\d+\. /.test(l));
+    assert.ok(lines.slice(0, 3).every((l) => /Laptop/.test(l)) && lines.slice(3).some((l) => /Kingston|Sleeve/.test(l)), "every real listing goes to the AI, the rules only set the order: " + lines.join(" / "));
+    assert.ok(!lines.some((l) => /Lenovo|Out of stock/.test(l)), "over-budget and out-of-stock products never go to the AI");
     assert.equal(d.picks[1].reason_by, "rules", "64GB / RTX 4090 are not in the facts"); assert.ok(!/RTX|64GB/.test(JSON.stringify(d)));
     assert.equal(d.picks[2].reason_by, "ai");
-    assert.deepEqual(d.ai, { intent: true, reasons: true, models: { intent: "workers-ai:@cf/meta/llama-3.1-8b-instruct-fp8-fast", reasons: "workers-ai:@cf/meta/llama-3.1-8b-instruct-fp8-fast" } });
+    assert.deepEqual(d.ai, { intent: true, reasons: true, pick: true, models: { intent: "workers-ai:@cf/meta/llama-3.1-8b-instruct-fp8-fast", reasons: "workers-ai:@cf/meta/llama-3.1-8b-instruct-fp8-fast", pick: "workers-ai:@cf/meta/llama-3.1-8b-instruct-fp8-fast" } });
   });
   test("the AI can't add a product, a price or a link", async (t) => {
     quiet(t);

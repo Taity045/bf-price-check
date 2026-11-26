@@ -8,7 +8,9 @@ import { W } from "../helpers/load-worker.mjs";
 const NL = ["iphone with a good camera", "best air fryer", "laptop with long battery", "cheap running watch", "phone with big screen", "phone with a big screen",
   "laptop with long battery life", "laptop that can run games", "tv that has hdmi 2.1", "earbuds good for the gym", "cheapest ps5", "affordable fridge", "reliable washing machine",
   "top headphones", "great earbuds", "good tablet", "what tablet should i get", "which phone has the best camera", "looking for a kettle", "need a laptop", "want a tv",
-  "recommend a phone", "budget laptop", "samsung phone with good battery", "headphones with strong noise cancelling", "Best air fryer", "IPHONE WITH A GOOD CAMERA"];
+  "recommend a phone", "budget laptop", "samsung phone with good battery", "headphones with strong noise cancelling", "Best air fryer", "IPHONE WITH A GOOD CAMERA",
+  // AB-42: "where can I buy …" goes to Ask AI with no pill
+  "where can i buy a camping tent", "where can i buy a bike", "Where do I get a baby stroller", "where to buy running shoes"];
 const PLAIN = ["iphone 16", "iphone 18 pro", "garmin forerunner 265", "coca cola", "ps5 slim", "gaming laptops", "running watches", "air fryers", "tvs", "samsung 65 inch tv", "coffee",
   "best PS5 deals", "Case for iPhone 16", "Charger for MacBook Air", "iPhone 16 Pro 256GB", "Samsung Galaxy S25 Ultra 256GB", "Sony WH-1000XM5", "Jungle Oats 1 kg", "Kitkat white chocolate"];
 
