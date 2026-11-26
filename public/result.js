@@ -749,7 +749,9 @@ async function search(q, c) {
   S.classList.remove("hidden"); boxMode();
   $("sLab").textContent = "Search results · shops in " + where;
   $("sTitle").textContent = "\u201c" + plan.q + "\u201d";
-  $("sList").innerHTML = ""; $("sEmpty").classList.add("hidden"); $("sShops").textContent = "";
+  $("sList").innerHTML = ""; $("sEmpty").classList.add("hidden"); $("sAskAi").classList.add("hidden"); $("sShops").textContent = "";
+  // No result for 3 or more words: offer the AI Shopping Assistant with the same words (never a dead end)
+  $("sAskAi").onclick = () => { $("u").value = q; assist(q, c); };
   document.title = plan.q + " · Search · Deal or Dud?";
   const shops = plan.shops || [], results = {};
   // "Food Lover's Market prices come from its printed flyer, for one item." (one or more flyers)
@@ -788,6 +790,7 @@ async function search(q, c) {
     if (done.length === shops.length && hidden) $("sStatus").textContent += `${items.length ? " " : ""}We did not show ${hidden} accessor${hidden === 1 ? "y" : "ies"}, games or covers. To find them, add the word to your search, for example \u201c${plan.accessory_example}\u201d.`;
     const empty = done.length === shops.length && !items.length;
     $("sEmpty").classList.toggle("hidden", !empty);
+    $("sAskAi").classList.toggle("hidden", !(empty && shops.length && q.split(" ").length >= 3));
     if (empty) $("sEmpty").textContent = shops.length ? `We found no products in stock with all of these words. Use fewer words, or paste a product link.` : `We have no shops in ${where} that we can search for this. Paste a product link to check its price.`;
     const by = (st) => done.filter((s) => (Array.isArray(st) ? st : [st]).includes(results[s.id].status)).map((s) => s.name);
     const parts = [];
