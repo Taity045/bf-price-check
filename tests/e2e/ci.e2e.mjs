@@ -629,7 +629,7 @@ for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`h
   const line = await p.$eval(".steps", (e) => { const c = getComputedStyle(e); return { bt: c.borderTopWidth, pt: parseFloat(c.paddingTop), mt: parseFloat(c.marginTop) }; });
   ok(`home steps ${name}: a thin line with room above and below`, line.bt === "1px" && line.pt >= 16 && line.mt >= 24, JSON.stringify(line));
   ok(`home steps ${name}: no sideways page scroll`, await noSideScroll(p));
-  ok(`home steps ${name}: the first example is a law student laptop`, (await p.textContent("#asks .ask")).trim() === "Laptop for law studies, R10,000" && (await p.getAttribute("#asks .ask", "data-q")) === "I have R10,000. I need a laptop to study law");
+  ok(`home steps ${name}: the first example is a law student laptop`, (await p.textContent("#asks .ask")).trim() === "Laptop for a law student, R10,000" && (await p.getAttribute("#asks .ask", "data-q")) === "I have R10,000. I need a laptop for a law student");
   ok(`home steps ${name}: no "Docker" example`, !/Docker/.test(await p.textContent("#asks")));
   await p.locator(".steps").scrollIntoViewIfNeeded();
   await p.screenshot({ path: `${SHOTS}/home-steps-${name}.png` });
@@ -700,6 +700,40 @@ for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`s
   await p.screenshot({ path: `${SHOTS}/search-flyer-${name}.png`, fullPage: !!o.isMobile });
   await p.context().close();
 });
+// 3h. Every flyer at once (Pick n Pay, SPAR & TOPS, Shoprite, FLM): shop names, card badges, limits, normal prices
+// "R… for N", region fine print, the shop's own home page. Items are copied from the flyer data (src/flyer.js).
+const PNP_FINE = "In-store only. Only at Pick n Pay Supermarkets and Mini Markets in Gauteng, North West, Mpumalanga, Limpopo and Northern Cape. Not at Hypermarkets.";
+const SR_FINE = "In-store only. Only at Shoprite stores in Gauteng, Mpumalanga, North West and Limpopo. Not at the stores the flyer lists as excluded.";
+const MULTI_SEARCH = {
+  flm: [FLM_ITEM({ id: "flm-1-coca-cola-original-taste-less-sugar-2-l", title: "Coca-Cola Original Taste Less Sugar 2 L", price: 20, total: 100, qty: 5, multi: true, deal: "5 for R100 (R20.00 each)", need: "R20.00 each when you buy 5 (R100 total)", limit: "2 deals per customer", shop: "Food Lover's Market", site: "Food Lover's Market site", badges: [] })],
+  pnpflyer: [{ id: "pnp-1-coca-cola-original-taste-less-sugar-1-5-litre-2-for", title: "Coca-Cola Original Taste Less Sugar 1.5 Litre", price: 14, total: 28, qty: 2, currency: "ZAR", url: "https://www.pnp.co.za/", flyer: true, deal: "2 for R28 (R14.00 each)", need: "R14.00 each when you buy 2 (R28 total)", limit: "4 deals per customer", unit: "each", multi: true, label: "Pick n Pay (Gauteng, North West, Mpumalanga, Limpopo and Northern Cape flyer, valid 26\u201329 Nov)", shop: "Pick n Pay", site: "Pick n Pay site", fine: PNP_FINE, badges: ["Smart Shopper"], regular: "Normal price R43.98 for 2", note: null }],
+  sparflyer: [{ id: "spar-1-coca-cola-original-only-1-5-litre", title: "Coca-Cola Original Only 1.5 litre", price: 15, total: 60, qty: 4, currency: "ZAR", url: "https://www.spar.co.za/", flyer: true, deal: "4 for R60 (R15.00 each)", need: "R15.00 each when you buy 4 (R60 total)", limit: "Max 5 deals per customer", unit: "each", multi: true, label: "SPAR & TOPS (South Africa flyer, valid 25\u201329 Nov)", shop: "SPAR & TOPS", site: "SPAR & TOPS site", fine: "In-store only, at SPAR and TOPS at SPAR stores.", badges: ["SPAR Rewards"], regular: null, note: null }],
+  shopriteflyer: [{ id: "shoprite-1-goldi-frozen-mixed-chicken-portions-5-kg", title: "Goldi Frozen Mixed Chicken Portions 5 kg", price: 169, total: 169, qty: 1, currency: "ZAR", url: "https://www.shoprite.co.za/", flyer: true, deal: "R169.00 each", need: null, limit: "Max 6 deals per customer", unit: "each", multi: false, label: "Shoprite (Gauteng, Mpumalanga, North West and Limpopo flyer, valid 26\u201329 Nov)", shop: "Shoprite", site: "Shoprite site", fine: SR_FINE, badges: ["Xtra Savings"], regular: null, note: null }],
+  takealot: [{ title: "Coca-Cola Original 6 x 1.5 L", price: 120, currency: "ZAR", url: "https://www.takealot.com/coca-cola/PLID1" }],
+};
+const MULTI_PLAN = { q: "coca cola", country: "ZA", currency: "ZAR", category: "groceries", noun: "groceries and toiletries", shops: [{ id: "flm", name: "Food Lover's Market", flyer: true }, { id: "pnpflyer", name: "Pick n Pay flyer", flyer: true }, { id: "sparflyer", name: "SPAR & TOPS flyer", flyer: true }, { id: "shopriteflyer", name: "Shoprite flyer", flyer: true }, { id: "takealot", name: "Takealot" }], notSearched: [] };
+for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`search all flyers ${name}`, async () => {
+  const p = await open(o);
+  await p.route(/\/api\/search\?/, (r) => r.fulfill({ json: MULTI_PLAN }));
+  await p.route(/\/api\/search\/shop\?/, (r) => { const id = new URL(r.request().url()).searchParams.get("shop"); const items = MULTI_SEARCH[id] || []; r.fulfill({ json: { shop: id, status: items.length ? "ok" : "none", items, ...(id !== "takealot" ? { flyer: true } : {}) } }); });
+  await p.goto(BASE + "/?q=coca+cola&c=ZA", { waitUntil: "networkidle" });
+  await p.waitForFunction(() => !/Searching/.test(document.getElementById("sStatus").textContent) && document.querySelectorAll("#sList li").length === 5, null, { timeout: 15000 });
+  const rows = await p.$$eval("#sList li", (ls) => ls.map((l) => ({ fl: l.classList.contains("fl"), t: l.textContent.replace(/\s+/g, " ").replace(/\u00a0/g, " ").trim(), href: (l.querySelector("a") || {}).href || "", tags: [...l.querySelectorAll(".ftag.card")].map((x) => x.textContent), w: l.getBoundingClientRect().right <= innerWidth })));
+  const row = (re) => rows.find((r) => re.test(r.t)) || { t: "", tags: [] };
+  const pnp = row(/Pick n Pay \(/), spar = row(/SPAR & TOPS \(/), sr = row(/Shoprite \(/), flm = row(/Food Lover's Market \(/);
+  ok(`search all flyers ${name}: 4 flyer rows and 1 shop row`, rows.filter((r) => r.fl).length === 4 && rows.filter((r) => !r.fl).length === 1, JSON.stringify(rows.map((r) => r.t)));
+  ok(`search all flyers ${name}: Pick n Pay row: Smart Shopper badge, limit, normal price for 2, fine print, pnp.co.za`, pnp.tags.join() === "Smart Shopper" && /4 deals per customer/.test(pnp.t) && /Normal price R43\.98 for 2/.test(pnp.t) && pnp.t.includes("Not at Hypermarkets.") && pnp.href === "https://www.pnp.co.za/" && /Pick n Pay site/.test(pnp.t), pnp.t);
+  ok(`search all flyers ${name}: SPAR row: SPAR Rewards badge and max 5 deals`, spar.tags.join() === "SPAR Rewards" && /Max 5 deals per customer/.test(spar.t) && spar.href === "https://www.spar.co.za/", spar.t);
+  ok(`search all flyers ${name}: Shoprite row: Xtra Savings badge, limit on a single item, region fine print`, sr.tags.join() === "Xtra Savings" && /R169\.00 each/.test(sr.t) && /Max 6 deals per customer/.test(sr.t) && sr.t.includes(SR_FINE) && sr.href === "https://www.shoprite.co.za/", sr.t);
+  ok(`search all flyers ${name}: FLM row unchanged (no badge)`, flm.tags.length === 0 && /2 deals per customer/.test(flm.t) && flm.href === "https://foodloversmarket.co.za/", flm.t);
+  const st = await p.textContent("#sStatus");
+  ok(`search all flyers ${name}: summary names every flyer shop`, /prices come from their printed flyers, for one item\./.test(st) && ["Food Lover's Market", "Pick n Pay", "SPAR & TOPS", "Shoprite"].every((n) => st.includes(n)), st);
+  ok(`search all flyers ${name}: no sideways page scroll`, await noSideScroll(p) && rows.every((r) => r.w));
+  ok(`search all flyers ${name}: no JS errors`, p._errs.length === 0, p._errs.join(" | "));
+  await p.screenshot({ path: `${SHOTS}/search-all-flyers-${name}.png`, fullPage: !!o.isMobile });
+  await p.context().close();
+});
+
 // compare: a flyer match never reads as "1 for R10"
 const FLM_CMP_PLAN = { ...GROC_PLAN, shops: [{ id: "pnp", name: "Pick n Pay" }, { id: "flm", name: "Food Lover's Market" }, { id: "takealot", name: "Takealot", general: true }], specialists: 2 };
 const FLM_CMP_SHOP = { takealot: GROC_SHOP.takealot,

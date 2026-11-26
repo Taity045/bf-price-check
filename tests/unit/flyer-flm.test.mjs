@@ -309,7 +309,7 @@ describe("flyer: the page", () => {
   const js = readFileSync(new URL("../../public/result.js", import.meta.url), "utf8");
   test("flyer rows: no price history button, the shop's home page, 'In-store flyer deal'", () => {
     assert.match(js, /In-store flyer deal/);
-    assert.match(js, /https:\/\/foodloversmarket\.co\.za\//);
+    assert.match(js, /href="\$\{esc\(it\.url\)\}"/, "the flyer's own shop home page (src/flyer.js url)");
     assert.match(js, /each when you buy \$\{f\.qty\}/, "the headline says the multi-buy rule");
   });
 });

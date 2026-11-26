@@ -60,6 +60,11 @@ const CMP_SHOPS = [
   // Food Lover's Market: not a site search. Its printed Black Friday flyer (Western Cape) is built into the Worker
   // (src/flyer.js, FLM_FLYER), and it shows only while the flyer is valid. In-store deals: no product pages.
   { id: "flm", name: "Food Lover's Market", cur: "ZAR", hosts: ["foodloversmarket.co.za"], kind: "flyer", base: "https://foodloversmarket.co.za", flyer: true, grocer: true, noFragrance: true, sells: ["groceries", "beauty"] },
+  // Pick n Pay, SPAR & TOPS and Shoprite: their printed Black Friday flyers (src/flyer.js), the same way.
+  // No hosts: a page from pnp.co.za is still the online Pick n Pay shop.
+  { id: "pnpflyer", name: "Pick n Pay flyer", cur: "ZAR", hosts: [], kind: "flyer", base: "https://www.pnp.co.za", flyer: true, grocer: true, noFragrance: true, sells: ["groceries", "beauty", "baby", "liquor"] },
+  { id: "sparflyer", name: "SPAR & TOPS flyer", cur: "ZAR", hosts: [], kind: "flyer", base: "https://www.spar.co.za", flyer: true, grocer: true, noFragrance: true, sells: ["groceries", "beauty", "liquor"] },
+  { id: "shopriteflyer", name: "Shoprite flyer", cur: "ZAR", hosts: [], kind: "flyer", base: "https://www.shoprite.co.za", flyer: true, grocer: true, noFragrance: true, sells: ["groceries", "beauty", "baby", "liquor"] },
   { id: "lakeland", name: "Lakeland", cur: "GBP", hosts: ["lakeland.co.uk"], kind: "shopify", base: "https://www.lakeland.co.uk", off: "robots", sells: ["appliances", "home"] },
   // UK
   { id: "allbeauty", name: "allbeauty", cur: "GBP", hosts: ["allbeauty.com"], kind: "shopify", base: "https://allbeauty.com", sells: ["beauty"] },
@@ -336,7 +341,7 @@ function cmpPlan(id, sourceHost, currency) {
   for (const s of CMP_SHOPS) {
     if (from && s.id === from.id) continue;
     if (s.off) continue;
-    if (s.flyer && !flmActive()) continue;   // flyer deals only while the flyer is valid
+    if (s.flyer && !flyerActive(flyerById(s.id))) continue;   // flyer deals only while a deal on the flyer is valid
     if (s.cur !== currency) continue;
     if (s.brands && !(id.brand && s.brands.includes(id.brand))) { skipped.push({ id: s.id, name: s.name, why: "brand" }); continue; }
     const general = s.sells.includes("*");
@@ -947,7 +952,7 @@ async function apiCompareShop(req, env, ctx) {
     if (!id) return json({ shop: shop.id, name: shop.name, status: "none" });
     const plan = cmpPlan(id, new URL(g.canon).hostname, id.currency);
     if (!plan.shops.some((s) => s.id === shop.id)) return json({ shop: shop.id, name: shop.name, status: "skipped" });
-    return json(flmCompareAnswer(id), 200, { "cache-control": "no-store" });
+    return json(flyerCompareAnswer(flyerById(shop.id), id), 200, { "cache-control": "no-store" });
   }
   const key = "cmp-" + CMP_VER + ":" + shop.id + ":" + g.canon;
   const cached = await cacheGet(env, key);

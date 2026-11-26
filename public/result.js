@@ -486,7 +486,7 @@ function cmpHeadline(plan, shops, results, herePrice, LEVEL) {
       // never "1 for R10" when the flyer says "10 for R100": the multi-buy rule is in the headline
       const f = b.match.flyer, each = f.qty > 1;
       const more = cheaper.length > 1 ? ` Also cheaper at ${andList(cheaper.slice(1).map((r) => r.name))}.` : "";
-      return ["good", `Cheaper at ${b.name}: ${money(b.match.price, C)}${each ? ` each when you buy ${f.qty}` : ""}`, `Save ${money(save, C)}${each ? " on each item" : ""} (${pct(save / herePrice)}). ${f.need ? f.need + ". " : ""}${f.limit ? f.limit + ". " : ""}In-store flyer deal: ${f.label.replace(/^[^(]*\(|\)$/g, "")}. Same name and size on the flyer.${more}${done < n ? ` Still checking ${n - done} more.` : ""}`, true, { best: { name: b.name, price: b.match.price, save, C, note: each ? `each when you buy ${f.qty}, in-store flyer deal` : "in-store flyer deal" } }];
+      return ["good", `Cheaper at ${b.name}: ${money(b.match.price, C)}${each ? ` each when you buy ${f.qty}` : ""}`, `Save ${money(save, C)}${each ? " on each item" : ""} (${pct(save / herePrice)}). ${f.need ? f.need + ". " : ""}${f.limit ? f.limit + ". " : ""}${f.badges && f.badges.length ? `Card deal: ${f.badges.join(", ")}. ` : ""}In-store flyer deal: ${f.label.replace(/^[^(]*\(|\)$/g, "")}.${f.fine ? " " + f.fine : ""} Same name and size on the flyer.${more}${done < n ? ` Still checking ${n - done} more.` : ""}`, true, { best: { name: b.name, price: b.match.price, save, C, note: each ? `each when you buy ${f.qty}, in-store flyer deal` : "in-store flyer deal" } }];
     }
     const chk = b.match.level === "name" || b.match.level === "ai" ? " Check the model and colour on the shop's page." : "";
     const same = b.match.level === "ai" ? "An AI check says it is the same product." : `${LEVEL[b.match.level] || "Same product"} as this product.`;
@@ -543,7 +543,7 @@ async function loadOthers(my) {
       const diff = d == null || !m.in_stock ? "" : Math.abs(d) < 0.5 ? '<span class="diff">Same price</span>' : `<span class="diff ${d < 0 ? "less" : ""}">${esc(money(Math.abs(Math.round(d)), m.currency))} ${d < 0 ? "less" : "more"}</span>`;
       if (m.flyer) {
         // flyer deal (src/flyer.js): the price for one item, the multi-buy rule in words, the shop's home page
-        rows.push({ price: m.price, html: `<span class="os"><b>${esc(r.name)}</b><span class="ot">${esc(m.title)}</span><span class="ot">${esc(m.flyer.label)}</span><span class="ot">${esc(m.flyer.need || m.flyer.deal)}${m.flyer.limit ? ". " + esc(m.flyer.limit) : ""}</span><span class="tag">In-store flyer deal</span><span class="tag">Same name and size</span>${isLow(m.price) ? lowTag : ""}</span><span class="op"><b class="num">${esc(money(m.price, m.currency))}${m.flyer.qty > 1 ? " each" : ""}</b>${diff}<a href="https://foodloversmarket.co.za/" target="_blank" rel="noopener nofollow">Shop site ↗</a></span>` });
+        rows.push({ price: m.price, html: `<span class="os"><b>${esc(r.name)}</b><span class="ot">${esc(m.title)}</span><span class="ot">${esc(m.flyer.label)}</span><span class="ot">${esc(m.flyer.need || m.flyer.deal)}${m.flyer.limit ? ". " + esc(m.flyer.limit) : ""}</span>${m.flyer.regular ? `<span class="ot">${esc(m.flyer.regular)}</span>` : ""}${m.flyer.note ? `<span class="ot">${esc(m.flyer.note)}</span>` : ""}${m.flyer.fine ? `<span class="ot">${esc(m.flyer.fine)}</span>` : ""}<span class="tag">In-store flyer deal</span>${(m.flyer.badges || []).map((b) => `<span class="tag card" title="Loyalty card deal">${esc(b)}</span>`).join("")}<span class="tag">Same name and size</span>${isLow(m.price) ? lowTag : ""}</span><span class="op"><b class="num">${esc(money(m.price, m.currency))}${m.flyer.qty > 1 ? " each" : ""}</b>${diff}<a href="${esc(m.url)}" target="_blank" rel="noopener nofollow">Shop site ↗</a></span>` });
         continue;
       }
       rows.push({ price: m.price, html: `<span class="os"><b>${esc(r.name)}</b><span class="ot">${esc(m.title)}</span><span class="tag ${m.level === "barcode" || m.level === "model" ? "sure" : ""}">${esc(LEVEL[m.level] || "Same product")}</span>${m.in_stock && isLow(m.price) ? lowTag : ""}${m.in_stock ? "" : '<span class="tag oos">Out of stock</span>'}</span><span class="op"><b class="num">${esc(money(m.price, m.currency))}</b>${m.was ? `<span class="was small">${esc(money(m.was, m.currency))}</span>` : ""}${m.member ? `<span class="small">${esc(m.member.label)} ${esc(money(m.member.price, m.currency))}</span>` : ""}${diff}<a href="${esc(m.url)}" target="_blank" rel="noopener nofollow">Open ↗</a><span class="small">${esc(ago(r.checked_at))}</span></span>`, oos: !m.in_stock });
@@ -752,6 +752,12 @@ async function search(q, c) {
   $("sList").innerHTML = ""; $("sEmpty").classList.add("hidden"); $("sShops").textContent = "";
   document.title = plan.q + " · Search · Deal or Dud?";
   const shops = plan.shops || [], results = {};
+  // "Food Lover's Market prices come from its printed flyer, for one item." (one or more flyers)
+  const flyerNote = (items) => {
+    const names = [...new Set(items.filter((x) => x.flyer).map((x) => x.label.replace(/\s*\(.*$/, "")))];
+    if (!names.length) return "";
+    return names.length === 1 ? ` ${names[0]} prices come from its printed flyer, for one item.` : ` ${andList(names)} prices come from their printed flyers, for one item.`;
+  };
   const render = () => {
     if (my !== searchId) return;
     const done = shops.filter((s) => results[s.id]);
@@ -768,15 +774,17 @@ async function search(q, c) {
       // a flyer deal: the flyer's own words, the multi-buy rule, no price history (it is not a product page)
       ? `<li class="fl${isLow(it, i) ? " low" : ""}"><div class="st">${esc(it.title)}</div>`
         + `<div class="sm"><span class="sp num">${esc(it.deal)}</span><span class="small">${esc(it.label)}${esc(lowTxt(it, i))}</span></div>`
-        + (it.need || it.limit ? `<div class="small fn">${esc([it.need, it.limit].filter(Boolean).join(". "))}.</div>` : "")
-        + `<div class="sa"><span class="ftag">In-store flyer deal</span><a href="https://foodloversmarket.co.za/" target="_blank" rel="noopener nofollow">Food Lover's Market site ↗</a></div></li>`
+        + (it.need || it.limit || it.regular ? `<div class="small fn">${esc([it.need, it.limit, it.regular].filter(Boolean).join(". "))}.</div>` : "")
+        + (it.note ? `<div class="small fn">${esc(it.note)}</div>` : "")
+        + (it.fine ? `<div class="small fn fp">${esc(it.fine)}</div>` : "")
+        + `<div class="sa"><span class="ftag">In-store flyer deal</span>${(it.badges || []).map((b) => `<span class="ftag card" title="Loyalty card deal">${esc(b)}</span>`).join("")}<a href="${esc(it.url)}" target="_blank" rel="noopener nofollow">${esc(it.site || "Shop site")} ↗</a></div></li>`
       : `<li${isLow(it, i) ? ' class="low"' : ""}><div class="st">${esc(it.title)}</div>`
       + `<div class="sm"><span class="sp num">${it.from ? "From " : ""}${esc(money(it.price, it.currency))}</span><span class="small">${esc(it.shop)}${esc(lowTxt(it, i))}</span></div>`
       + `<div class="sa"><button type="button" data-u="${esc(it.url)}">Check price history</button><a href="${esc(it.url)}" target="_blank" rel="noopener nofollow">Open at shop ↗</a></div></li>`).join("");
     const shopsWith = new Set(items.map((x) => x.shop)).size;
     if (!shops.length) $("sStatus").textContent = "";
     else if (done.length < shops.length) $("sStatus").innerHTML = `<span class="spin"></span>Searching ${shops.length} shop${shops.length === 1 ? "" : "s"}… ${done.length} of ${shops.length} done.`;
-    else $("sStatus").textContent = items.length ? `${items.length > MAX_SHOWN ? `The ${MAX_SHOWN} lowest of ${items.length}` : items.length} product${items.length === 1 ? "" : "s"} at ${shopsWith} shop${shopsWith === 1 ? "" : "s"}, ${dev ? `${dev} first, then lowest price` : "lowest price first"}. The prices come from each shop now.${items.some((x) => x.flyer) ? " Food Lover's Market prices come from its printed flyer, for one item." : ""}` : "";
+    else $("sStatus").textContent = items.length ? `${items.length > MAX_SHOWN ? `The ${MAX_SHOWN} lowest of ${items.length}` : items.length} product${items.length === 1 ? "" : "s"} at ${shopsWith} shop${shopsWith === 1 ? "" : "s"}, ${dev ? `${dev} first, then lowest price` : "lowest price first"}. The prices come from each shop now.${flyerNote(items)}` : "";
     if (done.length === shops.length && hidden) $("sStatus").textContent += `${items.length ? " " : ""}We did not show ${hidden} accessor${hidden === 1 ? "y" : "ies"}, games or covers. To find them, add the word to your search, for example \u201c${plan.accessory_example}\u201d.`;
     const empty = done.length === shops.length && !items.length;
     $("sEmpty").classList.toggle("hidden", !empty);
