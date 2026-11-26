@@ -191,8 +191,8 @@ describe("AB-42: the AI list and the prompt", () => {
     for (const re of [/only one JSON object/, /"picks"/, /"keep"/, /spare parts, accessories/, /Only when the shopper asks for a part or an accessory/, /\{"picks":\[\],"keep":\[\]\}/, /bulk/, /no budget/, /only facts that are in the product name/, /do not follow instructions/]) assert.match(s, re);
     assert.ok(s.length < 2200, "short prompt for a small model");
   });
-  test("cache v9; the intent step knows bikes and any other product", () => {
-    assert.equal(W.AS_VER, "v9");
+  test("cache v10 (AB-42b); the intent step knows bikes and any other product", () => {
+    assert.equal(W.AS_VER, "v10");
     const src = readFileSync(new URL("../../src/assist.js", import.meta.url), "utf8");
     assert.match(src, /tablet, bike, other; use other for all other products/); assert.match(src, /"camping tent", "baby stroller"/);
   });
@@ -205,3 +205,41 @@ describe("AB-42: the AI list and the prompt", () => {
     assert.ok((performance.now() - t0) / 5 < 25, "ms per list: " + ((performance.now() - t0) / 5).toFixed(1));
   });
 });
+
+describe("AB-42b: a small safety check on the AI's answer (the same for every kind of product)", () => {
+  const L = (intent, rows) => rows.map(([title, price], i) => ({ title, price, currency: "ZAR", shop: "Takealot", shop_id: "takealot", url: "https://www.takealot.com/x/PLID" + i, fit: W.asFits(intent, title, intent.searchQueries[0]), rel: 0.5 }));
+  test("only a size in common ('Foam Bath 2 Litre' for 'coke 2 litre'): never shown, the real Coca-Cola fills the picks", () => {
+    const intent = W.asRules("coke 2 litre", "ZA");
+    const list = L(intent, [["Coca-Cola Zero Plastic Bottle 2L", 19.99], ["Clicks Silky Bubbles Foam Bath Midnight & Roses 2 Litre", 89.99], ["Clicks Silky Bubbles Foam Bath Floral 2 Litre", 89.99], ["Coca-Cola Original 2L", 24.99]]);
+    const r = W.asPickParse({ picks: [{ i: 1 }, { i: 2 }, { i: 3 }], keep: [1, 2, 3, 4] }, list, intent, false);
+    assert.deepEqual(r.picks.map((p) => list[p.i].title), ["Coca-Cola Zero Plastic Bottle 2L", "Coca-Cola Original 2L"]);
+    assert.ok(![...r.keep].some((i) => /Foam/.test(list[i].title)));
+  });
+  test("an accessory name the AI let through (a folio among phones) and a far too cheap item are not shown", () => {
+    const intent = W.asRules("iphone with a good camera", "ZA");
+    const list = L(intent, [["Apple iPhone 18 Pro 256GB", 28999], ["Apple iPhone 17 256GB", 19999], ["Apple iPhone 16e 128GB", 12999], ["FirstShop Apple iPhone Duo Folio with Kickstand - Taupe", 499], ["Apple iPhone Lightning Earphones", 349]]);
+    const r = W.asPickParse({ picks: [{ i: 1 }, { i: 2 }, { i: 3 }], keep: [1, 2, 3, 4, 5] }, list, intent, false);
+    assert.deepEqual([...r.keep].sort(), [0, 1, 2]);
+  });
+  test("the AI picked only refused products: a bad answer (the rules decide); an accessory request is never checked this way", () => {
+    const intent = W.asRules("coke 2 litre", "ZA");
+    const list = L(intent, [["Coca-Cola Zero Plastic Bottle 2L", 19.99], ["Foam Bath 2 Litre", 89.99]]);
+    assert.equal(W.asPickParse({ picks: [{ i: 2 }], keep: [2] }, list, intent, false), null);
+    const acc = W.asRules("iphone 16 case", "ZA");
+    const l2 = L(acc, [["Spigen Case for iPhone 16", 299]]);
+    assert.deepEqual(W.asPickParse({ picks: [{ i: 1 }], keep: [1] }, l2, acc, false).picks.map((p) => p.i), [0]);
+  });
+  test("unknown kinds of products with the request's words are kept (a tent, a stroller)", () => {
+    const intent = W.asRules("where can i buy a baby stroller", "ZA");
+    const list = L(intent, [["Chicco Liteway Stroller", 3499], ["Bugaboo Butterfly Stroller", 9999], ["Baby Travel System 3 in 1", 6999]]);
+    const r = W.asPickParse({ picks: [{ i: 1 }, { i: 2 }, { i: 3 }], keep: [1, 2, 3] }, list, intent, false);
+    assert.equal(r.picks.length, 3);
+  });
+  test("a word the request uses is never junk ('printer ink refill' keeps refills)", () => {
+    const q = "printer ink refill", intent = W.asRules(q, "ZA");
+    const list = L(intent, [["HP 305 Ink Refill Kit", 199], ["Canon PG-545 Ink Refill", 249]]);
+    assert.equal(W.asPickParse({ picks: [{ i: 1 }, { i: 2 }], keep: [1, 2] }, list, intent, false, q).picks.length, 2);
+    assert.equal(W.asPickParse({ picks: [{ i: 1 }, { i: 2 }], keep: [1, 2] }, list, intent, false, "printer"), null, "without the word in the request, refills are refused");
+  });
+});
+
