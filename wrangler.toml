@@ -83,6 +83,13 @@ name = "RL_SEARCH"
 namespace_id = "7109"
 simple = { limit = 30, period = 60 }
 
+# AI Shopping Assistant (src/assist.js, /api/assist): requests per visitor per minute. The 40 per hour limit is
+# kept in memory and the Cloudflare cache (no D1 writes).
+[[ratelimits]]
+name = "RL_ASSIST"
+namespace_id = "7110"
+simple = { limit = 10, period = 60 }
+
 # Workers AI (src/compare.js, cmpAiJudge): a small model checks only borderline compare matches.
 # Free plan: 10,000 Neurons per day; the worker stops at CMP_AI_DAILY calls per day (about 4,500 Neurons).
 # Without this binding (or with AI_MATCH = "off"), compare uses the rules only. In `wrangler dev` the binding
