@@ -76,9 +76,9 @@ html.q main:has(#result.hidden):has(#search.hidden):has(#assist.hidden) footer{d
 .picks a[aria-busy=true] span::after{content:" · Checking…"}
 .trynote{margin:8px 0 0;text-align:center}
 .picks[hidden]{display:none}
-.ccrow{display:flex;align-items:center;justify-content:center;gap:6px;margin:10px 0 0;font-size:14px;color:var(--mut)}
-.ccb{min-height:36px;padding:0 12px;border:1px solid var(--line);border-radius:99px;background:var(--bg);font-size:14px;font-weight:600;color:var(--ink)}
-.ccb[aria-pressed=true]{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+.occ{display:block;min-height:40px;margin:2px 0 4px;font-size:14px;text-decoration:underline}
+.occ.hidden{display:none}
+.go[aria-busy=true]{opacity:.85;cursor:progress}
 #search{margin-top:20px}
 #search .sh{font-size:18px;line-height:1.3;margin:2px 0 4px;overflow-wrap:anywhere}
 .slist{list-style:none;margin:12px 0 0;padding:0;display:grid;gap:8px}
@@ -338,8 +338,6 @@ dialog{border:2px solid var(--ink);border-radius:6px;box-shadow:6px 6px 0 rgba(0
 .unsup{background:none;border:2px dashed var(--ink);border-radius:var(--r)}
 .chip{border-radius:2px;background:none;border:1.5px solid currentColor;font-family:var(--mono);text-transform:uppercase;font-size:11px;letter-spacing:.02em}
 .badge{border:2px dashed var(--line);border-radius:var(--r)}
-.ccb{border-radius:var(--r)}
-.ccb[aria-pressed=true]{background:var(--acc);color:var(--acc-ink);border:2px solid var(--ink)}
 .slist li{border:1.5px solid var(--line);border-radius:var(--r);background:var(--card,var(--bg))}
 .slist li.low{border:2px solid var(--ink);box-shadow:3px 3px 0 var(--ink)}
 .slist .sp{font-family:var(--mono);font-weight:600;letter-spacing:-.02em}
@@ -391,7 +389,6 @@ html.q .hero .steps,.hero:has(~#result:not(.hidden)) .steps{display:none}
 .mode{min-height:40px;padding:0 14px;border:1.5px solid var(--line);border-radius:99px;background:var(--bg);font-size:14px;font-weight:600;color:var(--ink)}
 .mode:hover{border-color:var(--ink)}
 .mode[aria-pressed=true]{background:var(--acc);color:var(--acc-ink);border:1.5px solid var(--ink)}
-.ccrow{margin-top:10px}
 .hsec{margin:28px 0 0;padding:20px 0 0;border-top:1px solid var(--line);text-align:left}
 .hsec h2{display:flex;align-items:center;gap:8px;font-size:17px;line-height:1.3;margin:0 0 10px;letter-spacing:-.01em}
 .hsec h2 svg{width:20px;height:20px;flex:none;fill:none;stroke:var(--ink);stroke-width:1.8;stroke-linejoin:round}
@@ -463,7 +460,6 @@ body{padding-bottom:calc(60px + env(safe-area-inset-bottom))}
       <button class="go" id="go" type="submit">Check price</button>
     </form>
     <div class="modes" id="modes" role="group" aria-label="What do you want to do?"><button type="button" class="mode" data-m="find" aria-pressed="false">Find a product</button><button type="button" class="mode" data-m="verify" aria-pressed="false">Verify a deal</button><button type="button" class="mode" data-m="ai" aria-pressed="false">Ask AI</button></div>
-    <div class="ccrow" id="ccrow" role="group" aria-label="Search shops in"><span>Shops in</span><button type="button" class="ccb" data-c="ZA" aria-pressed="true">South Africa</button><button type="button" class="ccb" data-c="GB" aria-pressed="false">UK</button></div>
     <section class="home-only hsec" id="deals" aria-labelledby="dealsH">
       <div class="hhead"><h2 id="dealsH">Today's genuine deals</h2><button type="button" class="linkbtn more hidden" id="dealsAll" aria-expanded="false" aria-controls="dealList">View all</button></div>
       <ul class="dgrid" id="dealList"></ul>
@@ -494,6 +490,7 @@ body{padding-bottom:calc(60px + env(safe-area-inset-bottom))}
   <section id="search" class="hidden" aria-label="Search results">
     <div class="card">
       <span class="lab" id="sLab">Search results</span>
+      <button type="button" class="linkbtn occ hidden" id="sOther"></button>
       <h2 class="sh" id="sTitle"></h2>
       <p class="small" id="sStatus" role="status"></p>
       <ol class="slist" id="sList"></ol>
@@ -506,6 +503,7 @@ body{padding-bottom:calc(60px + env(safe-area-inset-bottom))}
   <section id="assist" class="hidden" aria-label="Top picks for your budget">
     <div class="card">
       <span class="lab" id="asLab">AI Shopping Assistant</span>
+      <button type="button" class="linkbtn occ hidden" id="asOther"></button>
       <h2 class="sh" id="asTitle"></h2>
       <p class="small aswhat" id="asWhat"></p>
       <p class="small" id="asStatus" role="status"></p>
@@ -769,36 +767,31 @@ function setMode(m, focus) {
   boxMode();
   if (focus) { $("u").focus({ preventScroll: true }); window.scrollTo({ top: 0, behavior: "smooth" }); }
 }
-// Search country: South Africa (ZA) or the UK (GB). Kept on this device.
-let cc = store.get("cc", "ZA"); if (cc !== "ZA" && cc !== "GB") cc = "ZA";
-// The example requests under the box follow the country (rand or pounds).
-const ASKS = { ZA: [["I have R10,000. I need a laptop for a law student", "Laptop for a law student, R10,000"], ["Best running watch under R6000", "Running watch under R6,000"], ["Good coffee machine under R3000", "Coffee machine under R3,000"]],
-  GB: [["Need a 4K TV under £500 for PS5", "4K TV for PS5, £500"], ["Best running watch under £250", "Running watch under £250"], ["Good coffee machine under £200", "Coffee machine under £200"]] };
-function setCc(c) {
-  cc = c === "GB" ? "GB" : "ZA"; document.querySelectorAll("#ccrow .ccb").forEach((b) => b.setAttribute("aria-pressed", b.dataset.c === cc ? "true" : "false"));
-  document.querySelectorAll("#asks .ask").forEach((b, i) => { const x = ASKS[cc][i]; if (x) { b.dataset.q = x[0]; b.textContent = x[1]; } });
-}
-setCc(cc);
+// AB-43: South Africa first. The home page has no country switch and shows South African deals only. The search
+// country is South Africa, or the UK for a visitor in the UK (Cloudflare's country, from /api/config) or a shared
+// link with c=GB. A UK product link is checked in pounds from its own address (the server reads the shop).
+// Search results for a visitor in the UK have a one-tap link to search the other country (result.js).
+let cc = "ZA", ccSet = false;
+function setCc(c, fixed) { cc = c === "GB" ? "GB" : "ZA"; if (fixed) ccSet = true; }
+try { localStorage.removeItem("dod:cc"); } catch {}
 function boxMode() {
   const v = $("u").value.trim(), link = !!v && isLink(v);
-  if (!$("go").disabled) $("go").textContent = !v ? MODE_GO[mode] : link ? "Check price" : wantAsk(v) ? "Find picks" : "Search";
-  // SA / UK: always on the home page and with a product name; not for a product link or a price check result
-  const hide = (link || !$("result").classList.contains("hidden")) && $("search").classList.contains("hidden") && $("assist").classList.contains("hidden");
-  $("ccrow").classList.toggle("hidden", hide);
+  if ($("go").getAttribute("aria-busy") !== "true") $("go").textContent = !v ? MODE_GO[mode] : link ? "Check price" : wantAsk(v) ? "Find picks" : "Search";
 }
 $("u").addEventListener("input", boxMode);
-const search = (q, kind) => loadApp().then((a) => ((kind ? kind === "ai" : wantAsk(q)) ? a.assist(q, cc) : a.search(q, cc)), () => showError("Couldn't reach the search. Check your connection and try again."));
+// AB-43: the button answers at once on a tap (before the result view has loaded), and on a phone the keyboard
+// closes so the results can show.
+function busy(label) {
+  const go = $("go"); go.setAttribute("aria-busy", "true"); go.innerHTML = '<span class="spin"></span>' + label;
+  if (matchMedia("(pointer:coarse)").matches) $("u").blur();
+}
+const loadFail = (msg) => () => { const go = $("go"); go.disabled = false; go.removeAttribute("aria-busy"); boxMode(); showError(msg); };
+const search = (q, kind) => { const ai = kind ? kind === "ai" : wantAsk(q); busy(ai ? "Finding picks…" : "Searching…"); return loadApp().then((a) => (ai ? a.assist(q, cc) : a.search(q, cc)), loadFail("Couldn't reach the search. Check your connection and try again.")); };
 document.querySelectorAll("#asks .ask").forEach((b) => b.addEventListener("click", () => { $("u").value = b.dataset.q; boxMode(); search(b.dataset.q, "ai"); }));
 document.querySelectorAll("#modes .mode").forEach((b) => b.addEventListener("click", () => setMode(b.dataset.m === mode ? "" : b.dataset.m, true)));
 // Quick searches: the normal product search (never the AI)
 document.querySelectorAll("#trending .tp").forEach((b) => b.addEventListener("click", () => { setMode("find"); $("u").value = b.dataset.q; boxMode(); search(b.dataset.q, "find"); }));
 $("aiGo").addEventListener("click", () => setMode("ai", true));
-document.querySelectorAll("#ccrow .ccb").forEach((b) => b.addEventListener("click", () => {
-  if (b.dataset.c === cc) return;
-  setCc(b.dataset.c); store.set("cc", cc); renderDeals();
-  const v = $("u").value.trim();
-  if (v && !isLink(v) && (!$("search").classList.contains("hidden") || !$("assist").classList.contains("hidden") || v.length >= 2)) search(v);
-}));
 
 $("f").addEventListener("submit", (e) => {
   e.preventDefault();
@@ -817,11 +810,11 @@ function showError(msg) { const e = $("error"); e.textContent = msg; e.classList
 let app = null, A = null;
 function loadApp() {
   return app || (app = new Promise((ok, no) => {
-    window.__dod = (init) => ok(A = init({ $, store, esc, money, toast, showError, openRequest, tsPrepare, tsToken, LOC, getSaved, renderSavedCount, boxMode, setCc }));
+    window.__dod = (init) => ok(A = init({ $, store, esc, money, toast, showError, openRequest, tsPrepare, tsToken, LOC, getSaved, renderSavedCount, boxMode, setCc, visitorCc: () => cfg.country || "" }));
     const sc = document.createElement("script"); sc.src = "/*LAZY*/"; sc.onerror = () => { app = null; no(); }; document.head.appendChild(sc);
   }));
 }
-const run = (url, fresh) => loadApp().then((a) => a.run(url, fresh), () => showError("Couldn't reach the checker. Check your connection and try again."));
+const run = (url, fresh) => { busy("Checking…"); return loadApp().then((a) => a.run(url, fresh), loadFail("Couldn't reach the checker. Check your connection and try again.")); };
 $("u").addEventListener("focus", loadApp, { once: true });
 $("f").addEventListener("pointerover", loadApp, { once: true });
 $("savedBtn").addEventListener("click", () => loadApp().then((a) => a.openSaved(), () => toast("Couldn't load. Try again.")));
@@ -878,10 +871,11 @@ let dealsOpen = false;
 const DEALS_FIRST = 4;
 function renderDeals() {
   const lis = [...document.querySelectorAll("#dealList li[data-cc]")];
-  const all = lis.filter((li) => li.dataset.cc === cc && !(li.dataset.until && +li.dataset.until <= Date.now()));
+  // AB-43: the home page shows South African deals only
+  const all = lis.filter((li) => li.dataset.cc === "ZA" && !(li.dataset.until && +li.dataset.until <= Date.now()));
   lis.forEach((li) => { li.hidden = true; });
   all.forEach((li, i) => { li.hidden = !dealsOpen && i >= DEALS_FIRST; });
-  document.querySelectorAll("#dealList [data-empty]").forEach((li) => { li.hidden = !!all.length || li.dataset.empty !== cc; });
+  document.querySelectorAll("#dealList [data-empty]").forEach((li) => { li.hidden = !!all.length || li.dataset.empty !== "ZA"; });
   const b = $("dealsAll"); b.classList.toggle("hidden", all.length <= DEALS_FIRST);
   b.textContent = dealsOpen ? "Show fewer" : `View all (${all.length})`; b.setAttribute("aria-expanded", dealsOpen ? "true" : "false");
   const fly = all.some((li) => li.dataset.kind === "flyer"), drop = all.some((li) => li.dataset.kind === "drop");
@@ -894,7 +888,7 @@ $("dealList").addEventListener("click", (ev) => {
   if (!a || ev.ctrlKey || ev.metaKey || ev.shiftKey) return;
   ev.preventDefault();
   const sp2 = new URL(a.href).searchParams;
-  if (a.dataset.kind === "flyer") { setCc("ZA"); setMode("find"); $("u").value = sp2.get("q"); boxMode(); search(sp2.get("q"), "find"); return; }
+  if (a.dataset.kind === "flyer") { setCc("ZA", true); setMode("find"); $("u").value = sp2.get("q"); boxMode(); search(sp2.get("q"), "find"); return; }
   const u = sp2.get("u"); $("u").value = u; boxMode();
   a.setAttribute("aria-busy", "true"); const done = () => a.removeAttribute("aria-busy");
   run(u).then(done, done);
@@ -920,7 +914,7 @@ function renderSavedCount() { const n = getSaved().length; $("savedN").textConte
 
 // ---------- bot check (Cloudflare Turnstile, only when it is set up) ----------
 const cfg = { alerts: false, turnstile: null };
-const cfgReady = fetch("/api/config").then((r) => r.json()).then((c) => { Object.assign(cfg, c); $("alertBtn").classList.toggle("hidden", !cfg.alerts); $("wallLink").classList.toggle("hidden", !cfg.wall); }).catch(() => {});
+const cfgReady = fetch("/api/config").then((r) => r.json()).then((c) => { Object.assign(cfg, c); if (cfg.country === "GB" && !ccSet) setCc("GB"); $("alertBtn").classList.toggle("hidden", !cfg.alerts); $("wallLink").classList.toggle("hidden", !cfg.wall); }).catch(() => {});
 let tsLoad = null; const tsTok = {}, tsWid = {};
 function tsScript() {
   if (tsLoad) return tsLoad;
@@ -966,12 +960,12 @@ renderSavedCount();
 const sp = new URLSearchParams(location.search), qs = sp.get("u") || sp.get("url"), qn = sp.get("q");
 if (sp.get("m") === "ai" && path === "/") setMode("ai", !qn);
 if (qs && path === "/") { $("u").value = qs; run(qs); }
-else if (qn && path === "/") { const c = (sp.get("c") || "").toUpperCase(); if (c === "ZA" || c === "GB" || c === "UK") setCc(c === "UK" ? "GB" : c); $("u").value = qn; boxMode(); search(qn, sp.get("m") === "ai" || isAsk(qn) ? "ai" : "find"); }
+else if (qn && path === "/") { const c = (sp.get("c") || "").toUpperCase(); if (c === "ZA" || c === "GB" || c === "UK") setCc(c === "UK" ? "GB" : c, true); $("u").value = qn; boxMode(); search(qn, sp.get("m") === "ai" || isAsk(qn) ? "ai" : "find"); }
 // Back and forward between a search and a check
 window.addEventListener("popstate", () => {
   const p = new URLSearchParams(location.search), u = p.get("u"), q = p.get("q");
   if (u) { $("u").value = u; run(u); }
-  else if (q) { const c = (p.get("c") || "").toUpperCase(); if (c === "ZA" || c === "GB") setCc(c); $("u").value = q; boxMode(); search(q, p.get("m") === "ai" || isAsk(q) ? "ai" : "find"); }
+  else if (q) { const c = (p.get("c") || "").toUpperCase(); if (c === "ZA" || c === "GB") setCc(c, true); $("u").value = q; boxMode(); search(q, p.get("m") === "ai" || isAsk(q) ? "ai" : "find"); }
 });
 })();
 

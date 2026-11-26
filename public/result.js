@@ -1,10 +1,32 @@
 // Result view, Saved list, stats and alerts. Loaded on the first check (loadApp in index.html), so it
 // is not part of the first view. Core helpers come in from index.html.
-__dod(({ $, store, esc, money, toast, showError, openRequest, tsPrepare, tsToken, LOC, getSaved, renderSavedCount, boxMode, setCc }) => {
+__dod(({ $, store, esc, money, toast, showError, openRequest, tsPrepare, tsToken, LOC, getSaved, renderSavedCount, boxMode, setCc, visitorCc }) => {
 const DAY = 864e5;
 /*DEAL_SCORE*/
 const SITE = location.origin;
 let state = null, runId = 0;
+// AB-43: one request at a time. A new search, check or Ask AI stops the older request (AbortController), so an
+// old answer can never write over a new one.
+let liveCtl = null;
+function newSignal() {
+  try { if (liveCtl) liveCtl.abort(); } catch {}
+  liveCtl = typeof AbortController === "function" ? new AbortController() : null;
+  return liveCtl ? liveCtl.signal : undefined;
+}
+// AB-43: answers kept on this device for a short time (sessionStorage, this tab only): Back, or the same search
+// again, shows them at once with no new request. Only the shops' own answers; never a failed shop.
+const RC_TTL = 8 * 60e3, RC_PRE = "dod:r:";
+function rcGet(k) {
+  try { const x = JSON.parse(sessionStorage.getItem(RC_PRE + k) || "null"); return x && Date.now() - x.t < RC_TTL ? x.v : null; } catch { return null; }
+}
+function rcPut(k, v) {
+  const put = () => sessionStorage.setItem(RC_PRE + k, JSON.stringify({ t: Date.now(), v }));
+  try { put(); } catch {
+    // full: remove our old answers and try once more
+    try { Object.keys(sessionStorage).filter((x) => x.startsWith(RC_PRE)).forEach((x) => sessionStorage.removeItem(x)); put(); } catch {}
+  }
+}
+const rcKey = (kind, c, q) => kind + ":" + c + ":" + String(q).toLowerCase().replace(/\s+/g, " ").trim();
 const pct = (x) => Math.abs(Math.round(x * 100)) + "%";
 const fmtDate = (t) => new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 function parseNum(s) {
@@ -97,10 +119,12 @@ async function run(url, fresh) {
   if (!url) return;
   document.documentElement.classList.add("q");
   const my = ++runId; searchId++;
+  const signal = newSignal();
   $("error").classList.add("hidden");
-  const go = $("go"); go.disabled = true; go.innerHTML = '<span class="spin"></span>Checking…';
+  // AB-43: the button shows that we are busy but stays on, so a new check or search can start (the old one stops)
+  const go = $("go"); go.setAttribute("aria-busy", "true"); go.innerHTML = '<span class="spin"></span>Checking…';
   try {
-    const r = await fetch("/api/check?url=" + encodeURIComponent(url) + (fresh ? "&fresh=1" : ""));
+    const r = await fetch("/api/check?url=" + encodeURIComponent(url) + (fresh ? "&fresh=1" : ""), { signal });
     const d = await r.json().catch(() => ({ error: "The checker sent an answer we cannot read. Try again." }));
     if (my !== runId) return;
     if (!r.ok || d.error) { showError(d.error || "The check stopped. Try again."); return; }
@@ -128,7 +152,7 @@ async function run(url, fresh) {
       $("progtxt").textContent = "Tracking is full. Daily checks and archive lookups are unavailable for this product.";
     }
   } catch (e) { if (my === runId) showError("Couldn't reach the checker. Check your connection and try again."); }
-  finally { if (my === runId) { go.disabled = false; go.textContent = "Check price"; } }
+  finally { if (my === runId) { go.disabled = false; go.removeAttribute("aria-busy"); go.textContent = "Check price"; } }
 }
 
 async function loadSnaps(my) {
@@ -727,23 +751,39 @@ let searchId = 0;
 const NS_WHY = [["robots", "ask tools not to use their search"], ["browser", "show search results only in a browser"], ["blocks", "block tools like ours"]];
 const srchAnd = (a) => (a.length > 1 ? a.slice(0, -1).join(", ") + " and " + a[a.length - 1] : a[0] || "");
 const MAX_SHOWN = 30;
-async function search(q, c) {
+// The other country for a visitor in the UK (or a UK search): one tap searches there. Not on the home page.
+function otherCc(btn, c, again) {
+  const show = c === "GB" || (visitorCc && visitorCc() === "GB");
+  btn.classList.toggle("hidden", !show);
+  btn.textContent = c === "GB" ? "Search shops in South Africa" : "Search shops in the UK";
+  btn.onclick = () => again(c === "GB" ? "ZA" : "GB");
+}
+const SRCH_NONE = "We found no products in stock with all of these words. Use fewer words, or paste a product link.";
+const SOFT_MS = 2500, SOFT_N = 8;   // the Search button works again when this many products are in after this time
+async function search(q, c, opt = {}) {
   q = String(q || "").replace(/\s+/g, " ").trim();
   c = c === "GB" ? "GB" : "ZA";
   const my = ++searchId; runId++;
+  const signal = newSignal();
   const where = c === "GB" ? "the UK" : "South Africa";
   document.documentElement.classList.add("q");
   $("error").classList.add("hidden");
   const S = $("search"), go = $("go");
-  const finish = () => { if (my !== searchId) return; go.disabled = false; boxMode(); };
-  go.disabled = true; go.innerHTML = '<span class="spin"></span>Searching…';
-  let plan;
-  try {
-    const r = await fetch(`/api/search?q=${encodeURIComponent(q)}&c=${c}`);
-    plan = await r.json().catch(() => ({ error: "The search sent an answer we cannot read. Try again." }));
-    if (my !== searchId) return;
-    if (!r.ok || plan.error) { finish(); showError(plan.error || "The search stopped. Try again."); return; }
-  } catch { if (my === searchId) { finish(); showError("Couldn't reach the search. Check your connection and try again."); } return; }
+  let finished = false;
+  const finish = () => { if (my !== searchId || finished) return; finished = true; go.disabled = false; go.removeAttribute("aria-busy"); boxMode(); };
+  go.setAttribute("aria-busy", "true"); go.innerHTML = '<span class="spin"></span>Searching…';
+  const ck = rcKey("s", c, q), hit = rcGet(ck);
+  let plan = hit && hit.plan;
+  if (!plan) {
+    try {
+      const r = await fetch(`/api/search?q=${encodeURIComponent(q)}&c=${c}`, { signal });
+      plan = await r.json().catch(() => ({ error: "The search sent an answer we cannot read. Try again." }));
+      if (my !== searchId) return;
+      if (!r.ok || plan.error) { finish(); showError(plan.error || "The search stopped. Try again."); return; }
+    } catch { if (my === searchId) { finish(); showError("Couldn't reach the search. Check your connection and try again."); } return; }
+  }
+  const t0 = Date.now();
+  let fellBack = false;
   history.replaceState(null, "", "/?q=" + encodeURIComponent(plan.q).replace(/%20/g, "+") + "&c=" + c);
   $("result").classList.add("hidden"); $("assist").classList.add("hidden");
   S.classList.remove("hidden"); boxMode();
@@ -752,8 +792,12 @@ async function search(q, c) {
   $("sList").innerHTML = ""; $("sEmpty").classList.add("hidden"); $("sAskAi").classList.add("hidden"); $("sShops").textContent = "";
   // No result for 3 or more words: offer the AI Shopping Assistant with the same words (never a dead end)
   $("sAskAi").onclick = () => { $("u").value = q; assist(q, c); };
+  otherCc($("sOther"), c, (x) => search(q, x));
   document.title = plan.q + " · Search · Deal or Dud?";
   const shops = plan.shops || [], results = {};
+  // kept answers (not flyers: they come from memory at once, and end on their own date)
+  if (hit && hit.results) for (const s of shops) if (!s.flyer && hit.results[s.id]) results[s.id] = hit.results[s.id];
+  const keep = () => { const r = {}; for (const s of shops) { const x = results[s.id]; if (x && !s.flyer && ["ok", "none", "robots"].includes(x.status)) r[s.id] = x; } rcPut(ck, { plan, results: r }); };
   // "Food Lover's Market prices come from its printed flyer, for one item." (one or more flyers)
   const flyerNote = (items) => {
     const names = [...new Set(items.filter((x) => x.flyer).map((x) => x.label.replace(/\s*\(.*$/, "")))];
@@ -784,41 +828,57 @@ async function search(q, c) {
       + `<div class="sm"><span class="sp num">${it.from ? "From " : ""}${esc(money(it.price, it.currency))}</span><span class="small">${esc(it.shop)}${esc(lowTxt(it, i))}</span></div>`
       + `<div class="sa"><button type="button" data-u="${esc(it.url)}">Check price history</button><a href="${esc(it.url)}" target="_blank" rel="noopener nofollow">Open at shop ↗</a></div></li>`).join("");
     const shopsWith = new Set(items.map((x) => x.shop)).size;
+    const fixed = plan.fixed ? `We searched for \u201c${plan.fixed}\u201d. ` : "";
     if (!shops.length) $("sStatus").textContent = "";
     else if (done.length < shops.length) $("sStatus").innerHTML = `<span class="spin"></span>Searching ${shops.length} shop${shops.length === 1 ? "" : "s"}… ${done.length} of ${shops.length} done.`;
-    else $("sStatus").textContent = items.length ? `${items.length > MAX_SHOWN ? `The ${MAX_SHOWN} lowest of ${items.length}` : items.length} product${items.length === 1 ? "" : "s"} at ${shopsWith} shop${shopsWith === 1 ? "" : "s"}, ${dev ? `${dev} first, then lowest price` : "lowest price first"}. The prices come from each shop now.${flyerNote(items)}` : "";
+    else $("sStatus").textContent = items.length ? fixed + `${items.length > MAX_SHOWN ? `The ${MAX_SHOWN} lowest of ${items.length}` : items.length} product${items.length === 1 ? "" : "s"} at ${shopsWith} shop${shopsWith === 1 ? "" : "s"}, ${dev ? `${dev} first, then lowest price` : "lowest price first"}. The prices come from each shop now.${flyerNote(items)}` : "";
     if (done.length === shops.length && hidden) $("sStatus").textContent += `${items.length ? " " : ""}We did not show ${hidden} accessor${hidden === 1 ? "y" : "ies"}, games or covers. To find them, add the word to your search, for example \u201c${plan.accessory_example}\u201d.`;
     const empty = done.length === shops.length && !items.length;
+    // AB-43: no product with all of the words: the AI Shopping Assistant searches for the same words (once), so a
+    // search is never a dead end. Not when no shop could answer (then the AI can't search them either).
+    const answered = !shops.length || done.some((s) => ["ok", "none"].includes(results[s.id].status));
+    if (empty && plan.ai_fallback && answered && !fellBack && !opt.noAi) {
+      fellBack = true;
+      assist(q, c, { fallback: true, onFail: () => { S.classList.remove("hidden"); $("sEmpty").textContent = SRCH_NONE; $("sEmpty").classList.remove("hidden"); $("sAskAi").classList.remove("hidden"); } });
+      return;
+    }
     $("sEmpty").classList.toggle("hidden", !empty);
     $("sAskAi").classList.toggle("hidden", !(empty && shops.length && q.split(" ").length >= 3));
-    if (empty) $("sEmpty").textContent = shops.length ? `We found no products in stock with all of these words. Use fewer words, or paste a product link.` : `We have no shops in ${where} that we can search for this. Paste a product link to check its price.`;
+    if (empty) $("sEmpty").textContent = shops.length ? SRCH_NONE : `We have no shops in ${where} that we can search for this. Paste a product link to check its price.`;
     const by = (st) => done.filter((s) => (Array.isArray(st) ? st : [st]).includes(results[s.id].status)).map((s) => s.name);
     const parts = [];
     const searched = by(["ok", "none"]);
     if (searched.length) parts.push(`Searched: ${searched.join(", ")}.`);
     const fail = by(["error", "busy", "blocked"]);
     if (fail.length) parts.push(`Couldn't search now: ${fail.join(", ")} (try again later).`);
+    const slow = by("slow");
+    if (slow.length) parts.push(`Too slow to answer now: ${slow.join(", ")} (search again in a minute to see them).`);
     const robots = by("robots");
     if (robots.length) parts.push(`Not searched: ${robots.join(", ")} (the shop asks tools not to use its search).`);
     const ns = plan.notSearched || [];
     const nsTxt = NS_WHY.map(([w, t]) => [ns.filter((x) => x.why === w).map((x) => x.name), t]).filter(([n]) => n.length).map(([n, t]) => `${srchAnd(n)} (${t})`);
     if (nsTxt.length && done.length === shops.length) parts.push(`We can't search ${nsTxt.join("; ")}.`);
     $("sShops").textContent = parts.join(" ");
-    if (done.length === shops.length) finish();
+    // AB-43: enough products are in: the Search button works again while the slowest shops finish
+    if (done.length === shops.length || (items.length >= SOFT_N && Date.now() - t0 >= SOFT_MS)) finish();
   };
   render();
-  const queue = shops.slice();
+  if (fellBack) return;
+  const queue = shops.filter((s) => !results[s.id]);
+  if (!queue.length) { finish(); return; }
   const worker = async () => {
     while (queue.length) {
       const s = queue.shift();
       let r;
-      try { const res = await fetch(`/api/search/shop?q=${encodeURIComponent(plan.q)}&c=${c}&shop=${encodeURIComponent(s.id)}`); r = await res.json(); } catch { r = null; }
+      try { const res = await fetch(`/api/search/shop?q=${encodeURIComponent(plan.q)}&c=${c}&shop=${encodeURIComponent(s.id)}`, { signal }); r = await res.json(); } catch { r = null; }
       if (my !== searchId) return;
       results[s.id] = r && r.status ? r : { shop: s.id, name: s.name, status: "error", items: [] };
+      keep();
       render();
     }
   };
-  await Promise.all([worker(), worker(), worker(), worker(), worker()]);
+  // AB-43: up to 8 shops at a time (was 5), so a slow shop near the end starts sooner
+  await Promise.all(Array.from({ length: Math.min(8, queue.length) }, worker));
   finish();
 }
 // ---------- AI Shopping Assistant: /api/assist (src/assist.js) ----------
@@ -827,40 +887,49 @@ async function search(q, c) {
 // numbers only) and writes the short reasons; it never adds a product, a price or a link (AB-42).
 const shareUrl = (q, c) => SITE + "/?q=" + encodeURIComponent(q).replace(/%20/g, "+") + "&c=" + c;
 let assistShare = "";
-async function assist(q, c) {
+async function assist(q, c, opt = {}) {
   q = String(q || "").replace(/\s+/g, " ").trim();
   c = c === "GB" ? "GB" : "ZA";
   const my = ++searchId; runId++;
+  const signal = newSignal();
   document.documentElement.classList.add("q");
   $("error").classList.add("hidden");
   const S = $("assist"), go = $("go");
-  const finish = () => { if (my !== searchId) return; go.disabled = false; boxMode(); };
-  go.disabled = true; go.innerHTML = '<span class="spin"></span>Finding picks…';
+  const finish = () => { if (my !== searchId) return; go.disabled = false; go.removeAttribute("aria-busy"); boxMode(); };
+  go.setAttribute("aria-busy", "true"); go.innerHTML = '<span class="spin"></span>Finding picks…';
+  // a fallback from the normal search: if the AI can't answer, the search (and its note) shows again
+  const fail = (msg) => { S.classList.add("hidden"); finish(); if (opt.fallback && opt.onFail) opt.onFail(); showError(msg); };
   $("result").classList.add("hidden"); $("search").classList.add("hidden");
   S.classList.remove("hidden");
   const where = (x) => (x === "GB" ? "the UK" : "South Africa");
   $("asLab").textContent = "AI Shopping Assistant · shops in " + where(c);
   $("asTitle").textContent = "\u201c" + q + "\u201d";
   $("asWhat").textContent = "";
-  $("asStatus").innerHTML = '<span class="spin"></span>Checking shops now…';
+  $("asStatus").innerHTML = opt.fallback ? '<span class="spin"></span>No product name had all of these words. AI is searching the shops for you now…' : '<span class="spin"></span>Checking shops now…';
+  $("asOther").classList.add("hidden");
   ["asH", "asNoteTop", "asEmpty", "asMore", "asAct"].forEach((id) => $(id).classList.add("hidden"));
   $("asPicks").innerHTML = ""; $("asList").innerHTML = ""; $("asShops").textContent = "";
   $("asMore").open = false;
   document.title = q + " · Picks · Deal or Dud?";
   boxMode();
-  let d;
-  try {
-    const r = await fetch(`/api/assist?q=${encodeURIComponent(q)}&c=${c}`);
-    d = await r.json().catch(() => ({ error: "The search sent an answer we cannot read. Try again." }));
-    if (my !== searchId) return;
-    if (!r.ok || d.error) { S.classList.add("hidden"); finish(); showError(d.error || "The search stopped. Try again."); return; }
-  } catch { if (my === searchId) { S.classList.add("hidden"); finish(); showError("Couldn't reach the search. Check your connection and try again."); } return; }
-  // a budget in pounds searches UK shops (and rand, South African shops)
-  if (d.country !== c && setCc) setCc(d.country);
+  const ck = rcKey("a", c, q);
+  let d = rcGet(ck);
+  if (!d) {
+    try {
+      const r = await fetch(`/api/assist?q=${encodeURIComponent(q)}&c=${c}`, { signal });
+      d = await r.json().catch(() => ({ error: "The search sent an answer we cannot read. Try again." }));
+      if (my !== searchId) return;
+      if (!r.ok || d.error) { fail(d.error || "The search stopped. Try again."); return; }
+    } catch { if (my === searchId) fail("Couldn't reach the search. Check your connection and try again."); return; }
+    // keep an answer with picks, or a full answer with no failed shop
+    if ((d.picks || []).length || !((d.shops || {}).failed || []).length) rcPut(ck, d);
+  }
+  if (my !== searchId) return;
   history.replaceState(null, "", "/?q=" + encodeURIComponent(d.q).replace(/%20/g, "+") + "&c=" + d.country + "&m=ai");
   assistShare = shareUrl(d.q, d.country);
   $("asLab").textContent = "AI Shopping Assistant · shops in " + where(d.country);
-  $("asWhat").textContent = d.understanding || "";
+  $("asWhat").textContent = (opt.fallback ? "No product name had all of your words, so AI searched for you. " : "") + (d.understanding || "");
+  otherCc($("asOther"), d.country, (x) => assist(q, x));
   const picks = d.picks || [], more = d.more || [];
   // shops with a match among all matches (not only the products on the page)
   const shopsN = d.shop_count != null ? d.shop_count : new Set(picks.concat(more).map((x) => x.shop)).size;

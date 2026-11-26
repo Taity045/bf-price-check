@@ -1144,7 +1144,7 @@ async function pageHtml(req, env, ctx) {
   // Today's genuine deals on the plain home page (src/home.js): real data only, written into the page
   if (new URL(req.url).pathname === "/") { try { html = await homeInPage(req, env, html); } catch {} }
   // A shared or bookmarked result link (?u= / ?url=): the page starts in its result layout, so nothing moves when the result appears.
-  { const q = new URL(req.url).searchParams; if (new URL(req.url).pathname === "/" && (q.get("u") || q.get("url") || q.get("q"))) { html = html.replace('<html lang="en">', '<html lang="en" class="q">'); if (q.get("u") || q.get("url")) html = html.replace('<div class="ccrow" id="ccrow"', '<div class="ccrow hidden" id="ccrow"'); } }
+  { const q = new URL(req.url).searchParams; if (new URL(req.url).pathname === "/" && (q.get("u") || q.get("url") || q.get("q"))) { html = html.replace('<html lang="en">', '<html lang="en" class="q">'); } }
   return html.replace("<!--NOSCRIPT-->", '<noscript><p class="note" style="text-align:center">Turn on JavaScript to see price history. You can still paste a link and press Check price.</p></noscript>');
 }
 
@@ -1173,7 +1173,7 @@ export default {
       if (url.pathname === "/api/check") return statsTap(req, env, ctx, "check", await apiCheck(req, env, ctx));
       if (url.pathname === "/api/daily-status") return await apiDailyStatus(env);
       if (url.pathname === "/api/archive-stats") return await apiArchiveStats(env);
-      if (url.pathname === "/api/config") return json({ wall: env.WALL === "on", alerts: alertsOn(env), min_judged: WALL_MIN_JUDGED, turnstile: turnstileOn(env) ? env.TURNSTILE_SITEKEY : null }, 200, { "cache-control": "public, max-age=300" });
+      if (url.pathname === "/api/config") return json({ wall: env.WALL === "on", alerts: alertsOn(env), min_judged: WALL_MIN_JUDGED, turnstile: turnstileOn(env) ? env.TURNSTILE_SITEKEY : null, country: srchVisitorCc(req) === "GB" ? "GB" : "" }, 200, { "cache-control": "private, max-age=300", vary: "cf-ipcountry" });
       if (url.pathname === "/api/verdict") return await apiVerdict(req, env);
       if (url.pathname === "/api/compare") return statsTap(req, env, ctx, "compare", await apiCompare(req, env));
       if (url.pathname === "/api/compare/shop") return statsTap(req, env, ctx, "compare_shop", await apiCompareShop(req, env, ctx));

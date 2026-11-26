@@ -46,10 +46,13 @@ describe("home page picks: the built page", () => {
   const worker = readFileSync(new URL("dist/worker.js", root), "utf8");
   const html = JSON.parse(worker.match(/\nconst HTML = (".*");\n/)[1]);
   test("one chip per group, the first one on, and one list per group (only the first shown)", () => {
+    // AB-43: South Africa first: UK products are not on the home page
+    assert.ok(!/ · UK<\/span>/.test(html));
     const chips = [...html.matchAll(/<button type="button" class="cat" data-g="([a-z]+)" aria-controls="pk-\1" aria-pressed="(true|false)">([^<]+)<\/button>/g)];
-    assert.deepEqual(chips.map((m) => m[1]), ex.groups.map((g) => g.id));
-    assert.deepEqual(chips.map((m) => m[2]), ex.groups.map((g, i) => (i ? "false" : "true")));
-    for (const [i, g] of ex.groups.entries()) {
+    const sa = ex.groups.map((g) => ({ ...g, items: g.items.filter((i) => i.cc !== "UK") })).filter((g) => g.items.length);
+    assert.deepEqual(chips.map((m) => m[1]), sa.map((g) => g.id));
+    assert.deepEqual(chips.map((m) => m[2]), sa.map((g, i) => (i ? "false" : "true")));
+    for (const [i, g] of sa.entries()) {
       const ul = html.match(new RegExp(`<ul class="picks" id="pk-${g.id}" aria-label="[^"]+"( hidden)?>([\\s\\S]*?)</ul>`));
       assert.ok(ul, g.id); assert.equal(!!ul[1], i > 0, `${g.id} hidden`);
       assert.equal((ul[2].match(/<li>/g) || []).length, g.items.length);

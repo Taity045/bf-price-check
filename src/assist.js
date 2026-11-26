@@ -37,7 +37,7 @@
 // request and country. No D1 writes: the AI day count is in the Cloudflare cache and in memory, and it also
 // reads (never writes) the compare AI day count, so the assistant never goes past the shared daily cap.
 
-const AS_VER = "v10";               // v2: shop_count (shops with a match, not only the shown ones); v5: ai.models; v6: named brand/model, accessories (AB-39); v7: companion items, brand position, price floors, "good" ranking; v8: flyer deals, short names, bulk packs, bikes (AB-41); v9: general AI product picking (AB-42); v10: safety check on the AI answer (AB-42b)
+const AS_VER = "v11";               // v2: shop_count (shops with a match, not only the shown ones); v5: ai.models; v6: named brand/model, accessories (AB-39); v7: companion items, brand position, price floors, "good" ranking; v8: flyer deals, short names, bulk packs, bikes (AB-41); v9: general AI product picking (AB-42); v10: safety check on the AI answer (AB-42b); v11: one-word forms and spelling fixes in the searches (AB-43)
 const AS_MAX = 200;                       // characters in a request
 const AS_TTL = 20 * 60;                   // seconds: one answer for one request and country
 const AS_AI_TIMEOUT = 2800;               // ms for one AI answer; a slow answer is dropped (rules decide)
@@ -1204,7 +1204,7 @@ async function apiAssist(req, env, ctx) {
   // shopping only: off-topic requests and prompt injection never reach an AI model
   if (asOffTopic(v.q)) { console.log(JSON.stringify({ assist: { blocked: "off-topic" } })); return json({ error: AS_OFF_MSG, blocked: "off-topic" }, 400); }
   if (!isE2E(req, env)) { const lim = await asRateLimited(env, srchIp(req)); if (lim) return json({ error: AS_RL_MSG[lim], limited: lim }, 429, { "retry-after": lim === "hour" ? "3600" : "60" }); }
-  let country = srchCountry(c); if (!country) return json({ error: "Choose South Africa or the UK." }, 400);
+  let country = srchCountry(c || srchVisitorCc(req)); if (!country) return json({ error: "Choose South Africa or the UK." }, 400);
   // a budget in pounds searches UK shops, a budget in rand searches South African shops
   const b = asBudget(v.q);
   if (b && b.currency) country = b.currency === "GBP" ? "GB" : "ZA";
