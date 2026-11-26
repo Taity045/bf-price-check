@@ -17,7 +17,7 @@ const SRCH_PER_SHOP = 8;                 // products per shop in the answer
 const SRCH_MAX_SHOPS = 12;               // shops per search
 const SRCH_TIMEOUT = 8000;               // ms for one shop's search (AB-43: was 14 s; a slower shop still fills the cache)
 const SRCH_CC = { ZA: "ZAR", GB: "GBP", UK: "GBP" };
-const SRCH_VER = "v3";               // v2: main products before accessories; v3: one-word forms, spelling fixes (AB-43)
+const SRCH_VER = "v4";               // v2: main products before accessories; v3: one-word forms, spelling fixes (AB-43); v4: accessories after products for every search (AB-43b)
 // When we can't tell the kind of product, search the general shops and the shops that sell many kinds of things.
 const SRCH_BROAD = ["electronics", "appliances", "home"];
 // Words that do not need to be in a product's name.
@@ -273,6 +273,18 @@ function srchKind(dev, title) {
   return "other";
 }
 const SRCH_RANK = { main: 0, other: 1, acc: 2 };
+// AB-43b: every search (not only the device families above): clear accessories and parts come after the products
+// themselves, so "airfryer" shows air fryers before R57 liners and "samsung" shows phones and TVs before cases and
+// cables. They still show (we can't be sure for every kind of product), and a search for one ("airfryer liner",
+// "samsung case") is not changed. Products whose name has such a word but are main products ("stand mixer",
+// "sleeping bag", "board game", "tower fan") are not moved.
+const SRCH_GEN_ACC = new RegExp("\\b(?:" + SRCH_ACC_WORDS + "|liners?|baking paper|parchment|silicone|skewers?|pegs?|spare parts?|(?:pots?|baskets?|racks?|trays?|pans?) for)\\b");
+const SRCH_NOT_ACC = /\b(?:stand mixers?|bean ?bags?|sleeping bags?|duffel bags?|board games?|card games?|power tools?|tool ?(?:box|boxes|kits?|sets?)|garment steamers?|(?:stand|pedestal|tower|desk|ceiling|wall) fans?|tv stands?|mic(?:rophone)? stands?|laptop stands?|plant stands?|gaming chairs?|gaming headsets?|wireless headsets?|bluetooth headsets?|vr headsets?|headsets? with)\b/g;
+function srchGenAcc(text) {
+  const t = cmpNorm(text).replace(SRCH_NOT_ACC, " ");
+  const head = t.split(/\s\+\s|\s&\s|\b(?:with|incl(?:udes?|uding)?|bundle|plus|\+)\b/)[0] || t;
+  return SRCH_GEN_ACC.test(head);
+}
 
 // Keep real, in-stock products with an exact price that match the search; no accessories or used stock
 // unless the search asks for them. A search for a main product: the products themselves first, then
@@ -282,6 +294,7 @@ function srchFilter(q, shop, list, info) {
   const wantAcc = CMP_ACCESSORY.test(nq) || /\b(case|cover|charger|cable|stand|strap|controller|skin|protector)\b/.test(nq);
   const wantUsed = CMP_CONDITION.test(nq);
   const dev = srchDevice(fq);
+  const genAcc = !dev && !wantAcc && !srchGenAcc(fq);   // AB-43b: accessories after the products for this search
   const seen = new Set(), out = [];
   let hidden = 0;
   for (const c of list || []) {
@@ -306,6 +319,7 @@ function srchFilter(q, shop, list, info) {
     seen.add(u.href); seen.add(same);
     const row = { title: title.replace(/\s+/g, " ").trim().slice(0, 200), price: Math.round(c.price * 100) / 100, was: c.was && c.was > c.price ? Math.round(c.was * 100) / 100 : null, from: !!c.range, currency: shop.cur, url: u.href };
     if (dev) row.rank = SRCH_RANK[kind];
+    else if (genAcc && srchGenAcc(title)) row.rank = 1;
     out.push(row);
   }
   if (info) info.hidden = hidden;
