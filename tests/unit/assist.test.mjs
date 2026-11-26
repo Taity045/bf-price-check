@@ -91,6 +91,12 @@ describe("assistant: the AI's fields are checked", () => {
     assert.ok(!m.mustHave.includes("rtx 4090"), "a spec that is not in the request is not a must");
     assert.ok(!m.avoid.includes("laptop"));
   });
+  test("a must-have from the AI is a spec word, not a use word", () => {
+    const lq = "laptop machine for a student studying law ?";
+    const m = W.asMerge({ category: "laptop", mustHave: ["law", "student", "SSD"] }, W.asRules(lq, "ZA"), lq);
+    assert.deepEqual(m.mustHave, []);
+    assert.equal(W.asUnderstanding(m), "Budget: not given · Looking for: laptop (SSD, 8GB, 16GB)");
+  });
   test("other requests use the AI's searches", () => {
     const r = W.asRules("I need a good office chair for my back", "ZA");
     assert.equal(r.category, "other");

@@ -21,7 +21,7 @@
 // request and country. No D1 writes: the AI day count is in the Cloudflare cache and in memory, and it also
 // reads (never writes) the compare AI day count, so the assistant never goes past the shared daily cap.
 
-const AS_VER = "v2";               // v2: shop_count (shops with a match, not only the shown ones)
+const AS_VER = "v3";               // v2: shop_count (shops with a match, not only the shown ones)
 const AS_MAX = 200;                       // characters in a request
 const AS_TTL = 20 * 60;                   // seconds: one answer for one request and country
 const AS_AI_TIMEOUT = 2800;               // ms for one AI answer; a slow answer is dropped (rules decide)
@@ -214,9 +214,9 @@ function asMerge(ai, rules, q) {
   if (rules.category === "other" && sq.length) out.searchQueries = sq;
   else if (sq.length && rules.searchQueries.length < 2 && !rules.searchQueries.some((x) => x.toLowerCase() === sq[0].toLowerCase())) out.searchQueries = [...rules.searchQueries, sq[0]].slice(0, 2);
   const lowQ = String(q).toLowerCase();
-  // a spec word counts only when it is in the request (no new specs from the AI)
+  // a must-have is a spec word (16GB, SSD, 4K…) that is in the request (no new specs, no use words such as "law")
   const inQ = (w) => lowQ.includes(String(w).toLowerCase().replace(/\s+/g, " "));
-  for (const w of asWordList(ai.mustHave, 4).map(asSpecNorm)) if (inQ(w) && !out.mustHave.includes(w)) out.mustHave = [...out.mustHave, w].slice(0, 6);
+  for (const w of asWordList(ai.mustHave, 4).map(asSpecNorm)) if (inQ(w) && AS_SPEC1.test(w) && !out.mustHave.includes(w)) out.mustHave = [...out.mustHave, w].slice(0, 6);
   for (const w of asWordList(ai.prefer, 4).map(asSpecNorm)) if (!out.mustHave.includes(w) && !out.prefer.includes(w) && AS_SPEC1.test(w)) out.prefer = [...out.prefer, w].slice(0, 6);
   for (const w of asWordList(ai.avoid, 4).map((x) => x.toLowerCase())) if (!out.avoid.includes(w) && !/\b(laptop|tv|watch|phone|machine|console|tablet|headphones?)\b/.test(w)) out.avoid = [...out.avoid, w].slice(0, 8);
   return out;
