@@ -606,6 +606,29 @@ for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`a
   ok(`assist ${name}: no JS errors`, p._errs.length === 0, p._errs.join(" | "));
   await p.context().close();
 });
+// AB-41: Ask AI shows a live flyer deal with the flyer's own words (multi-buy, dates, card) and the shop's site
+const AS_FLY = { ...AS_ANSWER, q: "coke", intent: { ...AS_ANSWER.intent, category: "other", maxBudget: null, searchQueries: ["coca cola"], mustHave: [], prefer: [], grocery: true }, understanding: "Budget: not given · Looking for: coca cola",
+  picks: [{ rank: 1, title: "Coca-Cola Original Taste Less Sugar 1.5 Litre", price: 14, was: null, currency: "ZAR", shop: "Pick n Pay flyer", url: "https://www.pnp.co.za/", over_budget: false, reason_by: "rules", specs: [],
+    reason: "In-store flyer deal: R14.00 each when you buy 2 (R28 total). You need the Smart Shopper card. Valid at Pick n Pay (inland provinces flyer, valid 26\u201329 Nov).",
+    flyer: { deal: "2 for R28 (R14.00 each)", need: "R14.00 each when you buy 2 (R28 total)", limit: null, qty: 2, label: "Pick n Pay (inland provinces flyer, valid 26\u201329 Nov)", valid_to: "2026-11-29", site: "Pick n Pay site", fine: "Inland provinces only.", badges: ["Smart Shopper"], regular: null, note: null } },
+    { rank: 2, title: "Coca-Cola Original 2L", price: 26.99, was: null, currency: "ZAR", shop: "Takealot", url: "https://www.takealot.com/coca-cola/PLID1", over_budget: false, reason_by: "rules", specs: [], reason: "It matches your request. It costs R26.99 at Takealot." }],
+  more: [], total: 2, shop_count: 2, within_budget: 2, note: "", shops: { searched: ["Takealot", "Pick n Pay flyer"], failed: [], robots: [], notSearched: [] } };
+for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`assist flyer ${name}`, async () => {
+  const p = await open(o);
+  await p.route(/\/api\/assist\?/, (r) => r.fulfill({ json: AS_FLY }));
+  await p.goto(BASE + "/", { waitUntil: "networkidle" });
+  const pill = p.locator('.mode[data-m="ai"]'); if (o.hasTouch) await pill.tap(); else await pill.click();
+  await p.fill("#u", "coke");
+  await p.press("#u", "Enter");
+  await p.waitForSelector("#asPicks li", { timeout: 10000 });
+  const c = await p.$$eval("#asPicks li", (ls) => ls.map((l) => ({ p: l.querySelector(".sp").textContent, txt: l.textContent, btn: !!l.querySelector("button"), a: l.querySelector("a").textContent, tags: [...l.querySelectorAll(".ftag")].map((x) => x.textContent), w: l.getBoundingClientRect().right <= innerWidth + 1 })));
+  ok(`assist flyer ${name}: the flyer pick shows the multi-buy deal, dates, card and fine print`, c[0].p === "2 for R28 (R14.00 each)" && /R14\.00 each when you buy 2/.test(c[0].txt) && /valid 26\u201329 Nov/.test(c[0].txt) && /Inland provinces only/.test(c[0].txt) && c[0].tags.join("|") === "In-store flyer deal|Smart Shopper", JSON.stringify(c[0]));
+  ok(`assist flyer ${name}: a flyer pick links to the shop's site (no price history)`, !c[0].btn && c[0].a === "Pick n Pay site ↗", JSON.stringify(c[0]));
+  ok(`assist flyer ${name}: an online pick keeps Check price history`, c[1].btn && c[1].a === "Open at shop ↗");
+  ok(`assist flyer ${name}: no sideways page scroll`, await noSideScroll(p) && c.every((x) => x.w));
+  ok(`assist flyer ${name}: no JS errors`, p._errs.length === 0, p._errs.join(" | "));
+  await p.context().close();
+});
 for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`assist empty ${name}`, async () => {
   const p = await open(o);
   await p.route(/\/api\/assist\?/, (r) => r.fulfill({ json: { ...AS_ANSWER, q: "Need a 4K TV under £500 for PS5", country: "GB", currency: "GBP", understanding: "Budget: up to £500 · Looking for: TV (4K, 120Hz, HDMI 2.1)", picks: [], more: [], total: 0, within_budget: 0, note: "We found no products in stock that match. Use other words, or a higher budget.", shops: { searched: ["Fenwick"], failed: [], robots: [], notSearched: [] } } }));

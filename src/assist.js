@@ -30,7 +30,7 @@
 // request and country. No D1 writes: the AI day count is in the Cloudflare cache and in memory, and it also
 // reads (never writes) the compare AI day count, so the assistant never goes past the shared daily cap.
 
-const AS_VER = "v7";               // v2: shop_count (shops with a match, not only the shown ones); v5: ai.models; v6: named brand/model, accessories (AB-39); v7: companion items, brand position, price floors, "good" ranking
+const AS_VER = "v8";               // v2: shop_count (shops with a match, not only the shown ones); v5: ai.models; v6: named brand/model, accessories (AB-39); v7: companion items, brand position, price floors, "good" ranking; v8: flyer deals, short names, bulk packs, bikes (AB-41)
 const AS_MAX = 200;                       // characters in a request
 const AS_TTL = 20 * 60;                   // seconds: one answer for one request and country
 const AS_AI_TIMEOUT = 2800;               // ms for one AI answer; a slow answer is dropped (rules decide)
@@ -61,7 +61,7 @@ const AS_RL_MIN = 10, AS_RL_HOUR = 40;
 const AS_OFF_MSG = "Ask about a product to buy, like a laptop, phone, or running watch.";
 const AS_RL_MSG = { minute: "You sent many requests. Wait 1 minute and try again. You can still search for a product by its name, for example PS5.",
   hour: "You sent many requests. Wait 1 hour and try again. You can still search for a product by its name, for example PS5." };
-const AS_CATEGORIES = ["laptop", "tv", "watch", "appliance", "phone", "audio", "gaming", "tablet", "other"];
+const AS_CATEGORIES = ["laptop", "tv", "watch", "appliance", "phone", "audio", "gaming", "tablet", "bike", "other"];
 
 // ---------- 1. Is this a shopping need (assistant) or a product name (normal search)? ----------
 // Keep the same rule in public/index.html (isAsk): a unit test checks that both agree.
@@ -131,6 +131,13 @@ function asBudget(q) {
   return null;
 }
 
+// AB-41: spare parts and accessories of bikes, vehicles and appliances. When the request is for the main product
+// (a bike, a vacuum), a name with one of these words is a part, not the product ("TPU Road Bike Innertube").
+// AS_PARTS: words that are always a part. AS_BIKE_PARTS: also words that are parts only in a bike name.
+const AS_PARTS = /\b(inner ?tubes?|innertubes?|tubeless|tyres?|tires?|saddles?|handlebars?|bar ?tape|derailleurs?|chainrings?|cranksets?|bottom brackets?|brake pads?|disc rotors?|bike pumps?|track pumps?|mini pumps?|bottle cages?|cleats?|mudguards?|sealant|chain lube|lube|spokes?|kickstands?|frame bags?|saddle ?bags?|handlebar bags?|top tube bags?|brush heads?|vacuum bags?|dust bags?|filter cartridges?|replacement filters?|spare blades?|replacement blades?)\b/;
+const AS_BIKE_PARTS = /\b(inner ?tubes?|innertubes?|tubes?|tubeless|tyres?|tires?|wheelsets?|wheel sets?|pedals?|saddles?|seats?|seat ?posts?|droppers?|handlebars?|bars?|bar ?tape|grips?|chains?|cassettes?|chainrings?|cranks?|cranksets?|bottom brackets?|derailleurs?|shifters?|groupsets?|brake pads?|brake sets?|brake levers?|brake calipers?|rotors?|calipers?|pumps?|bottle cages?|bottles?|cleats?|helmets?|gloves?|jerseys?|bibs?|bib ?shorts|shorts|shoes|socks|jackets?|lights?|tail ?lights?|bells?|locks?|kickstands?|racks?|carriers?|mudguards?|fenders?|sealant|lube|valves?|spokes?|rims?|hubs?|forks?|rear shocks?|stems?|headsets?|framesets?|frame only|frame bags?|saddle ?bags?|bags?|computers?|mounts?|trainers?|stands?|tools?|multi-?tools?|cleaners?|degreasers?|kits?|covers?|cables?|housings?|bearings?|tyre levers?|patch(?:es)?|repair)\b/;
+// A request for a part or an accessory itself: these words in the request make it an accessory request.
+const AS_PART_ASK = /\b(inner ?tubes?|innertubes?|tyres?|tires?|pedals?|saddles?|handlebars?|derailleurs?|cassettes?|chainrings?|brake pads?|rotors?|pumps?|bottle cages?|cleats?|helmets?|mudguards?|fenders?|sealant|lube|valves?|spokes?|kickstands?|brush heads?|cartridges?|nozzles?|hoses?|bike (?:lights?|locks?|racks?|chains?|seats?|bells?|forks?|stems?|rims?|wheels?|gloves?|jerseys?|shorts|shoes|computers?|stands?|tools?|bags?|trainers?|bottles?|grips?|tubes?|frames?))\b/;
 // Categories: the words that name one, the main products (a product name must have one), what is an accessory,
 // and the shop searches for it. Text is lower case.
 const AS_CAT = {
@@ -151,6 +158,10 @@ const AS_CAT = {
     main: /\b(headphones?|earbuds?|earphones?|headsets?|speakers?|soundbars?|airpods|buds\d*|wh-?1000xm\d|wf-?1000xm\d|quietcomfort|true wireless)\b/, acc: /\b(ear ?tips|ear ?pads|cushions?|cases? for|covers?|stands?|holders?|cables?|adapters?|replacement|mounts?|brackets?)\b/ },
   gaming: { re: /\b(consoles?|ps5|playstation 5|xbox|nintendo switch|switch 2|steam deck|gaming pc)\b/, noun: "console",
     main: /\b(consoles?|ps5|playstation 5|xbox series|switch 2|switch oled|switch lite|steam deck|rog ally|legion go|gaming pc|desktop)\b/, acc: new RegExp("\\b(?:" + SRCH_ACC_WORDS + ")\\b") },
+  // AB-41: bikes. A part or an accessory (inner tube, tyre, pedals, helmet…) is not a bike.
+  bike: { re: /\b(bikes?|bicycles?|e-?bikes?|mtbs?|mountain ?bikes?|road ?bikes?|gravel ?bikes?|bmx|balance bikes?|hardtails?|full suspension)\b/, noun: "bike",
+    main: /\b(bikes?|bicycles?|e-?bikes?|mtb|hardtail|full suspension|dual[- ]sus\w*|29er|bmx|cruiser|fat ?bike|trek|specialized|giant|cannondale|merida|scott|santa cruz|titan|silverback|momsen|bmc|cube|polygon|orbea|pyga|avalanche|raleigh|marin|norco|canyon|cervelo|pinarello|bianchi|focus|ghost|liv|rocky mountain|yeti|ibis|kona|mongoose|schwinn|ribble|boardman|carrera|voodoo|whyte|vitus|frog|islabikes|pinnacle|cotic|haibike|axis|rook|lapierre|wilier|factor|colnago|felt|fuji|gt)\b/,
+    acc: AS_BIKE_PARTS },
   appliance: { re: /\b(coffee (?:machines?|makers?)|espresso|bean[- ]to[- ]cup|air ?fryers?|kettles?|toasters?|vacuums?|vacuum cleaners?|robot vacuums?|fridges?|refrigerators?|freezers?|washing machines?|washers?|tumble dryers?|dryers?|dishwashers?|microwaves?|blenders?|food processors?|stand mixers?|mixers?|irons?|heaters?|fans?|air purifiers?|dehumidifiers?|stoves?|ovens?|hobs?)\b/, noun: "appliance", main: null,
     acc: /\b(capsules?|pods?|descal(?:er|ing)|filters?|cups?|mugs?|jugs?|carafes?|cleaning|tablets|replacement|spare|parts?|bags? for|dust bags?|brush(?:es)?|nozzles?|hoses?|beans|grinders?|frothers?|covers?|liners?|paper|baskets? for|racks?|accessor(?:y|ies)|mats?|gloves?)\b/ },
 };
@@ -183,7 +194,7 @@ const AS_APPL = [
 const AS_SPEC = /\b(\d{1,3} ?gb(?: ram)?|\d ?tb|\d{3,4} ?gb ssd|ssd|nvme|oled|qled|mini ?led|4k|8k|uhd|\d{2,3} ?hz|\d{2,3} ?(?:inch|")|hdmi 2\.1|gps|anc|noise cancell?ing|wi-?fi ?[67]e?|5g|lte|rtx ?\d{4}|ryzen ?[3579]|core (?:ultra )?i?[3579]|m[1-5](?: pro| max)?|bean[- ]to[- ]cup|milk frother|\d+ ?bar|\d+(?:\.\d)? ?l(?:itres?)?|music|amoled)\b/gi;
 const AS_SPEC1 = new RegExp("^(?:" + AS_SPEC.source.slice(3, -3) + ")$", "i");   // one whole spec word
 const asSpecNorm = (s) => String(s).toLowerCase().replace(/\s+/g, " ").replace(/(\d) (gb|tb|hz|bar|l|mm)\b/g, "$1$2").replace(/(\d) ?(?:inch|")/g, "$1 inch").replace(/noise cancell?ing/, "anc").replace(/wi-?fi ?/, "wifi ").replace(/ ram$/, "").trim();
-const AS_FILL = new Set("i me my we our you a an the some any need want have got am im i'm looking look for find get buy recommend suggest please help choose pick which what is are best good great decent cheap cheapest affordable nice top quality under below less than max maximum up to at most no more budget of around about rand rands zar pounds pound gbp quid and or with to in on that this it can should would will something thing one new price r".split(" "));
+const AS_FILL = new Set("i me my we our you a an the some any need want have got am im i'm looking look for find get buy recommend suggest please help choose pick which what is are best good great decent cheap cheapest affordable nice top quality under below less than max maximum up to at most no more budget of around about rand rands zar pounds pound gbp quid and or with to in on that this it can should would will something thing one new price r where who sells sell sold shop shops store stores place places online stock available near nearby could do does there".split(" "));
 
 // The request without its money words ("under 8k", "R15,000", "£500", "1500 rand"), so a budget is never read
 // as a spec ("8k" is a budget here, not an 8K screen).
@@ -284,7 +295,7 @@ const AS_ACC_ASK = /\b(bags?|pouch(?:es)?|cases?|covers?|sleeves?|straps?|bands?
 const AS_FOR_DEVICE = /\b(?:for|fits|compatible with|suitable for|works with|designed for)\s+(?:the\s+|your\s+|all\s+)?(?:apple|samsung|iphones?|ipads?|android|galaxy|pixel|huawei|xiaomi|oppo|macbooks?|laptops?|phones?|smartphones?|tablets?|ps5|ps4|xbox|nintendo|switch|garmin|fitbit|airpods|kindle|tvs?|gopro|dji|dyson|nespresso)\b/;
 // Headphones and VR sets are other products when the request is not for audio.
 const AS_AUDIO_WORDS = /\b(headphones?|earbuds?|earphones?|headsets?|integrated headphones)\b/;
-const asAccessoryAsk = (q) => AS_ACC_ASK.test(asNoBudget(String(q || "").toLowerCase()));
+const asAccessoryAsk = (q) => { const t = asNoBudget(String(q || "").toLowerCase()); return AS_ACC_ASK.test(t) || AS_PART_ASK.test(t); };
 // "best", "top", "flagship", "latest": the request wants quality, not the lowest price.
 const AS_QUALITY = /\b(best|top|flagship|high[- ]end|premium|latest|newest|most powerful|top of the range|top-end)\b/;
 // "good", "great", "reliable", "new"… with no budget: not the cheapest; higher models and a mainstream price first.
@@ -298,7 +309,7 @@ const AS_CHARGE_FEATURE = /\b(?:fast|super|rapid|quick|turbo|wireless|magsafe|re
 const AS_MULTI_DEVICE = /\b(?:iphones?|ipads?|ipods?|android|samsung|galaxy|macbooks?|airpods|apple watch|pixel|huawei|xiaomi|ps[45]|xbox|switch)\s*(?:\/|&|\band\b|,|\|)\s*(?:iphones?|ipads?|ipods?|android|samsung|galaxy|macbooks?|airpods|apple watch|pixel|huawei|xiaomi|ps[45]|xbox|switch)\b/;
 // Lowest real prices for a main device (a cable, a sticker or a tracker is never a R160 "phone"). Only for
 // device requests, never for accessory requests. Conservative: real budget devices are above them.
-const AS_FLOOR = { ZAR: { phone: 500, laptop: 2500, tv: 1500, gaming: 2000, watch: 300, tablet: 800 }, GBP: { phone: 40, laptop: 120, tv: 80, gaming: 100, watch: 15, tablet: 40 } };
+const AS_FLOOR = { ZAR: { phone: 500, laptop: 2500, tv: 1500, gaming: 2000, watch: 300, tablet: 800, bike: 1500 }, GBP: { phone: 40, laptop: 120, tv: 80, gaming: 100, watch: 15, tablet: 40, bike: 80 } };
 // Words that can come before the named brand or line in a real product name: a maker ("Apple iPhone"), a year,
 // "new", a shop's own prefix. "Eufy SmartTrack Link 3 iPhone" or "URBAN Microworld … Iphone" are other brands' products.
 const AS_BEFORE_OK = new Set(["new", "the", "original", "genuine", "brand", "firstshop", "pre", "order", "preorder", "pre-order", "latest", "official", "all-new"]);
@@ -306,12 +317,66 @@ const AS_BEFORE_OK = new Set(["new", "the", "original", "genuine", "brand", "fir
 // "Core Ultra" (a processor), "Ultra HD" or "ultra slim" are not the Ultra model of a range.
 const asTier = (title) => { const w = new Set(cmpWords(String(title).replace(/\b(?:core|intel) ultra\b|\bultra[ -]?(?:hd|slim|thin|wide|fast|light|bright|clear|sharp)\b/gi, " "))); return (w.has("ultra") ? 3 : 0) + (w.has("max") ? 2 : 0) + (w.has("pro") ? 2 : 0) + (w.has("plus") ? 1 : 0) - (w.has("lite") || w.has("mini") || w.has("fe") || w.has("se") ? 1 : 0); };
 
+// ---------- 2d. Everyday short names, groceries and bulk packs (AB-41) ----------
+// "coke" = "coca cola", "redbull" = "red bull" (srchAlias, search.js): the search and the name check use the
+// shops' own names. "in bulk", "wholesale", "multi-pack" (and "case", "crate", "tray", "pack", "box" for
+// groceries) are not product words: the shops are searched for the product, and packs and multi-buys come first.
+const AS_GROCERY_CATS = ["groceries", "liquor", "beauty", "baby"];
+const asGroceryText = (t) => AS_GROCERY_CATS.includes(cmpCatOf(t));
+const AS_BULK_STRONG = /\b(?:in bulk|bulk|wholesale|multi-?packs?|multi-?buys?|in quantity|large quantit(?:y|ies))\b/;
+const AS_BULK_PACK = /\b(?:cases?|crates?|trays?|packs?|boxes|box)\b/;
+const AS_BULK_WORDS = /\b(?:(?:buy\s+)?in bulk|bulk(?:\s+buy)?|wholesale|multi-?packs?|multi-?buys?|in quantity|large quantit(?:y|ies)|(?:\d{1,3}\s*[-x\u00d7]?\s*)?(?:cases?|crates?|trays?|packs?|boxes|box)(?:\s+of(?:\s+\d{1,3})?)?)(?![\w-])/gi;
+const AS_BULK_ONLY = /\b(?:(?:buy\s+)?in bulk|bulk(?:\s+buy)?|wholesale)(?![\w-])/gi;
+function asBulk(low) {
+  const t = asNoBudget(String(low || "").toLowerCase());
+  return AS_BULK_STRONG.test(t) || (AS_BULK_PACK.test(t) && asGroceryText(t));
+}
+const asStripBulk = (s, all = true) => String(s || "").replace(all ? AS_BULK_WORDS : AS_BULK_ONLY, " ").replace(/\s+/g, " ").trim();
+// How many items in one product: "24 x 250ml" 24, "6-pack" 6, "pack of 12" 12, a flyer multi-buy "2 for R40" 2,
+// "case" or "tray" with no number 2 (more than one). 1 for one item.
+function asPackN(c) {
+  if (c && c.flyer && c.flyer.qty > 1) return c.flyer.qty;
+  const t = cmpNorm(c && c.title || "");
+  // "Case (6 x 4 Pack)": 24
+  const mm = t.match(/\b(\d{1,2}) x (\d{1,2})[- ]?(?:pack|pk)s?\b/);
+  if (mm && +mm[1] * +mm[2] > 1) return +mm[1] * +mm[2];
+  let m = t.match(/\b(\d{1,3}) x (?=\d)/) || t.match(/\b(\d{1,3})[- ]?(?:pack|pk|pcs|pieces|piece)s?\b/) || t.match(/\bpack of (\d{1,3})\b/) || t.match(/\b(\d{1,3}) ?(?:cans|bottles|tins|sachets)\b/) || t.match(/\b(\d{1,2}) for r ?\d/);
+  if (m && +m[1] > 1) return +m[1];
+  return /\b(cases?|crates?|trays?|multi-?packs?|bulk|value pack|family pack|slab of)\b/.test(t) ? 2 : 1;
+}
+// Search words from the AI or the rules: the shops' own names, and no bulk words.
+function asFixQueries(list, bulk) {
+  const out = [];
+  for (const x of list || []) {
+    const q = asStripBulk(srchShopQ(String(x)), !!bulk).replace(/[?!.,]+$/g, "").trim();
+    if (q && /\p{L}/u.test(q) && !out.some((y) => y.toLowerCase() === q.toLowerCase())) out.push(q);
+  }
+  return out;
+}
+// A grocery name: the searched product's first word is one of the first words of the name, so "2 x Brandy
+// 750 ml and Coca-Cola 1 L" is not a Coca-Cola product. Two search words are one name, in that order
+// ("red bull": "Black Bull Red Rage" is not Red Bull).
+function asGroceryFits(intent, title) {
+  const tw = cmpWords(srchAlias(title)).filter((w) => !/^\d/.test(w) && !/^(x|any|pack|case|bulk|new)$/.test(w));
+  return intent.searchQueries.some((sq) => {
+    const w = srchWords(sq);
+    if (!w.length || !srchHas(w, title)) return false;
+    const same = (t, x) => t === x || t === x + "s" || x === t + "s";
+    const at = tw.findIndex((t) => same(t, w[0]));
+    if (at < 0 || at > 3) return false;
+    if (w.length !== 2) return true;
+    return tw.some((t, i) => same(t, w[0]) && i < 4 && tw[i + 1] && same(tw[i + 1], w[1]));
+  });
+}
+
 function asRules(q, country) {
-  const low = String(q || "").toLowerCase();
+  // AB-41: the shops' own names ("coke" = "coca cola"), and no bulk words in the search
+  const low0 = srchAlias(String(q || "")), bulk = asBulk(low0);
+  const low = bulk ? asStripBulk(low0) : low0;
   const b = asBudget(q);
   const currency = (b && b.currency) || SRCH_CC[country] || "ZAR";
   let category = "other";
-  for (const c of ["tv", "laptop", "tablet", "phone", "watch", "audio", "appliance", "gaming"]) if (AS_CAT[c].re.test(low)) { category = c; break; }
+  for (const c of ["tv", "laptop", "tablet", "phone", "watch", "audio", "appliance", "gaming", "bike"]) if (AS_CAT[c].re.test(low)) { category = c; break; }
   // "a TV for my PS5": a TV; "laptop for gaming": a laptop (the order above)
   const specs = [...new Set((asNoBudget(low).match(AS_SPEC) || []).map(asSpecNorm))];
   const mustHave = [], prefer = [], avoid = ["accessories", "cables", "cases", "bags"];
@@ -350,6 +415,10 @@ function asRules(q, country) {
     if (/\b(noise|anc|quiet|flights?|travel|plane)\b/.test(low) && k !== "soundbar" && k !== "bluetooth speaker") { add(prefer, "anc"); searchQueries = [k === "headphones" ? "noise cancelling headphones" : "noise cancelling earbuds", k]; }
   } else if (category === "gaming") {
     searchQueries = [/\bxbox\b/.test(low) ? "Xbox Series" : /\bswitch\b/.test(low) ? "Nintendo Switch" : /\bsteam deck\b/.test(low) ? "Steam Deck" : "PS5 console"];
+  } else if (category === "bike") {
+    // AB-41: the kind of bike, as the bike shops name it
+    searchQueries = [/\b(e-?bikes?|electric)\b/.test(low) ? "e-bike" : /\b(mtb|mountain|trail|hardtail|full suspension)\b/.test(low) ? "mountain bike" : /\broad\b/.test(low) ? "road bike"
+      : /\bgravel\b/.test(low) ? "gravel bike" : /\bbmx\b/.test(low) ? "bmx" : /\b(kids?|child|children|boys?|girls?|balance)\b/.test(low) ? "kids bike" : "bike"];
   } else {
     // other: the words that are left when the budget, the need words and the fillers are out
     const words = low.replace(/(?:^|\s)r ?\d[\d ,.]*k?\b|£ ?\d[\d,.]*k?|\b\d[\d ,.]*(?:rand|zar|pounds?|gbp|quid|k)?\b/g, " ").split(/[^\p{L}\p{N}'-]+/u).filter((w) => w && !AS_FILL.has(w));
@@ -358,9 +427,11 @@ function asRules(q, country) {
     if (core.length) searchQueries = [core.join(" ")];
   }
   if (!/\b(refurb(?:ished)?|renewed|used|pre-?owned|second ?hand)\b/.test(low)) avoid.push("refurbished");
+  // AB-41: groceries, drinks and toiletries ("coke", "red bull", "jungle oats"): not a device, no accessory rules
+  const grocery = category === "other" && (asGroceryText(low) || asGroceryText(String(q || "").toLowerCase()));
   // AB-39: an accessory request ("phone bag", "laptop sleeve", "iPhone 16 case") searches for its own words
   // and every product name must have them; a named brand or model is kept in the search and is required.
-  const accessory = asAccessoryAsk(low);
+  const accessory = !grocery && asAccessoryAsk(low);
   const named = asNamed(low);
   if (accessory) {
     category = "other";
@@ -376,8 +447,9 @@ function asRules(q, country) {
     // a model or a product line: search for it as written; a maker only: the maker and the kind of product
     searchQueries = named.model.length || named.lines.length || !catQ ? [named.phrase] : [(named.makers.join(" ") + " " + catQ.replace(/^(?:garmin|samsung) /i, "")).trim()];
   }
+  searchQueries = asFixQueries(searchQueries, bulk);
   return { category, maxBudget: b ? b.amount : null, currency, searchQueries: searchQueries.slice(0, 2), mustHave, prefer, avoid, by: "rules", use: asUse(low, category),
-    named: accessory ? null : named, accessory, quality: AS_QUALITY.test(low), good: AS_GOOD.test(asNoBudget(low)) };
+    named: accessory || grocery ? null : named, accessory, quality: AS_QUALITY.test(low), good: AS_GOOD.test(asNoBudget(low)), grocery, bulk };
 }
 
 // ---------- 2b. Workers AI: the same fields as strict JSON ----------
@@ -421,7 +493,7 @@ function asMerge(ai, rules, q) {
   if (!ai) return rules;
   const out = { ...rules, by: "ai" };
   const cat = String(ai.category || "").toLowerCase().trim();
-  if (AS_CATEGORIES.includes(cat) && !rules.accessory) out.category = rules.category !== "other" ? rules.category : cat;
+  if (AS_CATEGORIES.includes(cat) && !rules.accessory && !rules.grocery) out.category = rules.category !== "other" ? rules.category : cat;
   if (rules.maxBudget == null && Number.isFinite(Number(ai.maxBudget)) && Number(ai.maxBudget) > 0) {
     // only a number that is in the request
     const n = Math.round(Number(ai.maxBudget)), digits = String(q).replace(/[ ,]/g, "");
@@ -429,7 +501,7 @@ function asMerge(ai, rules, q) {
   }
   const sq = asWordList(ai.searchQueries, 2, 40).filter((s) => s.split(" ").length <= 5 && /\p{L}/u.test(s));
   // the rules' searches are known to work at the shops; the AI's searches are used for "other" requests
-  if (rules.accessory || rules.named) out.searchQueries = rules.searchQueries;   // AB-39: the user's own words
+  if (rules.accessory || rules.named || (rules.grocery && rules.searchQueries.length)) out.searchQueries = rules.searchQueries;   // AB-39: the user's own words
   else if (rules.category === "other" && sq.length) out.searchQueries = sq;
   else if (sq.length && rules.searchQueries.length < 2 && !rules.searchQueries.some((x) => x.toLowerCase() === sq[0].toLowerCase())) out.searchQueries = [...rules.searchQueries, sq[0]].slice(0, 2);
   const lowQ = asNoBudget(String(q).toLowerCase());
@@ -554,6 +626,7 @@ async function asIntent(env, q, country, ms = AS_INTENT_MS) {
   const rules = asRules(q, country);
   const { obj, why, model } = await asAiCall(env, AS_AI_SYSTEM, "Shopping request: " + asAiText(q) + "\nCountry: " + (country === "GB" ? "UK" : "South Africa"), 160, AS_INTENT_KEYS, ms);
   const intent = asMerge(obj, rules, q);
+  intent.searchQueries = asFixQueries(intent.searchQueries, intent.bulk);   // AB-41: "coke" -> "coca cola", no "bulk"
   if (!intent.searchQueries.length) intent.searchQueries = rules.searchQueries;
   return { intent, why, model: obj ? model : "rules" };
 }
@@ -651,10 +724,15 @@ function asFits(intent, title, q) {
   if (intent.avoid.includes("refurbished") && CMP_CONDITION.test(t)) return false;
   // AB-39: an accessory request: every word of its search (a "phone bag" is a bag for a phone)
   if (intent.accessory) return intent.searchQueries.some((sq) => { const w = srchWords(sq); return w.length > 0 && srchHas(w, title); });
+  // AB-41: groceries and drinks: the product's own words near the start ("Coca-Cola 24 x 300ml" for "coke");
+  // a case, a tray or a pack of cans is the product, not an accessory
+  if (intent.grocery) return !CMP_ACCESSORY_GROCERY.test(t) && asGroceryFits(intent, title);
   if (CMP_ACCESSORY.test(t)) return false;
   // AB-39, all kinds of products: no accessories, nothing made "for" another device, no headphones or VR sets
   // for a request that is not for audio, and the named brand and model (not only after "for …")
   if (AS_ACC_ANY.test(head)) return false;
+  // AB-41: spare parts of bikes, vehicles and appliances (inner tubes, tyres, pedals, filters, brush heads…)
+  if (AS_PARTS.test(head)) return false;
   // AB-39b: companion items on the whole name (minus a bundle part), and names made for many devices
   const body = t.split(/\b(?:with|incl(?:udes?|uding)?|bundle|and free)\b/)[0].replace(AS_CHARGE_FEATURE, " ");
   if (AS_COMPANION.test(body)) return false;
@@ -699,6 +777,29 @@ function asCandidates(intent, answers) {
   }
   return out;
 }
+// AB-41: live flyer deals (src/flyer.js, South Africa) for the searches, as candidates with the flyer's own
+// details. Only deals that show now (each deal stops at 23:59:59 SAST on its own last day).
+function asFlyerCands(intent, country, t = now()) {
+  if (country !== "ZA") return { cands: [], shops: [], until: Infinity };
+  const out = [], seen = new Set(), shops = new Set();
+  let until = Infinity;
+  for (const sq of intent.searchQueries) for (const h of flyerHits(sq, t)) for (const d of h.deals) {
+    const k = h.f.id + ":" + d.id;
+    if (seen.has(k)) continue;
+    const it = flyItem(h.f, d), shop = cmpShopById(h.f.id);
+    // the flyer's own name first; with the brand in front only for one brand ("Richelieu / Coca-Cola" is a combo)
+    const own = String(d.title).replace(/\s+/g, " ").trim().slice(0, 200);
+    const withBrand = d.brand && !/[\/,&+]/.test(d.brand) && !cmpNorm(d.title).includes(cmpNorm(d.brand)) ? (d.brand + " " + own).slice(0, 200) : null;
+    const title = asFits(intent, own, sq) ? own : withBrand && asFits(intent, withBrand, sq) ? withBrand : null;
+    if (!shop || !title || !(it.price > 0)) continue;
+    const floor = !intent.accessory && (AS_FLOOR.ZAR || {})[intent.category];
+    if (floor && it.price < floor) continue;
+    seen.add(k); shops.add(shop.name); until = Math.min(until, it.until);
+    out.push({ title, price: Math.round(it.price * 100) / 100, was: null, currency: "ZAR", shop: shop.name, shop_id: shop.id, url: it.url,
+      flyer: { deal: it.deal, need: it.need, limit: it.limit, qty: it.qty, total: it.total, multi: it.multi, label: it.label, region: it.region, valid_from: it.valid_from, valid_to: it.valid_to, until: it.until, site: it.site, fine: it.fine, badges: it.badges, regular: it.regular, note: it.note } });
+  }
+  return { cands: out, shops: [...shops], until };
+}
 // Score: specs in the name (must have x3, prefer x1), then the budget (in it, and at least half of it), then
 // the lowest price.
 function asScore(intent, c) {
@@ -718,11 +819,12 @@ function asPick(intent, cands) {
   for (const c of byPrice) {
     const k = asModelKey(c.title);
     const tail = asTail(c.title);
-    const same = models.find((m) => asSameModel(m.key, k, m.price === c.price, new Set([...tail, ...m.tail])));
+    // AB-41: groceries: one listing per product at each shop (the same drink at two shops is two choices)
+    const same = models.find((m) => (!intent.grocery || m.shop_id === c.shop_id) && asSameModel(m.key, k, m.price === c.price, new Set([...tail, ...m.tail])));
     if (same) { same.others++; continue; }
     models.push({ ...c, key: k, tail, others: 0 });
   }
-  const scored = models.map((m) => ({ ...m, ...asScore(intent, m) }));
+  const scored = models.map((m) => ({ ...m, ...asScore(intent, m), pack: asPackN(m) }));
   // AB-39: "best …" with no budget: the higher models of a range first (Ultra, Pro Max, Pro), then the
   // higher price, not the cheapest product
   const best = !!intent.quality && intent.maxBudget == null;
@@ -731,11 +833,13 @@ function asPick(intent, cands) {
   const good = !best && !!intent.good && intent.maxBudget == null;
   const prices = scored.map((x) => x.price).sort((a, b) => a - b), mid = prices.length ? prices[Math.floor(prices.length / 2)] : 0;
   const away = (x) => Math.abs(Math.log(x.price / (mid || x.price)));
-  const within = scored.filter((x) => !x.over).sort(best ? (a, b) => b.s - a.s || asTier(b.title) - asTier(a.title) || b.price - a.price
+  // AB-41: "in bulk", "case", "multi-buy": packs, cases and multi-buy deals first (the bigger pack first), then the price
+  const bulk = !!intent.bulk;
+  const within = scored.filter((x) => !x.over).sort(bulk ? (a, b) => (b.pack > 1) - (a.pack > 1) || b.s - a.s || b.pack - a.pack || a.price - b.price : best ? (a, b) => b.s - a.s || asTier(b.title) - asTier(a.title) || b.price - a.price
     : good ? (a, b) => b.s - a.s || asTier(b.title) - asTier(a.title) || away(a) - away(b) || b.price - a.price : (a, b) => b.s - a.s || a.price - b.price);
   const over = scored.filter((x) => x.over).sort((a, b) => a.price - b.price || b.s - a.s);
   const ranked = within.concat(over);
-  const clean = ({ key, tail, s, ...x }) => x;
+  const clean = ({ key, tail, s, pack, ...x }) => (pack > 1 ? { ...x, pack } : x);
   return { top: ranked.slice(0, AS_TOP).map(clean), rest: ranked.slice(AS_TOP, AS_TOP + AS_MORE).map(clean), total: ranked.length, within: within.length, shops: new Set(ranked.map((x) => x.shop)).size };
 }
 
@@ -751,7 +855,7 @@ function asUse(low, category) {
   if (/\b(running|runner|marathon|jogging|triathlon)\b/.test(t)) return "Good for running";
   if (/\b(work|office|business)\b/.test(t)) return "Good for work";
   if (/\b(flights?|travel|plane)\b/.test(t)) return "Good for travel";
-  return { laptop: "Good for everyday work and study", tv: "Good for TV, films and sport", watch: "Good for training", audio: "Good for music and calls", phone: "Good for calls, photos and apps", tablet: "Good for reading, video and apps", gaming: "Good for gaming" }[category] || "A match for your request";
+  return { laptop: "Good for everyday work and study", tv: "Good for TV, films and sport", watch: "Good for training", audio: "Good for music and calls", phone: "Good for calls, photos and apps", tablet: "Good for reading, video and apps", gaming: "Good for gaming", bike: "Good for riding" }[category] || "A match for your request";
 }
 // The real specs in a product name, each with what it does for the buyer in everyday words. Only what the
 // name says: no battery life, weight or other facts that are not in it.
@@ -786,6 +890,13 @@ function asFeats(title, category) {
   } else if (category === "audio") {
     if (/\b(anc|noise cancell?ing)\b/.test(t)) out.push("noise cancelling blocks background noise");
     if (/\b(wireless|bluetooth)\b/.test(t)) out.push("it connects with no cable");
+  } else if (category === "bike") {
+    // AB-41: only what the name says (wheel size, gears, brakes, suspension)
+    const wh = t.match(/\b(12|14|16|20|24|26|27\.5|29) inch\b/) || (/\b29er\b/.test(t) ? [0, "29"] : null);
+    if (wh) out.push(`${wh[1]}-inch wheels`);
+    const sp = t.match(/\b(\d{1,2}) ?-?(?:speed|spd)\b/); if (sp && +sp[1] > 1) out.push(`${sp[1]} gears`);
+    if (/\b(hydraulic )?disc brakes?\b/.test(t)) out.push("disc brakes");
+    if (/\b(full suspension|dual[- ]sus\w*)\b/.test(t)) out.push("full suspension");
   } else if (category === "phone") {
     // AB-39: "many apps" only from 8GB, "several apps" from 6GB; less memory: no claim
     if (ram && ram.n >= 6) out.push(ram.n >= 8 ? `${ram.n}GB memory runs many apps at once` : `${ram.n}GB memory runs several apps at once`);
@@ -805,6 +916,12 @@ function asBudgetLine(intent, p) {
 }
 // Rule reason (AB-32): 2 plain sentences. What it is good for and what its real specs do, then the price line.
 function asRuleReason(intent, p, i, picks) {
+  // AB-41: a flyer deal: the flyer's own words (the multi-buy rule, the limit, the loyalty card, the dates)
+  if (p.flyer) {
+    const f = p.flyer;
+    return [`In-store flyer deal: ${f.need || f.deal}.`, f.limit ? f.limit + "." : "", f.badges && f.badges.length ? `You need the ${asJoin(f.badges)} card.` : "", `Valid at ${f.label}.`].filter(Boolean).join(" ");
+  }
+  if (intent.grocery) return (p.pack > 1 && intent.bulk ? (p.pack > 2 ? `This is a pack of ${p.pack}. ` : "This is a pack of more than one item. ") : "") + "It matches your request. " + asBudgetLine(intent, p);
   const use = intent.use || asUse("", intent.category);
   const feats = asFeats(p.title, intent.category);
   const first = feats.length ? `${use}: ${asJoin(feats)}.` : "It matches your request, but the name does not list the main specs.";
@@ -856,6 +973,7 @@ async function asReasons(env, q, intent, picks, ms = AS_REASON_MS) {
   const { obj, why, model } = await asAiCall(env, AS_REASON_SYSTEM, user, 40 + 70 * picks.length, AS_REASON_KEYS.slice(0, picks.length), ms);
   const reasons = rules.slice(), by = picks.map(() => "rules");
   if (obj) picks.forEach((p, i) => {
+    if (p.flyer) return;   // AB-41: a flyer deal keeps the flyer's own words
     const r = asAiText(obj[String(i + 1)], 300);
     if (asReasonOk(r, factsOf(p) + " " + q + " " + budget + " " + asMoney(Math.abs((intent.maxBudget || 0) - p.price), p.currency), factsOf(p))) { reasons[i] = /[.!?]$/.test(r) ? r : r + "."; by[i] = "ai"; }
   });
@@ -863,8 +981,10 @@ async function asReasons(env, q, intent, picks, ms = AS_REASON_MS) {
 }
 // Every pick must be one of the real candidates: same link, name, price and shop. Anything else is dropped.
 function asValidate(picks, cands) {
-  const real = new Map(cands.map((c) => [c.url, c]));
-  return picks.filter((p) => { const c = real.get(p.url); return !!c && c.title === p.title && c.price === p.price && c.shop === p.shop && c.currency === p.currency; });
+  // flyer deals of one flyer share one link (the shop's home page): the name and the price keep them apart
+  const k = (x) => x.url + "|" + x.title + "|" + x.price;
+  const real = new Map(cands.map((c) => [k(c), c]));
+  return picks.filter((p) => { const c = real.get(k(p)); return !!c && c.title === p.title && c.price === p.price && c.shop === p.shop && c.currency === p.currency; });
 }
 
 // The one line that says what we understood: "Budget: up to R15 000 · Looking for: laptop (16GB, SSD)".
@@ -874,7 +994,7 @@ function asUnderstanding(intent) {
   const parts = [];
   if (intent.maxBudget != null) parts.push(`Budget: up to ${asMoney(intent.maxBudget, intent.currency)}`);
   else parts.push("Budget: not given");
-  parts.push(`Looking for: ${what}${specs.length ? " (" + specs.join(", ") + ")" : ""}`);
+  parts.push(`Looking for: ${what}${specs.length ? " (" + specs.join(", ") + ")" : ""}${intent.bulk ? " (packs and cases first)" : ""}`);
   return parts.join(" · ");
 }
 
@@ -924,7 +1044,7 @@ async function apiAssist(req, env, ctx) {
   if (hit) return json({ ...hit, cached: true });
   const t0 = now();
   // a known kind of product: search the shops now with the rules' searches, while the AI reads the request
-  const rules = asRules(v.q, country), early = rules.category !== "other" || !!rules.named || rules.accessory;
+  const rules = asRules(v.q, country), early = rules.category !== "other" || !!rules.named || rules.accessory || (rules.grocery && rules.searchQueries.length > 0);
   const intentP = asIntent(env, v.q, country, AS_INTENT_MS);
   let ir = early ? null : await intentP;
   const { pairs, notSearched } = asPairs(early ? rules : ir.intent, country);
@@ -933,16 +1053,19 @@ async function apiAssist(req, env, ctx) {
   ir = irDone;
   const { intent, why: intentWhy, model: intentModel } = ir;
   if (early) intent.searchQueries = rules.searchQueries;   // what we searched
-  const cands = asCandidates(intent, answers.filter((a) => a.status === "ok"));
+  // AB-41: South Africa: the live flyer deals too (Pick n Pay, SPAR & TOPS, Shoprite, Food Lover's Market)
+  const fly = asFlyerCands(intent, country);
+  const cands = asCandidates(intent, answers.filter((a) => a.status === "ok")).concat(fly.cands);
   const ranked = asPick(intent, cands);
   // the second AI call only when there is time: else the rule reasons (no wait)
   const spent = now() - t0;
   const { reasons, by, why: reasonWhy, model: reasonModel } = ranked.top.length ? await asReasons(env, v.q, intent, ranked.top, spent > AS_REASON_SKIP ? 0 : Math.min(AS_REASON_MS, 6500 - spent)) : { reasons: [], by: [], why: "no picks", model: "rules" };
-  const strip = (p) => ({ title: p.title, price: p.price, was: p.was, currency: p.currency, shop: p.shop, url: p.url, over_budget: !!p.over });
+  const strip = (p) => ({ title: p.title, price: p.price, was: p.was, currency: p.currency, shop: p.shop, url: p.url, over_budget: !!p.over, ...(p.pack > 1 ? { pack: p.pack } : {}), ...(p.flyer ? { flyer: p.flyer } : {}) });
   const picks = asValidate(ranked.top.map((p, i) => ({ rank: i + 1, ...strip(p), reason: reasons[i], reason_by: by[i], specs: p.must.concat(p.pref).map(asSpecLabel) })), cands);
   const more = asValidate(ranked.rest.map(strip), cands);
   const st = {};
   for (const a of answers) { const k = a.status === "ok" ? "searched" : a.status === "robots" ? "robots" : "failed"; (st[k] = st[k] || new Set()).add(a.shop.name); }
+  for (const n of fly.shops) (st.searched = st.searched || new Set()).add(n);
   for (const k of Object.keys(st)) st[k] = [...st[k]];
   if (st.failed && st.searched) st.failed = st.failed.filter((n) => !st.searched.includes(n));
   let note = "";
@@ -952,7 +1075,7 @@ async function apiAssist(req, env, ctx) {
   else if (intent.maxBudget != null && ranked.within < picks.length) note = `Only ${ranked.within} match${ranked.within === 1 ? " is" : "es are"} in your budget. The other picks cost more.`;
   const out = {
     q: v.q, country, currency: intent.currency === (country === "GB" ? "GBP" : "ZAR") ? intent.currency : SRCH_CC[country],
-    intent: { category: intent.category, maxBudget: intent.maxBudget, currency: intent.currency, searchQueries: intent.searchQueries, mustHave: intent.mustHave, prefer: intent.prefer, avoid: intent.avoid, by: intent.by, named: intent.named ? intent.named.phrase : null, accessory: !!intent.accessory },
+    intent: { category: intent.category, maxBudget: intent.maxBudget, currency: intent.currency, searchQueries: intent.searchQueries, mustHave: intent.mustHave, prefer: intent.prefer, avoid: intent.avoid, by: intent.by, named: intent.named ? intent.named.phrase : null, accessory: !!intent.accessory, grocery: !!intent.grocery, bulk: !!intent.bulk },
     understanding: asUnderstanding(intent), picks, more, total: ranked.total, shop_count: ranked.shops, within_budget: ranked.within, note,
     shops: { searched: st.searched || [], failed: st.failed || [], robots: st.robots || [], notSearched },
     ai: { intent: intent.by === "ai", reasons: by.includes("ai"), models: { intent: intentModel || "rules", reasons: reasonModel || "rules" } }, checked_at: now(),
@@ -960,7 +1083,9 @@ async function apiAssist(req, env, ctx) {
   console.log(JSON.stringify({ assist: { country, cat: intent.category, intent: intentWhy, intentModel, reasons: reasonWhy, reasonModel, shops: pairs.length, cands: cands.length, picks: picks.length, slow: answers.filter((a) => a.status === "slow").length, early, ms: now() - t0 } }));
   // keep a good answer 20 minutes; an answer with failed shops only 2 minutes
   const slow = answers.some((a) => a.status === "slow");
-  const put = srchCachePut(key, out, ((st.failed || []).length && !picks.length) || slow ? 120 : AS_TTL);
+  // an answer with flyer deals is never kept past the end of any of them
+  const flyLeft = fly.cands.length ? Math.max(0, Math.floor((fly.until - now()) / 1000)) : Infinity;
+  const put = srchCachePut(key, out, Math.min(flyLeft, ((st.failed || []).length && !picks.length) || slow ? 120 : AS_TTL));
   if (ctx && ctx.waitUntil) ctx.waitUntil(put); else await put;
   return json(out);
 }

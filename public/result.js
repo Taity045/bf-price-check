@@ -869,18 +869,27 @@ async function assist(q, c) {
   const noteTop = picks.length && d.note ? d.note : "";
   $("asNoteTop").textContent = noteTop; $("asNoteTop").classList.toggle("hidden", !noteTop);
   const ob = (it) => (it.over_budget ? '<span class="obud">Over budget</span>' : "");
-  $("asPicks").innerHTML = picks.map((p, i) => `<li><span class="rk">#${i + 1}${i === 0 ? " Best match" : ""}</span>${ob(p)}`
+  // AB-41: a flyer deal shows the flyer's own words (multi-buy rule, limit, dates, card, fine print) and the
+  // shop's site (no price history: it is not a product page)
+  const asPrice = (it) => (it.flyer ? it.flyer.deal : money(it.price, it.currency));
+  const asFly = (it) => (it.flyer ? [it.flyer.need, it.flyer.limit, it.flyer.regular].filter(Boolean).length ? `<div class="small fn">${esc([it.flyer.need, it.flyer.limit, it.flyer.regular].filter(Boolean).join(". "))}.</div>` : "" : "")
+    + (it.flyer ? `<div class="small fn">${esc(it.flyer.label)}</div>` + (it.flyer.note ? `<div class="small fn">${esc(it.flyer.note)}</div>` : "") + (it.flyer.fine ? `<div class="small fn fp">${esc(it.flyer.fine)}</div>` : "") : "");
+  const asAct = (it) => (it.flyer
+    ? `<div class="sa"><span class="ftag">In-store flyer deal</span>${(it.flyer.badges || []).map((b) => `<span class="ftag card" title="Loyalty card deal">${esc(b)}</span>`).join("")}<a href="${esc(it.url)}" target="_blank" rel="noopener nofollow">${esc(it.flyer.site || "Shop site")} ↗</a></div>`
+    : `<div class="sa"><button type="button" data-u="${esc(it.url)}">Check price history</button><a href="${esc(it.url)}" target="_blank" rel="noopener nofollow">Open at shop ↗</a></div>`);
+  $("asPicks").innerHTML = picks.map((p, i) => `<li${p.flyer ? ' class="fl"' : ""}><span class="rk">#${i + 1}${i === 0 ? " Best match" : ""}</span>${ob(p)}`
     + `<div class="st">${esc(p.title)}</div>`
-    + `<div class="sm"><span class="sp num">${esc(money(p.price, p.currency))}</span><span class="small">${esc(p.shop)}</span></div>`
+    + `<div class="sm"><span class="sp num">${esc(asPrice(p))}</span><span class="small">${esc(p.shop)}</span></div>`
+    + asFly(p)
     + `<p class="why">${esc(p.reason)}</p>`
-    + `<div class="sa"><button type="button" data-u="${esc(p.url)}">Check price history</button><a href="${esc(p.url)}" target="_blank" rel="noopener nofollow">Open at shop ↗</a></div></li>`).join("");
+    + asAct(p) + `</li>`).join("");
   $("asEmpty").classList.toggle("hidden", !!picks.length);
   if (!picks.length) $("asEmpty").textContent = d.note || "We found no products in stock that match. Use other words, or paste a product link.";
   $("asMore").classList.toggle("hidden", !more.length);
   $("asMoreSum").textContent = `All matching results (${more.length} more)`;
-  $("asList").innerHTML = more.map((it) => `<li><div class="st">${esc(it.title)}</div>`
-    + `<div class="sm"><span class="sp num">${esc(money(it.price, it.currency))}</span><span class="small">${esc(it.shop)}</span>${ob(it)}</div>`
-    + `<div class="sa"><button type="button" data-u="${esc(it.url)}">Check price history</button><a href="${esc(it.url)}" target="_blank" rel="noopener nofollow">Open at shop ↗</a></div></li>`).join("");
+  $("asList").innerHTML = more.map((it) => `<li${it.flyer ? ' class="fl"' : ""}><div class="st">${esc(it.title)}</div>`
+    + `<div class="sm"><span class="sp num">${esc(asPrice(it))}</span><span class="small">${esc(it.shop)}</span>${ob(it)}</div>`
+    + asFly(it) + asAct(it) + `</li>`).join("");
   $("asAct").classList.toggle("hidden", !picks.length);
   const sh = d.shops || {}, parts = [];
   if ((sh.searched || []).length) parts.push(`Searched: ${sh.searched.join(", ")}.`);
