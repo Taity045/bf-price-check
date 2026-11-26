@@ -3,8 +3,18 @@
 import json, pathlib
 root = pathlib.Path(__file__).parent
 html = (root / "public/index.html").read_text()
-examples = json.loads((root / "examples.json").read_text()) if (root / "examples.json").exists() else []
-html = html.replace("/*EXAMPLES*/[]", json.dumps(examples))
+import html as htmllib, urllib.parse
+def picks_html(groups):
+    """Home page picks: one row of group chips and one short list per group, written into the page at build time
+    (no layout shift, no extra request). Only names, shops and links: never a price (prices come from a live check)."""
+    if not groups: return ""
+    e = lambda s: htmllib.escape(str(s), quote=True)
+    chips = "".join(f'<button type="button" class="cat" data-g="{e(g["id"])}" aria-controls="pk-{e(g["id"])}" aria-pressed="{"true" if i == 0 else "false"}">{e(g["label"])}</button>' for i, g in enumerate(groups))
+    lists = "".join(f'<ul class="picks" id="pk-{e(g["id"])}" aria-label="{e(g["label"])}"{"" if i == 0 else " hidden"}>' + "".join(
+        f'<li><a href="/?u={e(urllib.parse.quote(it["url"], safe=""))}"><b>{e(it["name"])}</b><span>{e(it["shop"])}{" · UK" if it.get("cc") == "UK" else ""}</span></a></li>' for it in g["items"]) + "</ul>" for i, g in enumerate(groups))
+    return f'<div class="cats" id="cats" role="group" aria-label="Product groups">{chips}</div><div id="chips">{lists}</div>'
+examples = json.loads((root / "examples.json").read_text()) if (root / "examples.json").exists() else {}
+html = html.replace("<!--PICKS-->", picks_html(examples.get("groups", [])))
 import base64, hashlib, re, subprocess
 TARGETS = "--target=chrome70,safari12,firefox68,edge79"
 def esbuild(code, loader):

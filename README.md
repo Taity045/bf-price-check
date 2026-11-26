@@ -111,7 +111,13 @@ Re-make it: `python3 scripts/make_shops.py --add "MediaMarkt Germany,DE,mediamar
 
 ## Features
 
-The home page stays clean: heading, link box, Check price, 3 example links (Takealot AirPods 4, Evetech gaming PC, Takealot PS5 Slim), and a short 3-step line on desktop. Everything else is behind small links or on the result page.
+The home page stays clean: heading, link box, Check price, "Try a popular product" picks, and a short 3-step line on desktop. Everything else is behind small links or on the result page.
+
+**Popular product picks.** One row of group chips: Popular, Gaming, Audio & watches, Computers, Appliances, Beauty, Groceries, Fashion. On phones the row scrolls sideways; from 768 px the chips sit on one centred line. A chip shows 4–6 real products, each with its name and shop (and "UK" for UK shops). A tap (or Enter) fills the link box and checks that product at once. The picks show no prices: the price always comes from the live check.
+- The list is `examples.json` (groups, then name, shop, `ZA`/`UK`, link). `build.py` writes the chips and lists into the page, so there is no extra request and no layout shift. Only the Popular list shows at first; the others have `hidden`.
+- Rules for a pick (`tests/unit/home-picks.test.mjs`): a shop we read cleanly (in `SHOP_LIST.works`), never a blocked shop or one that makes people type the price (Amazon, Kurt Geiger, Makro, Game, Dis-Chem…), 4–6 products a group, no price fields, every Popular product also in its own group.
+- Before a change, check every link live: `node scripts/check_examples.mjs [BASE]` asks our own `/api/check` for each link (one every 4 s, under our rate limit) and fails if one gives no price. On 2026-11-26 all 34 links gave a price. Stock was checked on the shop page where it shows it (schema.org `availability`, Shopify `available`); we left out links that were out of stock, redirected to another page, read the wrong product, or showed a bot check.
+- Clicks on a pick count as `example` in the private stats.
 
 | Feature | Where | Data |
 |---|---|---|
@@ -195,7 +201,7 @@ On a result page the "Other shops" panel (under the price chart and the buttons,
 
 **Currency**: Shopify shops can price for the visitor's country (our servers abroad saw Escentual in USD and Lakeland without UK VAT). Checking a product page at a Shopify shop we know (`CMP_SHOPS`) adds `?country=…&currency=…` for its home country, and every compare request to a Shopify shop asks for the shop's home country and currency (`country=GB&currency=GBP`, `country=ZA&currency=ZAR`), and an answer the shop says is priced in another currency is refused.
 
-**Which shops are searched** depends on the kind of product, so a bike is never searched at a computer shop and a book never at a TV shop. The kind (`cmpCategory`) comes from, in order: words in the title (bike, MTB, groupset, cycling…, air fryer, TV…); the shop's own category on the page (JSON-LD `Product.category`, `BreadcrumbList`, Shopify product type; a bike shop's breadcrumbs win over the title); then the kind of shop the page is from (a page at a bike shop is a bike-shop item). Only shops that sell that kind, plus general shops (Takealot, Loot), are searched, specialists first, and a brand's own shop (PUMA) for that brand. When we can't tell the kind, only general shops are searched, and the page says so. The shop the product came from is not searched again.
+**Which shops are searched** depends on the kind of product, so a bike is never searched at a computer shop and a book never at a TV shop. The kind (`cmpCategory`) comes from, in order: words in the title (bike, MTB, groupset, cycling…, air fryer, TV…); the shop's own category on the page (JSON-LD `Product.category`, `BreadcrumbList`, Shopify product type; a bike shop's breadcrumbs win over the title); then the kind of shop the page is from (a page at a bike shop is a bike-shop item). Only shops that sell that kind, plus general shops (Takealot, Loot), are searched, specialists first, and a brand's own shop (PUMA) for that brand. When we can't tell the kind, only general shops are searched, and the page says so. The shop the product came from is not searched again. A colour word is not a drink: a "Champagne Matte" kettle or a "Wine Red" toaster is an appliance, not liquor (a liquor word with a machine word such as kettle, toaster or mug does not count).
 
 The panel names what was searched: "Checked 5 bike shops (Olympic Cycles, Mellow Velo, …) and 2 general shops (Takealot, Loot).", then "No exact match at any of them." when none has it. When we know no shops for that kind of product in that country it says "We don't know other shops here that sell toys yet, so we didn't compare." instead of a count of shops that don't sell it.
 
@@ -237,7 +243,7 @@ Each row shows the shop, price (and "was" price), the difference against this pa
 | `src/shops.js` | Shops we check / known blocked (generated from research + `data/live_status.json`) |
 | `public/index.html` | The app (plain HTML/CSS/JS, inline SVG chart, mobile first; desktop layout from 900 px) |
 | `public/fonts/`, `public/og-home.*`, `public/og-square.jpg`, `public/favicon.ico`, `public/apple-touch-icon.png` | Self-hosted font subsets, static share cards, icons |
-| `examples.json` | Example links on the home page |
+| `examples.json` | Home page picks: group chips and their products (built into the page by `build.py`); check them live with `scripts/check_examples.mjs` |
 | `schema.sql` | D1 tables |
 | `build.py` | Minifies JS/CSS (esbuild, Chrome 70 / Safari 12 targets), embeds fonts, script, card and HTML into `dist/worker.js` |
 
