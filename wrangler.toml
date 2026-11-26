@@ -77,8 +77,16 @@ name = "RL_CMP_SLOW"
 namespace_id = "7108"
 simple = { limit = 6, period = 60 }
 
+# Workers AI (src/compare.js, cmpAiJudge): a small model checks only borderline compare matches.
+# Free plan: 10,000 Neurons per day; the worker stops at CMP_AI_DAILY calls per day (about 4,500 Neurons).
+# Without this binding (or with AI_MATCH = "off"), compare uses the rules only. In `wrangler dev` the binding
+# needs Cloudflare login; CI's local test worker has no login, so it tests the rules-only fallback.
+[ai]
+binding = "AI"
+
 [vars]
 SITE_URL = "https://bf-price-check.tm-deal-lab.workers.dev"
 MAIL_FROM = "no-reply@veldwire.com"
 ALERTS = "off"
+AI_MATCH = "on"   # "off" = compare uses the rules only (no Workers AI calls)
 WALL = "off"   # turn on when there are at least ~10 real fake-discount catches from ZA/UK shops

@@ -47,6 +47,9 @@ jobs:
           echo "E2E_KEY=$key" > .dev.vars; echo "E2E_KEY=$key" >> "$GITHUB_ENV"
           # Local only: open the stats dashboard at /__stats without Access, and count test traffic.
           printf 'STATS_DEV=1\nSTATS_COUNT_E2E=1\n' >> .dev.vars
+          # The Workers AI binding needs a Cloudflare login in wrangler dev, and this job has none: the local
+          # worker runs without it, so the browser tests check the rules-only fallback (unit tests fake env.AI).
+          python3 scripts/strip_ai_binding.py wrangler.toml
           npx wrangler d1 execute bf-price-check-db --local --file schema.sql > /dev/null
           nohup npx wrangler dev --port 8787 --ip 127.0.0.1 --show-interactive-dev-session=false > wrangler-dev.log 2>&1 &
           for i in $(seq 1 90); do
@@ -122,7 +125,13 @@ jobs:
         if: steps.token.outputs.d1_edit != 'true'
         run: echo "::notice title=D1 schema skipped::The Cloudflare token has no D1 Edit permission. The worker creates its tables itself (CREATE TABLE IF NOT EXISTS), so the deploy goes ahead."
       - name: Deploy
-        run: npx wrangler deploy
+        # If a deploy with the Workers AI binding fails (for example the token has no Workers AI permission),
+        # deploy again without it: compare then uses the rules only, and the site stays up.
+        run: |
+          if npx wrangler deploy; then exit 0; fi
+          echo "::warning title=Deployed without Workers AI::The deploy with the [ai] binding failed. Deploying again without it; compare uses the rules only. Give the token Account > Workers AI > Read, then run the deploy again."
+          python3 scripts/strip_ai_binding.py wrangler.toml
+          npx wrangler deploy
       - name: Archive loader key (worker secret, set once)
         # The key for POST /api/admin/archive-load (src/archive.js). Without it the endpoint answers 404.
         env:

@@ -30,6 +30,9 @@ row("Account > D1 (read)", d1Read, "wrangler d1 info / list");
 // A read-only SELECT through the query endpoint needs D1 Edit.
 const d1Edit = (await cf(`/accounts/${ACCOUNT}/d1/database/${DB_ID}/query`, { method: "POST", body: JSON.stringify({ sql: "SELECT 1 AS ok" }) })).ok;
 row("Account > D1 Edit", d1Edit, "wrangler d1 execute / migrations apply --remote");
+// Workers AI binding in wrangler.toml ([ai]): a deploy with the binding may need Workers AI Read.
+const workersAi = (await cf(`/accounts/${ACCOUNT}/ai/models/search?per_page=1`)).ok;
+row("Account > Workers AI (read)", workersAi, "deploy with the [ai] binding (AI check in compare)");
 row("Account > Workers custom domains (read)", (await cf(`/accounts/${ACCOUNT}/workers/domains`)).ok, "custom domain on deploy");
 
 const z = await cf(`/zones?name=${encodeURIComponent(ZONE)}`);
@@ -46,4 +49,4 @@ lines.push("| Permission | Granted | Needed for |", "|---|---|---|");
 for (const r of rows) lines.push(`| ${r.permission} | ${r.ok ? "yes" : "**no**"} | ${r.needed} |`);
 console.log(lines.join("\n"));
 if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, "### " + lines.join("\n") + "\n");
-if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `d1_edit=${d1Edit}\n`);
+if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `d1_edit=${d1Edit}\nworkers_ai=${workersAi}\n`);

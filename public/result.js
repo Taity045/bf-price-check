@@ -457,8 +457,9 @@ function cmpHeadline(plan, shops, results, herePrice, LEVEL) {
   if (cheaper.length) {
     const b = cheaper[0], save = Math.round((herePrice - b.match.price) * 100) / 100;
     const more = cheaper.length > 1 ? ` Also cheaper at ${andList(cheaper.slice(1).map((r) => r.name))}.` : "";
-    const chk = b.match.level === "name" ? " Check the model and colour on the shop's page." : "";
-    return ["good", `Cheaper at ${b.name}: ${money(b.match.price, C)}`, `Save ${money(save, C)} (${pct(save / herePrice)}). ${LEVEL[b.match.level]} as this product.${chk}${more}${done < n ? ` Still checking ${n - done} more.` : " Delivery not included."}`, true, { best: { name: b.name, price: b.match.price, save, C } }];
+    const chk = b.match.level === "name" || b.match.level === "ai" ? " Check the model and colour on the shop's page." : "";
+    const same = b.match.level === "ai" ? "An AI check says it is the same product." : `${LEVEL[b.match.level] || "Same product"} as this product.`;
+    return ["good", `Cheaper at ${b.name}: ${money(b.match.price, C)}`, `Save ${money(save, C)} (${pct(save / herePrice)}). ${same}${chk}${more}${done < n ? ` Still checking ${n - done} more.` : " Delivery not included."}`, true, { best: { name: b.name, price: b.match.price, save, C } }];
   }
   if (done < n) return ["", `Checking ${n} shop${n === 1 ? "" : "s"}…`, `${done} of ${n} done. We look for the exact same product for less.`];
   const failed = shops.filter((s) => results[s.id] && !["match", "none", "skipped", "robots"].includes(results[s.id].status)).map((s) => s.name);
@@ -492,7 +493,8 @@ async function loadOthers(my) {
     return;
   }
   const ago = (t) => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? "just now" : m < 60 ? m + " min ago" : Math.round(m / 60) + " h ago"; };
-  const LEVEL = { barcode: "Same barcode", model: "Same model number", name: ["groceries", "baby"].includes(plan.product.category) ? "Same name and size" : "Same name and specs" };
+  // ai = the names are not the same word for word, and an AI check says it is the same product (src/compare.js).
+  const LEVEL = { barcode: "Same barcode", model: "Same model number", name: ["groceries", "baby"].includes(plan.product.category) ? "Same name and size" : "Same name and specs", ai: "Same product (AI check)" };
   const render = () => {
     const done = shops.filter((s) => results[s.id]).length;
     const matches = shops.map((s) => results[s.id]).filter((r) => r && r.status === "match" && r.match);
@@ -507,7 +509,7 @@ async function loadOthers(my) {
     for (const r of matches.sort((a, b) => (b.match.in_stock - a.match.in_stock) || a.match.price - b.match.price)) {
       const m = r.match, d = herePrice != null ? m.price - herePrice : null;
       const diff = d == null || !m.in_stock ? "" : Math.abs(d) < 0.5 ? '<span class="diff">Same price</span>' : `<span class="diff ${d < 0 ? "less" : ""}">${esc(money(Math.abs(Math.round(d)), m.currency))} ${d < 0 ? "less" : "more"}</span>`;
-      rows.push({ price: m.price, html: `<span class="os"><b>${esc(r.name)}</b><span class="ot">${esc(m.title)}</span><span class="tag ${m.level === "name" ? "" : "sure"}">${LEVEL[m.level]}</span>${m.in_stock && isLow(m.price) ? lowTag : ""}${m.in_stock ? "" : '<span class="tag oos">Out of stock</span>'}</span><span class="op"><b class="num">${esc(money(m.price, m.currency))}</b>${m.was ? `<span class="was small">${esc(money(m.was, m.currency))}</span>` : ""}${m.member ? `<span class="small">${esc(m.member.label)} ${esc(money(m.member.price, m.currency))}</span>` : ""}${diff}<a href="${esc(m.url)}" target="_blank" rel="noopener nofollow">Open ↗</a><span class="small">${esc(ago(r.checked_at))}</span></span>`, oos: !m.in_stock });
+      rows.push({ price: m.price, html: `<span class="os"><b>${esc(r.name)}</b><span class="ot">${esc(m.title)}</span><span class="tag ${m.level === "barcode" || m.level === "model" ? "sure" : ""}">${esc(LEVEL[m.level] || "Same product")}</span>${m.in_stock && isLow(m.price) ? lowTag : ""}${m.in_stock ? "" : '<span class="tag oos">Out of stock</span>'}</span><span class="op"><b class="num">${esc(money(m.price, m.currency))}</b>${m.was ? `<span class="was small">${esc(money(m.was, m.currency))}</span>` : ""}${m.member ? `<span class="small">${esc(m.member.label)} ${esc(money(m.member.price, m.currency))}</span>` : ""}${diff}<a href="${esc(m.url)}" target="_blank" rel="noopener nofollow">Open ↗</a><span class="small">${esc(ago(r.checked_at))}</span></span>`, oos: !m.in_stock });
     }
     const waiting = shops.filter((s) => !results[s.id]);
     $("otherList").innerHTML = rows.map((r) => `<li class="${r.here ? "here" : ""}${r.oos ? " oos" : ""}">${r.html}</li>`).join("")

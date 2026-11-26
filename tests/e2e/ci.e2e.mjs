@@ -225,6 +225,30 @@ for (const [name, o] of [["1440", { viewport: { width: 1440, height: 900 } }], [
   await p.locator("#others").screenshot({ path: `${SHOTS}/compare-tie-${name}.png` });
   await p.context().close();
 });
+// AI check (src/compare.js, cmpAiJudge): a match the AI accepted shows as "Same product (AI check)", not as sure
+for (const [name, o] of [["desktop", desktop], ["390", { ...mobile, viewport: { width: 390, height: 844 } }]]) await step(`compare AI ${name}`, async () => {
+  const p = await open(o);
+  const aiShops = { computermania: { shop: "computermania", name: "Computer Mania", status: "match", checked_at: Date.now(), ai: { asked: 1, used: true, why: "ok", same: 1, different: 0 }, match: { title: "CI Test Kettle 1,7 Litre Cordless Stainless", price: 849, currency: "ZAR", url: "https://shop.example.co.za/cm-kettle-ai", in_stock: true, level: "ai", ai: "same" } },
+    loot: { shop: "loot", name: "Loot", status: "match", checked_at: Date.now(), match: { title: "CI Test Kettle 1.7L", price: 1049, currency: "ZAR", url: "https://shop.example.co.za/loot-kettle", in_stock: true, level: "name", ai: "same" } } };
+  await p.route(/\/api\/compare\?/, (r) => r.fulfill({ json: { ...CMP_PLAN, shops: CMP_PLAN.shops.filter((x) => aiShops[x.id]), results: {} } }));
+  await p.route(/\/api\/compare\/shop\?/, (r) => r.fulfill({ json: aiShops[new URL(r.request().url()).searchParams.get("shop")] }));
+  await p.goto(BASE + "/");
+  await p.fill("#u", PRODUCT); await p.click("#go");
+  await p.waitForFunction(() => /2 shops checked/.test(document.querySelector("#cmpStatus").textContent) && !/ of /.test(document.querySelector("#cmpStatus").textContent), null, { timeout: 10000 });
+  const head = (await p.textContent("#cmpHead")).replace(/\u00a0/g, " ").replace(/\s+/g, " ");
+  ok(`compare AI ${name}: headline says an AI check found the same product, and asks to check the page`, /Cheaper at Computer Mania: R ?849/.test(head) && /An AI check says it is the same product\./.test(head) && /Check the model and colour/.test(head) && !/undefined/.test(head), head);
+  const rows = await p.$$eval("#otherList li", (ls) => ls.map((l) => l.textContent.replace(/\s+/g, " ").trim()));
+  const ai = rows.find((r) => /Computer Mania/.test(r)) || "";
+  ok(`compare AI ${name}: row tag is "Same product (AI check)"`, /Same product \(AI check\)/.test(ai), rows.join(" | "));
+  ok(`compare AI ${name}: AI tag is not shown as sure`, await p.evaluate(() => [...document.querySelectorAll("#otherList .tag")].filter((t) => /AI check/.test(t.textContent)).every((t) => !t.classList.contains("sure"))));
+  ok(`compare AI ${name}: a name match the AI confirmed keeps its name label`, rows.some((r) => /Loot/.test(r) && /Same name and specs/.test(r)), rows.join(" | "));
+  ok(`compare AI ${name}: link opens the shop's page`, (await p.getAttribute("#otherList a[href*='cm-kettle-ai']", "href")) === "https://shop.example.co.za/cm-kettle-ai");
+  ok(`compare AI ${name}: no sideways scroll`, await noSideScroll(p));
+  ok(`compare AI ${name}: no JS errors`, p._errs.length === 0, p._errs.join(" | "));
+  await p.locator("#others").screenshot({ path: `${SHOTS}/compare-ai-${name}.png` });
+  await p.locator("#cmpHead").screenshot({ path: `${SHOTS}/headline-ai-${name}.png` });
+  await p.context().close();
+});
 // groceries: member price as a note, "Same name and size", and the shops we can't search (with why)
 const GROC_PLAN = { product: { title: "CI Instant Coffee 200g", brand: "ci", gtin: "6001234567890", codes: [], currency: "ZAR", category: "groceries" },
   noun: "groceries and toiletries", shopNoun: null, specialists: 2,
