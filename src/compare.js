@@ -290,6 +290,8 @@ function cmpCatOf(text) {
   const t = t0 + " | " + t0.replace(/\b([a-z]{3,}?)(?:es|s)\b/g, (w, a) => (/(ss|us|is)$/.test(w) ? w : w.endsWith("es") && /(sh|ch|x|ss)$/.test(a) ? a : w.slice(0, -1)));
   for (const [cat, re] of CMP_CATS) {
     if (!re.test(t) || (cat === "cycling" && CMP_NOT_CYCLING.test(t))) continue;
+    // a colour word is not a drink: a "Champagne Matte" kettle or a "Wine Red" toaster is an appliance
+    if (cat === "liquor" && CMP_NOT_GROCERY.test(t)) continue;
     if (cat === "groceries" && (CMP_NOT_GROCERY.test(t) || CMP_LIQUOR.test(t.replace(/\b(?:ginger|root) beer\b|\bnon-?alcoholic\b[^|]*/g, " ")))) continue;   // rum and cola is a drink for the liquor shop
     return cat;
   }

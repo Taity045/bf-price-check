@@ -1,5 +1,61 @@
-[
- {"label": "Takealot AirPods 4", "cc": "ZA", "url": "https://www.takealot.com/apple-airpods-4/PLID95957224"},
- {"label": "Evetech gaming PC", "cc": "ZA", "url": "https://www.evetech.co.za/amd-ryzen-5-5500-intel-arc-b580-budget-gaming-pc-16gb-512gb-nvme/best-pc-deal/22997"},
- {"label": "Takealot PS5 Slim", "cc": "ZA", "url": "https://www.takealot.com/playstation-5-slim-console-with-disc-drive-ps5-slim/PLID95228805"}
-]
+{
+ "note": "Home page picks. Each link was checked live on 2026-11-26 (price read, product in stock). Run node scripts/check_examples.mjs before you change this file.",
+ "groups": [
+  {"id": "popular", "label": "Popular", "items": [
+   {"name": "PlayStation 5 Slim (disc)", "shop": "Takealot", "cc": "ZA", "url": "https://www.takealot.com/playstation-5-slim-console-with-disc-drive-ps5-slim/PLID95228805"},
+   {"name": "Apple AirPods 4", "shop": "Takealot", "cc": "ZA", "url": "https://www.takealot.com/apple-airpods-4/PLID95957224"},
+   {"name": "Ryzen 5 5600 + Arc B580 gaming PC", "shop": "Evetech", "cc": "ZA", "url": "https://www.evetech.co.za/amd-ryzen-5-5600-intel-arc-b580-budget-gaming-pc-16gb-512gb-nvme/best-pc-deal/22997"},
+   {"name": "CeraVe Hydrating Sunscreen SPF50 177ml", "shop": "Clicks", "cc": "ZA", "url": "https://clicks.co.za/cerave_invisible-hydrating-sunscreen-spf50-177ml/p/410827"},
+   {"name": "Nike Air Force 1 '07", "shop": "Superbalist", "cc": "ZA", "url": "https://superbalist.com/men/shoes/sneakers/air-force-1-07-cw2288-111-white-white/624560"},
+   {"name": "Smeg Retro Kettle 1.7L", "shop": "Yuppiechef", "cc": "ZA", "url": "https://www.yuppiechef.com/smeg-kettles-and-toasters.htm?id=14194&name=smeg-retro-cordless-kettle-1.7l&vid=1720998"}
+  ]},
+  {"id": "gaming", "label": "Gaming", "items": [
+   {"name": "PlayStation 5 Slim (disc)", "shop": "Takealot", "cc": "ZA", "url": "https://www.takealot.com/playstation-5-slim-console-with-disc-drive-ps5-slim/PLID95228805"},
+   {"name": "PlayStation 5 Slim (disc)", "shop": "Computer Mania", "cc": "ZA", "url": "https://computermania.co.za/products/playstation-5-slim-console-with-disc-drive-slim-version"},
+   {"name": "Ryzen 5 5600 + Arc B580 gaming PC", "shop": "Evetech", "cc": "ZA", "url": "https://www.evetech.co.za/amd-ryzen-5-5600-intel-arc-b580-budget-gaming-pc-16gb-512gb-nvme/best-pc-deal/22997"},
+   {"name": "Palit GeForce RTX 5060 8GB", "shop": "Evetech", "cc": "ZA", "url": "https://www.evetech.co.za/palit-geforce-rtx-5060-dual-8gb-gddr7/best-deal/22831"},
+   {"name": "Logitech G29 racing wheel", "shop": "Computer Mania", "cc": "ZA", "url": "https://www.computermania.co.za/products/logitech-g29-driving-force-racing-wheel-ps4-ps5-ps3-pc"}
+  ]},
+  {"id": "audio", "label": "Audio & watches", "items": [
+   {"name": "Apple AirPods 4", "shop": "Takealot", "cc": "ZA", "url": "https://www.takealot.com/apple-airpods-4/PLID95957224"},
+   {"name": "Apple AirPods 4", "shop": "First Shop", "cc": "ZA", "url": "https://www.firstshop.co.za/products/apple-airpods-4-wireless-earbuds-mxp63ze-a-314962"},
+   {"name": "Logitech Zone Vibe 100 headphones", "shop": "Computer Mania", "cc": "ZA", "url": "https://www.computermania.co.za/products/logitech-zone-vibe-100-wireless-over-ear-headphones-graphite"},
+   {"name": "Garmin Forerunner 265", "shop": "Sportsmans Warehouse", "cc": "ZA", "url": "https://www.sportsmanswarehouse.co.za/product/garmin-forerunner-265-gps-smartwatch/"},
+   {"name": "Koss Porta Pro headphones", "shop": "Richer Sounds", "cc": "UK", "url": "https://www.richersounds.com/koss-porta-pro/"}
+  ]},
+  {"id": "computers", "label": "Computers", "items": [
+   {"name": "AMD Ryzen 7 9800X3D", "shop": "Evetech", "cc": "ZA", "url": "https://www.evetech.co.za/amd-ryzen-7-9800x3d-processor/best-deal/21650"},
+   {"name": "ADATA SU650 512GB SSD", "shop": "Evetech", "cc": "ZA", "url": "https://www.evetech.co.za/adata-su650-512gb-3d-nand-sata-2-5-ssd/best-deal/18361"},
+   {"name": "ASUS VY27UQ 27\" 4K monitor", "shop": "Computer Mania", "cc": "ZA", "url": "https://computermania.co.za/products/asus-vy27uq-eye-care-monitor-27-inch-4k-3840-x-2160-ips-hdr-10-adaptive-sync-eye-care-plus-technology-blue-light-filter-flicker-free-antibacterial-treatment"},
+   {"name": "ASUS Vivobook Go 15 laptop", "shop": "Computer Mania", "cc": "ZA", "url": "https://www.computermania.co.za/products/asus-vivobook-go-15-15-6-fhd-amd-ryzen-3-8gb-ram-256gb-ssd-cool-silver"},
+   {"name": "HP 250R G9 15.6\" laptop", "shop": "First Shop", "cc": "ZA", "url": "https://www.firstshop.co.za/products/hp-250r-g9-15-6-inch-fhd-laptop-intel-core-3-100u-256gb-ssd-16gb-ram-win-11-pro-dark-ash-silver-388989"},
+   {"name": "Apple iPad 11\" 128GB WiFi", "shop": "Computer Mania", "cc": "ZA", "url": "https://www.computermania.co.za/products/apple-ipad-11-128gb-wifi-silver"}
+  ]},
+  {"id": "appliances", "label": "Appliances", "items": [
+   {"name": "Smeg Retro Kettle 1.7L", "shop": "Yuppiechef", "cc": "ZA", "url": "https://www.yuppiechef.com/smeg-kettles-and-toasters.htm?id=14194&name=smeg-retro-cordless-kettle-1.7l&vid=1720998"},
+   {"name": "LG 12000BTU inverter air conditioner", "shop": "Hirsch's", "cc": "ZA", "url": "https://www.hirschs.co.za/lg-12000btu-dualcool-wifi-inverter-air-conditioner-m13ejh"},
+   {"name": "Lakeland 3.5L slow cooker", "shop": "Lakeland", "cc": "UK", "url": "https://www.lakeland.co.uk/products/lakeland-3-5l-slow-cooker"},
+   {"name": "Daewoo 12L dehumidifier", "shop": "Wickes", "cc": "UK", "url": "https://www.wickes.co.uk/Daewoo-24-Hour-Timer-White-Dehumidifier---12L/p/239047"}
+  ]},
+  {"id": "beauty", "label": "Beauty", "items": [
+   {"name": "CeraVe Hydrating Sunscreen SPF50 177ml", "shop": "Clicks", "cc": "ZA", "url": "https://clicks.co.za/cerave_invisible-hydrating-sunscreen-spf50-177ml/p/410827"},
+   {"name": "L'Oréal Revitalift firming cream 50ml", "shop": "Clicks", "cc": "ZA", "url": "https://clicks.co.za/loreal_revitalift-anti-wrinkle-extra-firming-cream-50ml/p/308767"},
+   {"name": "Marc Jacobs Daisy EDT 200ml", "shop": "Lookfantastic", "cc": "UK", "url": "https://www.lookfantastic.com/p/marc-jacobs-daisy-eau-de-toilette-200ml/17748348/"},
+   {"name": "Clinique Everyday Glow gift set", "shop": "Lookfantastic", "cc": "UK", "url": "https://www.lookfantastic.com/p/clinique-everyday-glow-skincare-makeup-gift-set/17895376/"}
+  ]},
+  {"id": "groceries", "label": "Groceries", "items": [
+   {"name": "Coca-Cola Less Sugar 2L", "shop": "Checkers", "cc": "ZA", "url": "https://www.checkers.co.za/product/coca-cola-original-taste-less-sugar-soft-drink-2l-10136669EA"},
+   {"name": "Nescafé Gold instant coffee 200g", "shop": "Woolworths", "cc": "ZA", "url": "https://www.woolworths.co.za/prod/_/A-7613033745843"},
+   {"name": "Red Bull 4 x 250ml", "shop": "Woolworths", "cc": "ZA", "url": "https://www.woolworths.co.za/prod/_/A-9002490100490"},
+   {"name": "White Star instant maize porridge 1kg", "shop": "Pick n Pay", "cc": "ZA", "url": "https://www.pnp.co.za/white-star-instant-maize-porridge-orig-1kg/p/000000000000714126_EA"},
+   {"name": "Clicks family wipes (50)", "shop": "Clicks", "cc": "ZA", "url": "https://clicks.co.za/clicks_family-wipes-50-wipes/p/198620"}
+  ]},
+  {"id": "fashion", "label": "Fashion", "items": [
+   {"name": "Nike Air Force 1 '07", "shop": "Superbalist", "cc": "ZA", "url": "https://superbalist.com/men/shoes/sneakers/air-force-1-07-cw2288-111-white-white/624560"},
+   {"name": "Nike Air Force 1 '07", "shop": "Bash", "cc": "ZA", "url": "https://bash.com/nike-men-s-air-force-1-07-white-sneaker-060601acjb8/p"},
+   {"name": "PUMA Achillium sneakers", "shop": "PUMA", "cc": "ZA", "url": "https://za.puma.com/pd/achillium-sneakers-unisex/407167.html"},
+   {"name": "PUMA Anzarun 2 Lite sneakers", "shop": "PUMA", "cc": "ZA", "url": "https://za.puma.com/pd/anzarun-2-lite-sliptechtm-sneakers-unisex/406312.html"},
+   {"name": "StayNew cotton briefs (3 pack)", "shop": "Woolworths", "cc": "ZA", "url": "https://www.woolworths.co.za/prod/_/A-508972132"}
+  ]}
+ ]
+}

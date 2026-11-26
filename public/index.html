@@ -62,8 +62,20 @@ h1{font-size:clamp(26px,6.4vw,40px);line-height:1.15;letter-spacing:-.02em;margi
 .go{height:50px;padding:0 20px;border:0;border-radius:var(--r);background:var(--acc);color:var(--bg);font-weight:600;white-space:nowrap;width:100%}
 .go[disabled]{opacity:.65;cursor:progress}
 html.q main:has(#result.hidden) footer{display:none}
-.tries{margin-top:14px;font-size:14px;color:var(--mut);text-align:center;line-height:2;min-height:88px}
-.tries a{display:inline-flex;align-items:center;min-height:44px;margin:0 6px;color:var(--ink)}
+.tries{margin:22px 0 0;text-align:left}
+.tryh{font-size:15px;margin:0 0 8px;text-align:center}
+.cats{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 6px;margin:0 -2px;scrollbar-width:none;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity}
+.cats::-webkit-scrollbar{display:none}
+.cat{flex:none;min-height:44px;padding:0 14px;border:1px solid var(--line);border-radius:99px;background:var(--bg);font-size:14px;font-weight:600;white-space:nowrap;scroll-snap-align:start}
+.cat[aria-pressed=true]{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+.picks{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:8px}
+.picks a{display:flex;flex-direction:column;justify-content:center;min-height:56px;padding:8px 12px;border:1px solid var(--line);border-radius:var(--r);text-decoration:none;color:var(--ink);background:var(--bg)}
+.picks a:hover{border-color:var(--ink)}
+.picks b{font-size:15px;font-weight:600;line-height:1.3}
+.picks span{font-size:13px;color:var(--mut)}
+.picks a[aria-busy=true] span::after{content:" · Checking…"}
+.trynote{margin:8px 0 0;text-align:center}
+.picks[hidden]{display:none}
 .err{margin-top:18px;padding:12px 14px;border-radius:var(--r);background:rgba(204,36,24,.08);background:color-mix(in srgb,var(--bad) 10%,var(--bg));color:var(--bad);font-size:15px}
 
 #result{margin-top:28px}
@@ -210,13 +222,13 @@ dialog.dlg-fb[open]{display:block;position:fixed;z-index:20;left:12px;right:12px
 .wall li{flex-direction:column;align-items:flex-start;gap:2px}
 .tbl{width:100%;overflow-x:auto}
 @media (min-width:480px){
-  #f{flex-direction:row}#u{flex:1;width:auto}#f .go{width:auto;min-width:11em}.tries{min-height:44px}
+  #f{flex-direction:row}#u{flex:1;width:auto}#f .go{width:auto;min-width:11em}.picks{grid-template-columns:1fr 1fr}
   .manual{grid-template-columns:1fr 1fr 90px}.manual label:last-child{grid-column:auto}
   .badges{grid-template-columns:repeat(3,minmax(0,1fr))}
   .sharelist{grid-template-columns:1fr 1fr}
   .sharebtn{width:auto;min-width:16em}
 }
-@media (min-width:768px){.hero{padding-top:56px}main{max-width:720px}}
+@media (min-width:768px){.hero{padding-top:56px}main{max-width:720px}.cats{flex-wrap:wrap;justify-content:center;overflow:visible}}
 @media (min-width:1280px){main{max-width:760px}}
 @media (max-height:480px) and (orientation:landscape){.hero{padding-top:16px}}
 
@@ -238,7 +250,9 @@ h1 mark{background:var(--acc);color:#0a0a0a;padding:0 .12em;margin:0 -.02em;-web
 .go{background:var(--acc);color:var(--acc-ink);border:2px solid var(--ink);border-radius:var(--r);box-shadow:3px 3px 0 var(--ink);font-weight:700;transition:transform .08s,box-shadow .08s}
 .go:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--ink)}
 .formrow .go{border:2px solid var(--ink)}
-.tries a{text-decoration-color:var(--acc);text-decoration-thickness:3px}
+.cat[aria-pressed=true]{background:var(--acc);color:var(--acc-ink);border:2px solid var(--ink)}
+.cat{border-radius:var(--r)}
+.picks a:hover,.picks a:focus-visible{border-color:var(--ink);box-shadow:3px 3px 0 var(--ink)}
 .card{border:2px solid var(--ink);border-radius:var(--r);background:var(--card,var(--bg))}
 dialog{background:var(--card,var(--bg))}
 .prod img{border-radius:2px;border:1px solid var(--line)}
@@ -289,6 +303,9 @@ footer{border-top:2px dashed var(--ink)}
   h1{font-size:clamp(56px,5.4vw,76px)}
   .sub{font-size:18px;max-width:36em}
   #f{max-width:760px;margin:32px auto 0;gap:12px;width:100%}
+  .tries{margin:28px 0 0}
+  .cat{padding:0 12px}
+  .picks{grid-template-columns:repeat(3,minmax(0,1fr))}
   #u{height:62px;font-size:18px;padding:0 18px}
   #f .go{height:62px;padding:0 32px;font-size:18px}
   .steps{display:flex;justify-content:center;gap:28px;list-style:none;margin:20px 0 0;padding:0;font-size:14px;color:var(--mut);counter-reset:s}
@@ -312,7 +329,11 @@ footer{border-top:2px dashed var(--ink)}
       <input id="u" name="u" type="url" inputmode="url" placeholder="Paste a product link" aria-label="Product link" enterkeyhint="go">
       <button class="go" id="go" type="submit">Check price</button>
     </form>
-    <div class="tries" id="tries">Try: <span id="chips"></span></div>
+    <section class="tries" id="tries" aria-labelledby="triesH">
+      <h2 class="tryh" id="triesH">Try a popular product</h2>
+      <!--PICKS-->
+      <p class="small trynote">Tap a product to check its price now.</p>
+    </section>
     <ol class="steps" aria-label="How it works"><li>Paste a link</li><li>We check up to 12 months of prices</li><li>See if the deal is real</li></ol>
   </section>
 
@@ -507,7 +528,6 @@ if (typeof HTMLDialogElement !== "function") document.querySelectorAll("dialog")
   d.showModal = function () { this.setAttribute("open", ""); this.classList.add("dlg-fb"); };
   d.close = function () { this.removeAttribute("open"); };
 });
-const EXAMPLES = /*EXAMPLES*/[];
 const LOC = { ZAR: "en-ZA", GBP: "en-GB", EUR: "en-IE", USD: "en-US" };
 const store = {
   get(k, d) { try { const v = JSON.parse(localStorage.getItem("dod:" + k)); return v == null ? d : v; } catch { return d; } },
@@ -526,13 +546,20 @@ function toast(msg) { toastQ.push(msg); if (toastQ.length === 1) nextToast(); }
 function nextToast() { const t = $("toast"); if (!toastQ.length) return; const d = document.querySelector("dialog[open]"); (d || document.body).appendChild(t); t.textContent = toastQ[0]; t.classList.add("on"); setTimeout(() => { t.classList.remove("on"); toastQ.shift(); setTimeout(nextToast, 200); }, 1800); }
 
 
-// examples
-EXAMPLES.forEach((e) => {
-  const a = document.createElement("a"); a.href = "/?u=" + encodeURIComponent(e.url); a.textContent = e.label;
-  a.addEventListener("click", (ev) => { ev.preventDefault(); $("u").value = e.url; run(e.url); });
-  $("chips").appendChild(a);
-});
-if (!EXAMPLES.length) $("tries").classList.add("hidden");
+// home page picks: the chips show one group; a tap on a product fills the link box and checks it
+const cats = document.querySelectorAll("#cats .cat");
+if (!cats.length) $("tries").classList.add("hidden");
+cats.forEach((b) => b.addEventListener("click", () => {
+  cats.forEach((c) => { const on = c === b; c.setAttribute("aria-pressed", on ? "true" : "false"); $(c.getAttribute("aria-controls")).hidden = !on; });
+}));
+document.querySelectorAll("#chips a").forEach((a) => a.addEventListener("click", (ev) => {
+  ev.preventDefault();
+  const u = new URL(a.href).searchParams.get("u"); $("u").value = u;
+  document.querySelectorAll('#chips a[aria-busy="true"]').forEach((x) => x.removeAttribute("aria-busy"));
+  a.setAttribute("aria-busy", "true");
+  const done = () => a.removeAttribute("aria-busy");
+  run(u).then(done, done);
+}));
 
 $("f").addEventListener("submit", (e) => {
   e.preventDefault();

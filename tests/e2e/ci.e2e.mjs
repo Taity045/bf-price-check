@@ -1,7 +1,7 @@
 // Browser tests for CI. Runs against a local `wrangler dev` (or any BASE) with no traffic to shops:
 // price-check answers are faked in the browser, everything else (pages, forms, D1) is the real worker.
 // Usage: node tests/e2e/ci.e2e.mjs [BASE]      env: CHROME=/path/to/chrome  SHOTS=dir  HOME_BUDGET=bytes
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { chromium } from "playwright-core";
 
 const BASE = (process.argv[2] || process.env.BASE || "http://127.0.0.1:8787").replace(/\/$/, "");
@@ -319,6 +319,60 @@ for (const [name, o] of [["1440", { viewport: { width: 1440, height: 900 } }], [
   await p.context().close();
 });
 
+// 3e. Home page picks: group chips switch the list; a tap or Enter on a product checks it (answer faked)
+const PICKS = JSON.parse(readFileSync(new URL("../../examples.json", import.meta.url), "utf8")).groups;
+for (const [name, o] of [["desktop", desktop], ["1440", { viewport: { width: 1440, height: 900 } }], ["phone", mobile], ["390", { ...mobile, viewport: { width: 390, height: 844 } }]]) await step(`home picks ${name}`, async () => {
+  const p = await open(o);
+  const asked = [];
+  await p.route(/\/api\/check\?/, (r) => { asked.push(new URL(r.request().url()).searchParams.get("url")); r.fulfill({ json: checkAnswer() }); });
+  await p.route(/\/api\/compare\?/, (r) => r.fulfill({ json: { ...CMP_PLAN, shops: [], results: {}, specialists: 0, reason: "no shops" } }));
+  await p.goto(BASE + "/", { waitUntil: "networkidle" });
+  const state = () => p.evaluate(() => ({
+    pressed: [...document.querySelectorAll("#cats .cat")].filter((b) => b.getAttribute("aria-pressed") === "true").map((b) => b.dataset.g),
+    shown: [...document.querySelectorAll("#chips .picks")].filter((u) => u.offsetParent !== null).map((u) => u.id),
+    items: [...document.querySelectorAll("#chips .picks")].filter((u) => u.offsetParent !== null).flatMap((u) => [...u.querySelectorAll("a")].map((a) => ({ name: a.querySelector("b").textContent, shop: a.querySelector("span").textContent, u: new URL(a.href).searchParams.get("u"), h: a.getBoundingClientRect().height }))),
+  }));
+  ok(`home picks ${name}: one chip per group, in order`, (await p.locator("#cats .cat").allTextContents()).join("|") === PICKS.map((g) => g.label).join("|"));
+  let st = await state();
+  ok(`home picks ${name}: Popular is on and only its list shows`, st.pressed.join() === "popular" && st.shown.join() === "pk-popular" && st.items.length === PICKS[0].items.length, JSON.stringify(st));
+  ok(`home picks ${name}: each product shows its name and shop, no price`, st.items.every((i) => i.name.length > 3 && i.shop.length > 1 && !/R\s?\d|£\d/.test(i.name + i.shop) && i.h >= 44), JSON.stringify(st.items));
+  ok(`home picks ${name}: no sideways page scroll`, await noSideScroll(p));
+  if (o.isMobile) {
+    const row = await p.evaluate(() => { const c = document.querySelector("#cats"); return { sw: c.scrollWidth, cw: c.clientWidth, ox: getComputedStyle(c).overflowX }; });
+    ok(`home picks ${name}: the chip row scrolls sideways inside itself`, row.sw > row.cw && row.ox === "auto", JSON.stringify(row));
+  } else {
+    const rows = await p.evaluate(() => new Set([...document.querySelectorAll("#cats .cat")].map((b) => Math.round(b.getBoundingClientRect().top))).size);
+    ok(`home picks ${name}: all chips show without sideways scroll (at most 2 rows)`, rows <= 2, rows);
+  }
+  // switch by tap or click, for every group
+  for (const g of PICKS.slice(1).concat(PICKS[0])) {
+    const chip = p.locator(`#cats .cat[data-g="${g.id}"]`);
+    if (o.hasTouch) await chip.tap(); else await chip.click();
+    st = await state();
+    ok(`home picks ${name}: ${g.label} chip shows its ${g.items.length} products`, st.pressed.join() === g.id && st.shown.join() === "pk-" + g.id && st.items.map((i) => i.u).join() === g.items.map((i) => i.url).join(), JSON.stringify(st).slice(0, 300));
+  }
+  if (name === "desktop") await p.screenshot({ path: `${SHOTS}/home-picks-desktop.png` });
+  if (name === "phone") await p.screenshot({ path: `${SHOTS}/home-picks-phone.png`, fullPage: true });
+  // keyboard: Enter and Space on chips, then Tab to the first product and Enter starts the check
+  await p.focus('#cats .cat[data-g="beauty"]'); await p.keyboard.press("Enter");
+  ok(`home picks ${name}: Enter on a chip switches the list`, (await state()).shown.join() === "pk-beauty");
+  await p.focus('#cats .cat[data-g="gaming"]'); await p.keyboard.press("Space");
+  st = await state();
+  ok(`home picks ${name}: Space on a chip switches the list`, st.shown.join() === "pk-gaming");
+  await p.focus("#pk-gaming a"); await p.keyboard.press("Enter");
+  await p.waitForSelector("#result:not(.hidden)", { timeout: 10000 });
+  ok(`home picks ${name}: Enter on a product fills the link box and checks that product`, (await p.inputValue("#u")) === PICKS.find((g) => g.id === "gaming").items[0].url && asked.at(-1) === PICKS.find((g) => g.id === "gaming").items[0].url, asked.join(" "));
+  // a tap on another product checks it too, and the busy mark goes away when the answer is in
+  const second = p.locator("#pk-gaming a").nth(1);
+  if (o.hasTouch) await second.tap(); else await second.click();
+  await p.waitForFunction(() => !document.querySelector('#chips a[aria-busy="true"]'), null, { timeout: 10000 });
+  ok(`home picks ${name}: a tap on a product checks it`, asked.at(-1) === PICKS.find((g) => g.id === "gaming").items[1].url && asked.length === 2, asked.join(" "));
+  ok(`home picks ${name}: the result shows after a tap`, await p.isVisible("#result") && /CI Test Kettle/.test(await p.textContent("#ptitle")));
+  ok(`home picks ${name}: no sideways page scroll after the check`, await noSideScroll(p));
+  ok(`home picks ${name}: no JS errors`, p._errs.length === 0, p._errs.join(" | "));
+  await p.context().close();
+});
+
 // 4. "Ask us to add a shop" form, sent to the real worker and local D1
 for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`shop request ${name}`, async () => {
   const p = await open(o);
@@ -370,7 +424,9 @@ for (const [name, o] of [["desktop", desktop], ["phone", mobile]]) await step(`s
     ok("share desktop: WhatsApp link has the text and the link", wa.startsWith("https://wa.me/?text=") && decodeURIComponent(wa.slice(20)).includes(link), wa);
     ok("share desktop: no fluff words", !/!|amazing|best deal|guaranteed/i.test(txt), txt);
     await p.context().grantPermissions(["clipboard-read", "clipboard-write"]).catch(() => {});
-    await p.click("#shareCopy"); await p.waitForTimeout(300);
+    await p.click("#shareCopy");
+    // toasts queue: a "New badge" toast from the check can show first, so wait for ours
+    await p.waitForFunction(() => /copied/i.test(document.querySelector("#toast")?.textContent || ""), null, { timeout: 8000 }).catch(() => {});
     ok("share desktop: Copy link says it copied", /copied/i.test(await p.textContent("#toast")), await p.textContent("#toast"));
     await p.screenshot({ path: `${SHOTS}/share-desktop.png` });
     await p.click("#shareDlg .x");
